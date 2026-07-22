@@ -36,7 +36,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
   const myId = currentUser.id;
   const myName = currentUser.username.toLowerCase();
 
-  // Фильтруем входящие заявки текущему пользователю (проверка по ID и по логину)
+  // Фильтруем входящие заявки текущему пользователю
   const incomingRequests = friendRequests.filter(
     (r) =>
       r.status === 'pending' &&
@@ -118,44 +118,45 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
             {incomingRequests.length > 0 && (
               <div className="space-y-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-pink-400 flex items-center gap-1">
-                  <Clock className="h-3 w-3" /> Входящие заявки ({incomingRequests.length})
+                  <Clock className="h-3.5 w-3.5" /> Входящие заявки ({incomingRequests.length})
                 </span>
 
-                <div className="space-y-1.5">
+                <div className="space-y-2">
                   {incomingRequests.map((req) => (
                     <div
                       key={req.id}
-                      className="p-2.5 rounded-xl bg-purple-950/60 border border-pink-500/40 flex items-center justify-between gap-2 shadow-lg"
+                      className="p-3 rounded-2xl bg-purple-950/80 border-2 border-pink-500/60 flex flex-col gap-2.5 shadow-xl shadow-pink-500/10"
                     >
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2.5 min-w-0">
                         <img
                           src={req.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(req.sender_name)}`}
                           alt={req.sender_name}
-                          className="h-8 w-8 rounded-full object-cover shrink-0 ring-1 ring-pink-500"
+                          className="h-9 w-9 rounded-full object-cover shrink-0 ring-2 ring-pink-500"
                         />
                         <div className="min-w-0">
                           <p className="text-xs font-bold text-white truncate">{req.sender_name}</p>
-                          <p className="text-[10px] text-pink-300">Хочет добавиться в друзья</p>
+                          <p className="text-[10px] text-pink-300 font-medium">Хочет добавиться в друзья</p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-1 shrink-0">
+                      {/* Кнопки принятия / отклонения */}
+                      <div className="flex items-center gap-2 pt-1 border-t border-purple-900/50">
                         <Button
                           onClick={() => acceptFriendRequest(req.id)}
-                          size="icon"
-                          className="h-7 w-7 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg"
-                          title="Принять"
+                          size="sm"
+                          className="flex-1 h-8 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl gap-1.5 shadow-md shadow-emerald-600/30"
                         >
-                          <Check className="h-3.5 w-3.5" />
+                          <Check className="h-4 w-4 stroke-[3]" />
+                          <span>Принять</span>
                         </Button>
                         <Button
                           onClick={() => rejectFriendRequest(req.id)}
-                          size="icon"
+                          size="sm"
                           variant="ghost"
-                          className="h-7 w-7 text-slate-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg"
-                          title="Отклонить"
+                          className="h-8 px-3 text-slate-400 hover:text-red-400 hover:bg-red-950/50 text-xs rounded-xl gap-1"
                         >
                           <X className="h-3.5 w-3.5" />
+                          <span>Отклонить</span>
                         </Button>
                       </div>
                     </div>

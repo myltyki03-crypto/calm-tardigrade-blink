@@ -14,10 +14,22 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser } = useRooms();
+  const { currentUser, friendRequests } = useRooms();
 
   const isHome = location.pathname === '/';
   const isProfile = location.pathname === '/profile';
+
+  const myId = currentUser.id;
+  const myName = currentUser.username.toLowerCase();
+
+  const pendingCount = friendRequests.filter(
+    (r) =>
+      r.status === 'pending' &&
+      ((r.receiver_id && r.receiver_id === myId) ||
+       (r.receiver_name && r.receiver_name.toLowerCase() === myName)) &&
+      r.sender_id !== myId &&
+      r.sender_name.toLowerCase() !== myName
+  ).length;
 
   return (
     <nav className="fixed bottom-0 left-0 right-0 z-50 md:hidden bg-slate-950/95 backdrop-blur-lg border-t border-purple-900/40 px-3 py-2 flex items-center justify-around">
@@ -37,7 +49,13 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       >
         <Users className="h-5 w-5 text-purple-400" />
         <span>Друзья</span>
-        <span className="absolute top-0 right-1 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+        {pendingCount > 0 ? (
+          <span className="absolute -top-1 -right-2 h-4 w-4 rounded-full bg-pink-600 text-white font-black text-[9px] flex items-center justify-center animate-bounce shadow-md">
+            {pendingCount}
+          </span>
+        ) : (
+          <span className="absolute top-0 right-1 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
+        )}
       </button>
 
       {/* Кнопка создания по центру */}

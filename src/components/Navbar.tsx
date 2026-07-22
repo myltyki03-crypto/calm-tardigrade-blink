@@ -17,8 +17,20 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenFriendsDrawer,
 }) => {
   const navigate = useNavigate();
-  const { currentUser, isLoggedIn } = useRooms();
+  const { currentUser, isLoggedIn, friendRequests } = useRooms();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  const myId = currentUser.id;
+  const myName = currentUser.username.toLowerCase();
+
+  const pendingCount = friendRequests.filter(
+    (r) =>
+      r.status === 'pending' &&
+      ((r.receiver_id && r.receiver_id === myId) ||
+       (r.receiver_name && r.receiver_name.toLowerCase() === myName)) &&
+      r.sender_id !== myId &&
+      r.sender_name.toLowerCase() !== myName
+  ).length;
 
   return (
     <>
@@ -49,10 +61,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               onClick={onOpenFriendsDrawer}
               variant="ghost"
               size="sm"
-              className="hidden md:flex text-slate-300 hover:text-white relative text-xs h-8"
+              className="hidden md:flex text-slate-300 hover:text-white relative text-xs h-8 gap-1.5"
             >
-              <Users className="h-4 w-4 text-purple-400 mr-1" />
+              <Users className="h-4 w-4 text-purple-400" />
               <span>Друзья</span>
+              {pendingCount > 0 && (
+                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-white bg-pink-600 rounded-full animate-bounce shadow-md shadow-pink-600/40">
+                  {pendingCount}
+                </span>
+              )}
             </Button>
 
             <Button
