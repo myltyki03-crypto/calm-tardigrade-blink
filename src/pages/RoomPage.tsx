@@ -13,7 +13,7 @@ import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
-import { ChatMessage, QueueItem, Room } from '@/types/rave';
+import { ChatMessage, QueueItem, Room, RoomMember } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess, showError } from '@/utils/toast';
 
@@ -84,7 +84,6 @@ export const RoomPage = () => {
   const isHost = room?.host_id === currentUser.id;
   const isNavUnlocked = location.state?.unlocked || (room ? unlockedRoomIds.includes(room.id) : false);
 
-  // Разблокировка если не приватная, пользователь — хозяин или пароль уже был введен
   useEffect(() => {
     if (room) {
       if (!room.is_private || !room.access_code || isHost || isNavUnlocked) {
@@ -93,7 +92,6 @@ export const RoomPage = () => {
     }
   }, [room, isHost, isNavUnlocked]);
 
-  // Фиксация присутствия пользователя в комнате
   useEffect(() => {
     if (room?.id && isUnlocked) {
       joinRoomPresence(room.id);
@@ -134,7 +132,6 @@ export const RoomPage = () => {
     );
   }
 
-  // Запрос пароля при прямом переходе по ссылке
   if (room.is_private && room.access_code && !isHost && !isUnlocked) {
     const handleDirectPassSubmit = (e: React.FormEvent) => {
       e.preventDefault();
@@ -198,17 +195,64 @@ export const RoomPage = () => {
 
   const roomMessages = messagesByRoom[room.id] || [];
   const roomQueue = queueByRoom[room.id] || [];
-  const roomMembers = activeMembersByRoom[room.id] || [
-    {
-      id: `mem-${currentUser.id}`,
+  
+  // ФОРМИРОВАНИЕ ПОЛНОГО И ЧИСТОГО СПИСКА УЧАСТНИКОВ (ВЛАДЕЛЕЦ + ВЕБ/МОБИЛЬНЫЕ ГОСТИ)
+  const rawMembers = activeMembersByRoom[room.id] || [];
+  
+  // Проверяем наличие самого текущего пользователя
+  const hasMe = rawMembers.some((m) => m.user_id === currentUser.id);
+  const meMember: RoomMember = {
+    id: `mem-${currentUser.id}-${room.id}`,
+    room_id: room.id,
+    user_id: currentUser.id,
+    user_name: currentUser.username,
+    user_avatar: currentUser.avatar_url,
+    role: currentUser.id === room.host_id ? 'host' : 'listener',
+    joined_at: new Date().toISOString(),
+  };
+
+  let combined = hasMe ? [...rawMembers] : [meMember, ...rawMembers];
+
+  // Проверяем наличие Владельца комнаты
+  const hasHost = combined.some((m) => m.user_id === room.host_id);
+  if (!hasHost) {
+    const hostMember: RoomMember = {
+      id: `mem-${room.host_id}-${room.id}`,
       room_id: room.id,
-      user_id: currentUser.id,
-      user_name: currentUser.username,
-      user_avatar: currentUser.avatar_url,
-      role: 'listener',
+      user_id: room.host_id,
+      user_name: room.host_name,
+      user_avatar: room.host_avatar,
+      role: 'host',
       joined_at: new Date().toISOString(),
-    }
-  ];
+    };
+    combined.unshift(hostMember);
+  }
+
+  // Подставляем свежие имя и аватарку владельца и расставляем Владельца первым
+  const roomMembers = combined
+    .map((m) => {
+      if (m.user_id === room.host_id) {
+        return {
+          ...m,
+          user_name: room.host_name || m.user_name,
+          user_avatar: room.host_avatar || m.user_avatar,
+          role: 'host' as const,
+        };
+      }
+      if (m.user_id === currentUser.id) {
+        return {
+          ...m,
+          user_name: currentUser.username || m.user_name,
+          user_avatar: currentUser.avatar_url || m.user_avatar,
+        };
+      }
+      return m;
+    })
+    .sort((a, b) => {
+      if (a.user_id === room.host_id) return -1;
+      if (b.user_id === room.host_id) return 1;
+      return 0;
+    });
 
   const handleDeleteRoomConfirm = () => {
     if (!isHost) {

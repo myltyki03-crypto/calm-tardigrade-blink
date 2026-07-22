@@ -79,7 +79,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [activeMembersByRoom, setActiveMembersByRoom] = useState<Record<string, RoomMember[]>>({});
   
-  // Комнаты, пароль от которых был успешно введен в текущей сессии
   const [unlockedRoomIds, setUnlockedRoomIds] = useState<string[]>([]);
 
   const markRoomUnlocked = (roomId: string) => {
@@ -112,7 +111,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       id: userId,
       username: cleanName,
       password_hash: password_hash,
-      avatar_url: avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanName}`,
+      avatar_url: avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanName)}`,
       is_online: true,
       status_message: 'В ритме вечеринки 🎧',
       is_vip: false,
@@ -227,11 +226,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       });
       setActiveMembersByRoom(grouped);
-
-      setRooms(prev => prev.map(r => {
-        const count = grouped[r.id]?.length || r.member_count || 1;
-        return { ...r, member_count: count };
-      }));
     }
   }, []);
 
@@ -275,20 +269,23 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const joinRoomPresence = async (roomId: string) => {
     if (!currentUser.id) return;
+    const targetRoom = rooms.find((r) => r.id === roomId);
+    const isOwner = targetRoom?.host_id === currentUser.id;
+
     const memberObj: RoomMember = {
       id: `mem-${currentUser.id}-${roomId}`,
       room_id: roomId,
       user_id: currentUser.id,
       user_name: currentUser.username,
-      user_avatar: currentUser.avatar_url,
-      role: 'listener',
+      user_avatar: currentUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`,
+      role: isOwner ? 'host' : 'listener',
       joined_at: new Date().toISOString(),
     };
 
     setActiveMembersByRoom(prev => {
       const list = prev[roomId] || [];
-      if (list.some(m => m.user_id === currentUser.id)) return prev;
-      return { ...prev, [roomId]: [...list, memberObj] };
+      const filtered = list.filter(m => m.user_id !== currentUser.id);
+      return { ...prev, [roomId]: [...filtered, memberObj] };
     });
 
     if (isSupabaseConfigured && supabase) {
@@ -327,6 +324,20 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map((acc) => (acc.id === newProfile.id ? { ...acc, ...updated } : acc))
     );
 
+    if (updated.avatar_url || updated.username) {
+      setRooms((prev) =>
+        prev.map((r) =>
+          r.host_id === newProfile.id
+            ? {
+                ...r,
+                ...(updated.avatar_url && { host_avatar: updated.avatar_url }),
+                ...(updated.username && { host_name: updated.username }),
+              }
+            : r
+        )
+      );
+    }
+
     if (isSupabaseConfigured && supabase) {
       await supabase.from('profiles').upsert([
         {
@@ -336,6 +347,16 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status_message: newProfile.status_message,
         },
       ]);
+
+      if (updated.avatar_url || updated.username) {
+        await supabase
+          .from('rooms')
+          .update({
+            ...(updated.avatar_url && { host_avatar: updated.avatar_url }),
+            ...(updated.username && { host_name: updated.username }),
+          })
+          .eq('host_id', newProfile.id);
+      }
     }
   };
 
