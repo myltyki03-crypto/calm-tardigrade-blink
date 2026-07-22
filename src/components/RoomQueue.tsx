@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ListMusic, Plus, ThumbsUp, Play, Link as LinkIcon, Lock, Music2 } from 'lucide-react';
+import { ListMusic, Plus, ThumbsUp, Play, Link as LinkIcon, Lock, Music2, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -15,6 +15,12 @@ interface RoomQueueProps {
   onPlayNow: (item: QueueItem) => void;
   isHost: boolean;
 }
+
+const QUICK_QUEUE_PRESETS = [
+  { label: '🔥 Synthwave Radio', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
+  { label: '📚 Lofi Beats', url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk' },
+  { label: '🎮 Cyberpunk Mix', url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY' },
+];
 
 export const RoomQueue: React.FC<RoomQueueProps> = ({
   queue,
@@ -34,6 +40,11 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
     showSuccess('Added to Party Playlist Queue!');
   };
 
+  const handleAddPreset = (url: string, label: string) => {
+    onAddQueueItem(url);
+    showSuccess(`Added ${label} to Queue!`);
+  };
+
   return (
     <div className="flex flex-col h-full w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
       {/* Header */}
@@ -44,24 +55,43 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
       </div>
 
       {/* Add track form */}
-      <form onSubmit={handleAdd} className="p-2 border-b border-purple-900/30 bg-slate-950/40 flex items-center gap-1.5 w-full">
-        <div className="relative flex-1">
-          <LinkIcon className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-          <Input
-            placeholder="Paste YouTube or video link..."
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-8 w-full"
-          />
+      <div className="p-2 border-b border-purple-900/30 bg-slate-950/40 space-y-1.5">
+        <form onSubmit={handleAdd} className="flex items-center gap-1.5 w-full">
+          <div className="relative flex-1">
+            <LinkIcon className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+            <Input
+              placeholder="Paste YouTube or video link..."
+              value={urlInput}
+              onChange={(e) => setUrlInput(e.target.value)}
+              className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-8 w-full"
+            />
+          </div>
+          <Button
+            type="submit"
+            size="sm"
+            className="h-8 bg-purple-700 hover:bg-purple-600 text-white text-xs px-2.5 rounded-lg shrink-0"
+          >
+            <Plus className="h-3.5 w-3.5 mr-1" /> Add
+          </Button>
+        </form>
+
+        {/* Quick request chips */}
+        <div className="flex items-center gap-1 overflow-x-auto scrollbar-none pt-0.5">
+          <span className="text-[9px] text-slate-400 font-semibold shrink-0 flex items-center gap-0.5">
+            <Sparkles className="h-2.5 w-2.5 text-pink-400" /> Quick Add:
+          </span>
+          {QUICK_QUEUE_PRESETS.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => handleAddPreset(p.url, p.label)}
+              className="text-[9px] bg-slate-900 hover:bg-purple-950 border border-purple-900/40 text-purple-200 px-2 py-0.5 rounded-full whitespace-nowrap transition-colors"
+            >
+              {p.label}
+            </button>
+          ))}
         </div>
-        <Button
-          type="submit"
-          size="sm"
-          className="h-8 bg-purple-700 hover:bg-purple-600 text-white text-xs px-2.5 rounded-lg shrink-0"
-        >
-          <Plus className="h-3.5 w-3.5 mr-1" /> Add
-        </Button>
-      </form>
+      </div>
 
       {/* Queue items list */}
       <ScrollArea className="flex-1 p-2">
