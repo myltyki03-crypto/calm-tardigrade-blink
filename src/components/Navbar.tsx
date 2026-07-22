@@ -32,29 +32,33 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-1">
-              <span className="text-lg md:text-xl font-black tracking-wider bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-300 bg-clip-text text-transparent">
+              <span className="text-base md:text-xl font-black tracking-wider bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-300 bg-clip-text text-transparent">
                 PULSERAVE
               </span>
-              <Badge variant="outline" className="text-[9px] py-0 px-1 border-pink-500/50 text-pink-400 bg-pink-950/30">
+              <Badge variant="outline" className="hidden sm:inline-flex text-[9px] py-0 px-1 border-pink-500/50 text-pink-400 bg-pink-950/30">
                 PRO
               </Badge>
             </div>
           </div>
         </Link>
 
-        {/* Connection status indicator (Clickable for Setup) */}
+        {/* Connection status indicator (Clickable for Setup - Visible on ALL screen sizes now) */}
         <button
           onClick={onOpenSqlModal}
-          className="hidden lg:flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full border bg-slate-900/80 hover:bg-slate-800 transition-colors cursor-pointer border-purple-900/50"
-          title="Нажмите для просмотра инструкций по настройке базы"
+          className="flex items-center gap-1.5 text-[10px] md:text-[11px] font-medium px-2.5 py-1 rounded-full border bg-slate-900/90 hover:bg-slate-800 transition-colors cursor-pointer border-purple-900/50"
+          title="Нажмите для настройки ключей базы данных Supabase"
         >
           {isSupabaseConfigured ? (
             <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-              <Wifi className="h-3 w-3 animate-pulse" /> Supabase Sync Active
+              <Wifi className="h-3 w-3 animate-pulse" />
+              <span className="hidden sm:inline">Supabase Sync Active</span>
+              <span className="sm:hidden">Online</span>
             </span>
           ) : (
             <span className="flex items-center gap-1 text-amber-400 font-semibold">
-              <WifiOff className="h-3 w-3" /> Offline (Local Mode)
+              <WifiOff className="h-3 w-3" />
+              <span className="hidden sm:inline">Offline (Local Mode)</span>
+              <span className="sm:hidden">Ключи DB</span>
             </span>
           )}
         </button>
