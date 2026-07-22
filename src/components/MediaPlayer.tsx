@@ -9,6 +9,7 @@ import {
   Minimize,
   Lock,
   Tv,
+  RotateCcw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -111,6 +112,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
       const startSec = getCalculatedHostTime();
 
+      try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+          ytPlayerRef.current.destroy();
+        }
+      } catch (e) {}
+
       ytPlayerRef.current = new window.YT.Player(playerContainerRef.current, {
         videoId: mediaInfo.id,
         playerVars: {
@@ -124,6 +131,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           cc_load_policy: 0,
           autohide: 1,
           playsinline: 1,
+          enablejsapi: 1,
           start: Math.floor(startSec),
           origin: window.location.origin,
         },
@@ -136,9 +144,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               event.target.seekTo(startSec, true);
             }
             if (room.is_playing) {
-              const playPromise = event.target.playVideo();
-              if (playPromise && typeof playPromise.catch === 'function') {
-                playPromise.catch(() => setNeedUserGesture(true));
+              try {
+                const playPromise = event.target.playVideo();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                  playPromise.catch(() => setNeedUserGesture(true));
+                }
+              } catch {
+                setNeedUserGesture(true);
               }
             } else {
               event.target.pauseVideo();
@@ -148,13 +160,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           },
           onStateChange: (event: any) => {
             forceDisableCaptions();
-            if (event.data === 1) {
+            if (event.data === 1) { // PLAYING
               setIsPlaying(true);
               setNeedUserGesture(false);
-            } else if (event.data === 2) {
+            } else if (event.data === 2) { // PAUSED
+              setIsPlaying(false);
+            } else if (event.data === 0) { // ENDED
               setIsPlaying(false);
             }
           },
+          onError: () => {
+            setNeedUserGesture(true);
+          }
         },
       });
     };
@@ -189,7 +206,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return () => {
       if (interval) clearInterval(interval);
       if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
-        ytPlayerRef.current.destroy();
+        try {
+          ytPlayerRef.current.destroy();
+        } catch (e) {}
       }
     };
   }, [mediaInfo.type, mediaInfo.id]);
@@ -243,10 +262,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const handleMobileUnlockClick = () => {
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       const syncTime = getCalculatedHostTime();
-      ytPlayerRef.current.unMute();
-      ytPlayerRef.current.setVolume(volume || 80);
-      ytPlayerRef.current.seekTo(syncTime, true);
-      ytPlayerRef.current.playVideo();
+      try {
+        ytPlayerRef.current.unMute();
+        ytPlayerRef.current.setVolume(volume || 80);
+        ytPlayerRef.current.seekTo(syncTime, true);
+        ytPlayerRef.current.playVideo();
+      } catch (e) {}
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.muted = false;
       videoElementRef.current.play();
@@ -447,7 +468,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         <div
-          onClick={() => setShowControls((prev) => !prev)}
+          onClick={() => {
+            if (needUserGesture) {
+              handleMobileUnlockClick();
+            } else {
+              setShowControls((prev) => !prev);
+            }
+          }}
           className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
         />
 
@@ -489,7 +516,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               size="lg"
               className="bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs sm:text-sm h-11 px-6 rounded-2xl shadow-xl shadow-pink-500/40 animate-bounce gap-2"
             >
-              <Play className="h-5 w-5 fill-white" />
+              <RotateCcw className="h-5 w-5 fill-white" />
               <span>Нажмите для запуска видео и звука</span>
             </Button>
           </div>
