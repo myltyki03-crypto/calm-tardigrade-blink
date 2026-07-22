@@ -35,7 +35,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
+    <div className="flex flex-col h-full w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
       {/* Header */}
       <div className="p-3 border-b border-purple-900/40 flex items-center justify-between bg-slate-950/60">
         <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
@@ -43,21 +43,21 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
         </h4>
       </div>
 
-      {/* Add track form - Доступен КАЖДОМУ */}
-      <form onSubmit={handleAdd} className="p-2 border-b border-purple-900/30 bg-slate-950/40 flex items-center gap-1.5">
+      {/* Add track form */}
+      <form onSubmit={handleAdd} className="p-2 border-b border-purple-900/30 bg-slate-950/40 flex items-center gap-1.5 w-full">
         <div className="relative flex-1">
           <LinkIcon className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
           <Input
             placeholder="Paste YouTube or video link..."
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-8"
+            className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-8 w-full"
           />
         </div>
         <Button
           type="submit"
           size="sm"
-          className="h-8 bg-purple-700 hover:bg-purple-600 text-white text-xs px-2.5 rounded-lg"
+          className="h-8 bg-purple-700 hover:bg-purple-600 text-white text-xs px-2.5 rounded-lg shrink-0"
         >
           <Plus className="h-3.5 w-3.5 mr-1" /> Add
         </Button>
@@ -77,13 +77,13 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
               return (
                 <div
                   key={item.id}
-                  className={`group flex items-center gap-2 p-2 rounded-xl border transition-all text-xs ${
+                  className={`group flex items-center gap-2 p-2 rounded-xl border transition-all text-xs w-full ${
                     isCurrent
                       ? 'bg-purple-950/70 border-pink-500/60 ring-1 ring-pink-500/30'
                       : 'bg-slate-950/60 border-purple-950 hover:border-purple-800/60'
                   }`}
                 >
-                  <span className="font-mono text-[10px] font-bold text-slate-500 w-4 text-center">
+                  <span className="font-mono text-[10px] font-bold text-slate-500 w-4 text-center shrink-0">
                     #{idx + 1}
                   </span>
                   
@@ -107,17 +107,16 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5 mt-0.5">
-                      <p className="text-[10px] text-slate-400">Added by {item.added_by_name}</p>
+                      <p className="text-[10px] text-slate-400 truncate">Added by {item.added_by_name}</p>
                       {isCurrent && (
-                        <Badge className="bg-pink-600/90 text-white text-[9px] px-1 py-0 h-3.5 uppercase font-bold tracking-wider">
+                        <Badge className="bg-pink-600/90 text-white text-[9px] px-1 py-0 h-3.5 uppercase font-bold tracking-wider shrink-0">
                           NOW PLAYING
                         </Badge>
                       )}
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1">
-                    {/* Кнопка запуска трека только для Создателя (Host) */}
+                  <div className="flex items-center gap-1 shrink-0">
                     {isHost ? (
                       <Button
                         onClick={() => onPlayNow(item)}
@@ -138,7 +137,6 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
                       </span>
                     )}
 
-                    {/* Голосование доступно ВСЕМ */}
                     <Button
                       onClick={() => onVoteItem(item.id)}
                       size="sm"

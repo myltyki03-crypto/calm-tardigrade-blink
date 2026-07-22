@@ -29,7 +29,7 @@ export const RoomChat: React.FC<RoomChatProps> = ({
   };
 
   return (
-    <div className="relative flex flex-col h-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
+    <div className="relative flex flex-col h-full w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
       {/* Floating Reaction Overlay Animation */}
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
         {floatingReactions.map((item) => (
@@ -112,12 +112,12 @@ export const RoomChat: React.FC<RoomChatProps> = ({
       </ScrollArea>
 
       {/* Send Form */}
-      <form onSubmit={handleSend} className="p-2 border-t border-purple-900/40 bg-slate-950/80 flex items-center gap-1.5">
+      <form onSubmit={handleSend} className="p-2 border-t border-purple-900/40 bg-slate-950/80 flex items-center gap-1.5 w-full">
         <Input
           placeholder="Say something to the room..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          className="bg-slate-900 border-purple-900/50 focus:border-pink-500 text-xs text-slate-100 placeholder:text-slate-500"
+          className="bg-slate-900 border-purple-900/50 focus:border-pink-500 text-xs text-slate-100 placeholder:text-slate-500 flex-1"
         />
         <Button
           type="submit"

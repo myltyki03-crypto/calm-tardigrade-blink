@@ -133,17 +133,17 @@ export const RoomPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-16 md:pb-0">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-20 md:pb-0 w-full overflow-x-hidden">
       <Navbar
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
         onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
 
-      <main className="container mx-auto flex-1 p-2 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4">
+      <main className="w-full flex-1 p-2 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 max-w-7xl mx-auto">
         {/* Left Column: Player & Room Info */}
-        <div className="lg:col-span-8 flex flex-col gap-2 md:gap-4">
-          <div className="flex items-center justify-between px-1">
+        <div className="lg:col-span-8 flex flex-col gap-2 md:gap-4 w-full">
+          <div className="flex items-center justify-between px-1 w-full">
             <Button
               onClick={() => navigate('/')}
               variant="ghost"
@@ -182,7 +182,7 @@ export const RoomPage = () => {
           </div>
 
           {/* Synchronized Player Sticky Container for Mobile */}
-          <div className="sticky top-14 z-30 lg:relative lg:top-0 bg-slate-950 rounded-2xl">
+          <div className="sticky top-14 z-30 lg:relative lg:top-0 bg-slate-950 rounded-2xl w-full">
             <MediaPlayer
               room={room}
               isHost={isHost}
@@ -191,7 +191,7 @@ export const RoomPage = () => {
           </div>
 
           {/* Desktop Info Box */}
-          <div className="hidden lg:flex p-4 rounded-2xl border border-purple-900/40 bg-slate-900/80 items-center justify-between gap-3">
+          <div className="hidden lg:flex p-4 rounded-2xl border border-purple-900/40 bg-slate-900/80 items-center justify-between gap-3 w-full">
             <div>
               <h2 className="text-lg font-bold text-slate-100">{room.title}</h2>
               <p className="text-xs text-slate-400 mt-0.5">
@@ -208,10 +208,10 @@ export const RoomPage = () => {
         </div>
 
         {/* Mobile View Tab Selector */}
-        <div className="lg:hidden flex border-b border-purple-900/40 bg-slate-900/80 rounded-xl p-1 gap-1 my-1">
+        <div className="lg:hidden flex border-b border-purple-900/40 bg-slate-900/80 rounded-xl p-1 gap-1 my-1 w-full">
           <button
             onClick={() => setActiveMobileTab('chat')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
               activeMobileTab === 'chat'
                 ? 'bg-purple-700 text-white shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -223,7 +223,7 @@ export const RoomPage = () => {
 
           <button
             onClick={() => setActiveMobileTab('queue')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
               activeMobileTab === 'queue'
                 ? 'bg-purple-700 text-white shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -235,7 +235,7 @@ export const RoomPage = () => {
 
           <button
             onClick={() => setActiveMobileTab('info')}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
               activeMobileTab === 'info'
                 ? 'bg-purple-700 text-white shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -247,10 +247,10 @@ export const RoomPage = () => {
         </div>
 
         {/* Right Column / Mobile Active Tab View */}
-        <div className="lg:col-span-4 flex flex-col gap-3 h-[420px] lg:h-auto">
+        <div className="lg:col-span-4 flex flex-col gap-3 h-[480px] lg:h-auto w-full">
           {/* Mobile Info View */}
           {activeMobileTab === 'info' && (
-            <div className="lg:hidden p-4 rounded-2xl border border-purple-900/40 bg-slate-900/90 space-y-3">
+            <div className="lg:hidden p-4 rounded-2xl border border-purple-900/40 bg-slate-900/90 space-y-3 w-full">
               <div>
                 <h3 className="font-bold text-sm text-slate-100">{room.title}</h3>
                 <p className="text-xs text-slate-400 mt-1">{room.description || 'No description provided.'}</p>
@@ -265,7 +265,7 @@ export const RoomPage = () => {
           )}
 
           {/* Chat Panel */}
-          <div className={`h-full flex-1 ${activeMobileTab !== 'chat' ? 'hidden lg:flex' : 'flex'}`}>
+          <div className={`h-full w-full flex-1 ${activeMobileTab !== 'chat' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomChat
               messages={roomMessages}
               onSendMessage={handleSendMessage}
@@ -274,7 +274,7 @@ export const RoomPage = () => {
           </div>
 
           {/* Queue Panel */}
-          <div className={`h-full flex-1 ${activeMobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'}`}>
+          <div className={`h-full w-full flex-1 ${activeMobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomQueue
               queue={roomQueue}
               currentMediaUrl={room.current_media_url}
