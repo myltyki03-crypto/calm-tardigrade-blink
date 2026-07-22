@@ -9,6 +9,8 @@ import {
   Minimize,
   Lock,
   Tv,
+  SkipForward,
+  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -30,11 +32,13 @@ interface MediaPlayerProps {
   onSendReaction?: (emoji: string) => void;
 }
 
+const RAVE_REACTIONS = ['❤️', '🔥', '😂', '🎉', '💩', '😮'];
+
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   room,
   isHost,
 }) => {
-  const { updateRoomProgress } = useRooms();
+  const { updateRoomProgress, voteToSkip, sendMessage, currentUser } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
@@ -55,6 +59,35 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
+
+  // Состояние с визуальными эффектами парящих эмодзи поверх видео
+  const [floatingEmojis, setFloatingEmojis] = useState<
+    { id: string; emoji: string; leftPercent: number }[]
+  >([]);
+
+  const triggerFloatingEmoji = (emoji: string) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    const leftPercent = Math.floor(Math.random() * 80) + 10;
+
+    setFloatingEmojis((prev) => [...prev, { id, emoji, leftPercent }]);
+
+    // Отправляем короткое системное сообщение о реакции в чат
+    sendMessage(room.id, {
+      id: `rx-${Date.now()}-${id}`,
+      room_id: room.id,
+      user_id: currentUser.id,
+      user_name: currentUser.username,
+      user_avatar: currentUser.avatar_url,
+      message: `${currentUser.username} ${emoji}`,
+      type: 'reaction',
+      reaction_symbol: emoji,
+      created_at: new Date().toISOString(),
+    });
+
+    setTimeout(() => {
+      setFloatingEmojis((prev) => prev.filter((e) => e.id !== id));
+    }, 2200);
+  };
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -77,7 +110,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, startSec);
   };
 
-  // --- HTML5 DIRECT VIDEO HANDLERS ---
   useEffect(() => {
     if (mediaInfo.type === 'direct' && videoElementRef.current) {
       const v = videoElementRef.current;
@@ -94,7 +126,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [mediaInfo.type]);
 
-  // --- YOUTUBE PLAYER INIT ---
   useEffect(() => {
     if (mediaInfo.type !== 'youtube') return;
 
@@ -195,7 +226,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id]);
 
-  // Синхронизация времени для зрителей
   useEffect(() => {
     if (!isHost && room.last_updated_at !== prevLastUpdatedRef.current) {
       prevLastUpdatedRef.current = room.last_updated_at;
@@ -396,16 +426,31 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const currentHostname = window.location.hostname || 'localhost';
 
+  const skipVotesCount = room.skip_votes?.length || 0;
+
   return (
     <div
       ref={containerRef}
       onMouseMove={handleUserActivity}
       onClick={handleUserActivity}
       className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${
-        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border border-purple-900/40 shadow-2xl aspect-video'
+        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video'
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
+        {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE */}
+        <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
+          {floatingEmojis.map((e) => (
+            <div
+              key={e.id}
+              style={{ left: `${e.leftPercent}%` }}
+              className="absolute bottom-10 text-4xl sm:text-5xl animate-[bounce_1.5s_ease-out_infinite] transition-all duration-1000 ease-out drop-shadow-[0_0_15px_rgba(236,72,153,0.8)]"
+            >
+              {e.emoji}
+            </div>
+          ))}
+        </div>
+
         {/* РЕНДЕР YOUTUBE */}
         {mediaInfo.type === 'youtube' && (
           <div
@@ -440,30 +485,65 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
         />
 
-        {!isFullscreen && !needUserGesture && mediaInfo.type !== 'twitch' && (
+        {/* Левый верхний блок синхронизации и пропуска */}
+        {!isFullscreen && !needUserGesture && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
               showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
+            {mediaInfo.type !== 'twitch' && (
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleSyncClick();
+                }}
+                size="sm"
+                variant="outline"
+                className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
+              >
+                <RefreshCw className="h-3 w-3 mr-1" />
+                Синхронизировать
+              </Button>
+            )}
+
+            {/* Кнопка Skip Vote (Голосование за пропуск) */}
             <Button
               onClick={(e) => {
                 e.stopPropagation();
-                handleSyncClick();
+                voteToSkip(room.id);
               }}
               size="sm"
-              variant="outline"
-              className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
+              className="h-7 text-[11px] px-2.5 bg-pink-950/90 border border-pink-500/50 text-pink-300 hover:bg-pink-900 rounded-full shadow-lg backdrop-blur-md font-bold gap-1"
             >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Синхронизировать
+              <SkipForward className="h-3 w-3 text-pink-400" />
+              <span>Пропустить ({skipVotesCount})</span>
             </Button>
           </div>
         )}
 
+        {/* RAVE ЭКРАННАЯ ПАНЕЛЬ СМАЙЛИКОВ-РЕАКЦИЙ ПРЯМО ПОВЕРХ ВИДЕО */}
+        <div
+          className={`absolute bottom-16 right-3 z-30 flex items-center gap-1.5 p-1.5 rounded-full bg-slate-950/80 border border-pink-500/40 backdrop-blur-md shadow-xl transition-all duration-300 ${
+            showControls ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'
+          }`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {RAVE_REACTIONS.map((emoji) => (
+            <button
+              key={emoji}
+              onClick={() => triggerFloatingEmoji(emoji)}
+              className="h-8 w-8 rounded-full bg-purple-950/60 hover:bg-pink-600/80 hover:scale-125 active:scale-95 text-base flex items-center justify-center transition-all duration-150 border border-purple-800/40"
+              title={`Запустить реакцию ${emoji}`}
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+
         {/* Бейдж Twitch */}
         {mediaInfo.type === 'twitch' && (
-          <div className="absolute top-3 left-3 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs font-bold backdrop-blur-md">
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs font-bold backdrop-blur-md">
             <Tv className="h-3.5 w-3.5 text-pink-400" /> Twitch Стрим
           </div>
         )}
@@ -482,11 +562,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
       </div>
 
-      {/* Панель управления (скрывается для Twitch, так как у Twitch встроенный плеер) */}
+      {/* Панель управления плером */}
       {mediaInfo.type !== 'twitch' && (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/90 via-slate-950/50 to-transparent flex flex-col gap-2 transition-all duration-300 ${
+          className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent flex flex-col gap-2 transition-all duration-300 ${
             showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
           }`}
         >

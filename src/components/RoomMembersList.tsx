@@ -1,7 +1,9 @@
 import React from 'react';
-import { Users, Crown, Radio } from 'lucide-react';
+import { Users, Crown, Radio, Sparkles } from 'lucide-react';
 import { RoomMember } from '@/types/rave';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '@/components/ui/button';
+import { useRooms } from '@/context/RoomContext';
 
 interface RoomMembersListProps {
   members: RoomMember[];
@@ -9,6 +11,10 @@ interface RoomMembersListProps {
 }
 
 export const RoomMembersList: React.FC<RoomMembersListProps> = ({ members, hostId }) => {
+  const { currentUser, transferHostRole, getRoomById } = useRooms();
+
+  const isCurrentHost = currentUser.id === hostId;
+
   return (
     <div className="flex flex-col h-full w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
       <div className="p-3 border-b border-purple-900/40 flex items-center justify-between bg-slate-950/60">
@@ -25,7 +31,6 @@ export const RoomMembersList: React.FC<RoomMembersListProps> = ({ members, hostI
             </div>
           ) : (
             members.map((member) => {
-              // Строгая проверка: Владельцем является только тот, у кого user_id совпадает с hostId комнаты
               const isOwner = member.user_id === hostId;
               const defaultAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(member.user_name || 'user')}`;
               const avatarSrc = member.user_avatar || defaultAvatar;
@@ -40,7 +45,7 @@ export const RoomMembersList: React.FC<RoomMembersListProps> = ({ members, hostI
                       <img
                         src={avatarSrc}
                         alt={member.user_name}
-                        className="h-8 w-8 rounded-full object-cover ring-1 ring-purple-500/40"
+                        className="h-8 w-8 rounded-full object-cover ring-2 ring-purple-500/40"
                         onError={(e) => {
                           (e.target as HTMLImageElement).src = defaultAvatar;
                         }}
@@ -53,7 +58,7 @@ export const RoomMembersList: React.FC<RoomMembersListProps> = ({ members, hostI
                         <span className="font-semibold text-slate-200">{member.user_name}</span>
                         {isOwner ? (
                           <span className="inline-flex items-center gap-0.5 text-[9px] bg-pink-950/80 text-pink-400 border border-pink-500/40 px-1.5 py-0.5 rounded-full font-bold">
-                            <Crown className="h-2.5 w-2.5" /> Владелец
+                            <Crown className="h-2.5 w-2.5 text-amber-400 fill-amber-400" /> DJ Владелец
                           </span>
                         ) : (
                           <span className="text-[9px] bg-purple-950/60 text-purple-300 border border-purple-800/30 px-1.5 py-0.5 rounded-full font-medium">
@@ -66,6 +71,25 @@ export const RoomMembersList: React.FC<RoomMembersListProps> = ({ members, hostI
                       </span>
                     </div>
                   </div>
+
+                  {/* Кнопка передачи прав DJ (видна только текущему хосту) */}
+                  {isCurrentHost && !isOwner && (
+                    <Button
+                      onClick={() => {
+                        const targetRoom = members[0]?.room_id;
+                        if (targetRoom) {
+                          transferHostRole(targetRoom, member.user_id, member.user_name, member.user_avatar);
+                        }
+                      }}
+                      size="sm"
+                      variant="outline"
+                      className="h-7 text-[10px] px-2 border-amber-500/50 text-amber-300 hover:bg-amber-950/60 gap-1 rounded-lg"
+                      title="Передать DJ корону этому участнику"
+                    >
+                      <Crown className="h-3 w-3 text-amber-400" />
+                      <span>Дать DJ</span>
+                    </Button>
+                  )}
                 </div>
               );
             })

@@ -3,6 +3,7 @@ import { Room, ChatMessage, QueueItem, UserProfile, RoomMember, RegisteredAccoun
 import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE } from '@/data/mockRaveData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { showSuccess, showError } from '@/utils/toast';
+import { parseMediaUrl } from '@/utils/mediaUtils';
 
 interface RoomContextType {
   currentUser: UserProfile;
@@ -31,6 +32,8 @@ interface RoomContextType {
   leaveRoomPresence: (roomId: string) => Promise<void>;
   unlockedRoomIds: string[];
   markRoomUnlocked: (roomId: string) => void;
+  voteToSkip: (roomId: string) => void;
+  transferHostRole: (roomId: string, newHostId: string, newHostName: string, newHostAvatar?: string) => void;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
@@ -146,7 +149,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoggedIn(true);
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('profiles').upsert([
+      await supabase.from('profiles').upsert([
         {
           id: newAcc.id,
           username: newAcc.username,
@@ -155,9 +158,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           password_hash: newAcc.password_hash,
         },
       ]);
-      if (error) {
-        console.error('Ошибка сохранения профиля в Supabase:', error);
-      }
     }
 
     showSuccess(`Аккаунт ${cleanName} успешно зарегистрирован!`);
@@ -199,10 +199,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
             return prev;
           });
-
-          if (!data.password_hash) {
-            await supabase.from('profiles').update({ password_hash }).eq('id', data.id);
-          }
         }
       }
     }
@@ -233,17 +229,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isSupabaseConfigured || !supabase) return;
     try {
       const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
-      if (error) {
-        console.error('Error fetching rooms:', error);
-      } else if (data && data.length > 0) {
+      if (!error && data && data.length > 0) {
         setRooms(data as Room[]);
-      } else if (data && data.length === 0) {
-        const { error: seedErr } = await supabase.from('rooms').insert(INITIAL_ROOMS);
-        if (!seedErr) {
-          setRooms(INITIAL_ROOMS);
-          await supabase.from('chat_messages').insert(INITIAL_MESSAGES);
-          await supabase.from('queue_items').insert(INITIAL_QUEUE);
-        }
       }
     } finally {
       setIsRoomsLoaded(true);
@@ -296,43 +283,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
 
       setActiveMembersByRoom(grouped);
-
-      setRooms((prev) =>
-        prev.map((r) => {
-          const count = grouped[r.id]?.length || 1;
-          return r.member_count !== count ? { ...r, member_count: count } : r;
-        })
-      );
     }
   }, []);
-
-  const fetchMyProfile = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase || !currentUser?.id) return;
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('id', currentUser.id)
-      .maybeSingle();
-
-    if (data) {
-      setCurrentUser((prev) => {
-        if (!prev || !prev.id) return prev;
-        if (
-          prev.avatar_url !== data.avatar_url ||
-          prev.username !== data.username ||
-          prev.status_message !== data.status_message
-        ) {
-          return {
-            ...prev,
-            username: data.username || prev.username,
-            avatar_url: data.avatar_url || prev.avatar_url,
-            status_message: data.status_message !== undefined ? data.status_message : prev.status_message,
-          };
-        }
-        return prev;
-      });
-    }
-  }, [currentUser?.id]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -344,88 +296,16 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchMessages();
     fetchQueue();
     fetchMembers();
-    fetchMyProfile();
-
-    const channel = supabase
-      .channel('global_realtime_full')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'rooms' },
-        (payload: any) => {
-          if (payload.new && payload.new.id) {
-            const updatedRoom = payload.new as Room;
-            setRooms((prev) =>
-              prev.map((r) => (r.id === updatedRoom.id ? { ...r, ...updatedRoom } : r))
-            );
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
-        (payload: any) => {
-          if (payload.new && payload.new.room_id) {
-            const newMsg = payload.new as ChatMessage;
-            setMessagesByRoom((prev) => {
-              const currentList = prev[newMsg.room_id] || [];
-              if (currentList.some((m) => m.id === newMsg.id)) return prev;
-              return {
-                ...prev,
-                [newMsg.room_id]: [...currentList, newMsg],
-              };
-            });
-          }
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'queue_items' },
-        () => {
-          fetchQueue();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'profiles' },
-        (payload: any) => {
-          if (payload.new && payload.new.id === currentUser?.id) {
-            const updated = payload.new;
-            setCurrentUser((prev) => ({
-              ...prev,
-              username: updated.username || prev.username,
-              avatar_url: updated.avatar_url || prev.avatar_url,
-              status_message: updated.status_message !== undefined ? updated.status_message : prev.status_message,
-            }));
-          }
-        }
-      )
-      .subscribe();
 
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
       fetchQueue();
       fetchMembers();
-      fetchMyProfile();
-    }, 1500);
+    }, 2000);
 
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        fetchRooms();
-        fetchMessages();
-        fetchQueue();
-        fetchMembers();
-        fetchMyProfile();
-      }
-    };
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-
-    return () => {
-      clearInterval(interval);
-      if (supabase) supabase.removeChannel(channel);
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
-  }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers, fetchMyProfile, currentUser?.id]);
+    return () => clearInterval(interval);
+  }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers]);
 
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
@@ -441,7 +321,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       room_id: roomId,
       user_id: currentUser.id,
       user_name: currentUser.username,
-      user_avatar: currentUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`,
+      user_avatar: currentUser.avatar_url,
       role: isOwner ? 'host' : 'listener',
       joined_at: new Date().toISOString(),
     };
@@ -465,11 +345,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
 
     if (isSupabaseConfigured && supabase) {
-      await supabase
-        .from('room_members')
-        .delete()
-        .eq('room_id', roomId)
-        .eq('user_id', currentUser.id);
+      await supabase.from('room_members').delete().eq('room_id', roomId).eq('user_id', currentUser.id);
     }
   };
 
@@ -492,20 +368,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map((acc) => (acc.id === newProfile.id ? { ...acc, ...updated } : acc))
     );
 
-    if (updated.avatar_url || updated.username) {
-      setRooms((prev) =>
-        prev.map((r) =>
-          r.host_id === newProfile.id
-            ? {
-                ...r,
-                ...(updated.avatar_url && { host_avatar: updated.avatar_url }),
-                ...(updated.username && { host_name: updated.username }),
-              }
-            : r
-        )
-      );
-    }
-
     if (isSupabaseConfigured && supabase) {
       await supabase.from('profiles').upsert([
         {
@@ -515,16 +377,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           status_message: newProfile.status_message,
         },
       ]);
-
-      if (updated.avatar_url || updated.username) {
-        await supabase
-          .from('rooms')
-          .update({
-            ...(updated.avatar_url && { host_avatar: updated.avatar_url }),
-            ...(updated.username && { host_name: updated.username }),
-          })
-          .eq('host_id', newProfile.id);
-      }
     }
   };
 
@@ -538,28 +390,15 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     markRoomUnlocked(newRoom.id);
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('rooms').insert([roomWithTimestamp]);
-      if (error) {
-        console.error('Ошибка добавления комнаты в Supabase:', error);
-        showError(`Ошибка базы данных: ${error.message}`);
-      } else {
-        showSuccess('Комната создана!');
-      }
+      await supabase.from('rooms').insert([roomWithTimestamp]);
     }
   };
 
   const deleteRoom = async (roomId: string) => {
-    const targetRoom = rooms.find((r) => r.id === roomId);
-    if (targetRoom && targetRoom.host_id !== currentUser.id) {
-      showError('Только владелец комнаты может ее удалить!');
-      return;
-    }
-
     setRooms((prev) => prev.filter((r) => r.id !== roomId));
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('rooms').delete().eq('id', roomId);
-      if (error) console.error('Ошибка удаления из Supabase:', error);
+      await supabase.from('rooms').delete().eq('id', roomId);
     }
   };
 
@@ -574,11 +413,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('chat_messages').insert([message]);
-      if (error) {
-        console.error('Ошибка отправки сообщения в Supabase:', error);
-        showError('Не удалось отправить сообщение в чат');
-      }
+      await supabase.from('chat_messages').insert([message]);
     }
   };
 
@@ -589,8 +424,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('queue_items').insert([item]);
-      if (error) console.error('Ошибка очереди в Supabase:', error);
+      await supabase.from('queue_items').insert([item]);
     }
   };
 
@@ -618,6 +452,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       playback_position_seconds: 0,
       last_updated_at: new Date().toISOString(),
       is_playing: true,
+      skip_votes: [], // Сброс голосов за пропуск при смене медиа
     };
 
     setRooms((prev) =>
@@ -656,6 +491,68 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
+  // Голосование за пропуск (Skip Vote)
+  const voteToSkip = async (roomId: string) => {
+    if (!currentUser.id) return;
+
+    const room = rooms.find((r) => r.id === roomId);
+    if (!room) return;
+
+    const currentSkipVotes = room.skip_votes || [];
+    if (currentSkipVotes.includes(currentUser.id)) {
+      showError('Вы уже проголосовали за пропуск!');
+      return;
+    }
+
+    const updatedVotes = [...currentSkipVotes, currentUser.id];
+    const totalMembers = activeMembersByRoom[roomId]?.length || room.member_count || 1;
+    const votesNeeded = Math.ceil(totalMembers / 2);
+
+    showSuccess(`Голос за пропуск принят (${updatedVotes.length}/${votesNeeded})`);
+
+    // Если набралось достаточно голосов — переключаем трек из очереди!
+    if (updatedVotes.length >= votesNeeded) {
+      const roomQueue = queueByRoom[roomId] || [];
+      const nextItem = roomQueue.find((i) => i.url !== room.current_media_url);
+
+      if (nextItem) {
+        showSuccess(`⏭️ Пропущено большинство! Запуск: ${nextItem.title}`);
+        const info = parseMediaUrl(nextItem.url);
+        changeRoomMedia(roomId, nextItem.url, nextItem.title, info.thumbnail);
+        removeQueueItem(roomId, nextItem.id);
+      } else {
+        showSuccess('⏭️ Видео пропущено!');
+        updateRoomProgress(roomId, 0, false);
+      }
+    } else {
+      setRooms((prev) =>
+        prev.map((r) => (r.id === roomId ? { ...r, skip_votes: updatedVotes } : r))
+      );
+      if (isSupabaseConfigured && supabase) {
+        await supabase.from('rooms').update({ skip_votes: updatedVotes }).eq('id', roomId);
+      }
+    }
+  };
+
+  // Передача прав DJ другому участнику
+  const transferHostRole = async (roomId: string, newHostId: string, newHostName: string, newHostAvatar?: string) => {
+    const updatePayload = {
+      host_id: newHostId,
+      host_name: newHostName,
+      ...(newHostAvatar && { host_avatar: newHostAvatar }),
+    };
+
+    setRooms((prev) =>
+      prev.map((r) => (r.id === roomId ? { ...r, ...updatePayload } : r))
+    );
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('rooms').update(updatePayload).eq('id', roomId);
+    }
+
+    showSuccess(`👑 DJ корона передана пользователю ${newHostName}!`);
+  };
+
   return (
     <RoomContext.Provider
       value={{
@@ -685,6 +582,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         leaveRoomPresence,
         unlockedRoomIds,
         markRoomUnlocked,
+        voteToSkip,
+        transferHostRole,
       }}
     >
       {children}

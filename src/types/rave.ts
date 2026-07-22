@@ -76,4 +76,5 @@ export interface Room {
   allow_guest_queue: boolean;
   allow_guest_control: boolean;
   created_at: string;
+  skip_votes?: string[]; // Массив user_id проголосовавших за пропуск
 }
