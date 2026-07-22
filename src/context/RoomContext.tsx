@@ -30,9 +30,28 @@ interface RoomContextType {
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
 
 export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  // Каждое устройство/браузер получает свой уникальный ID
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('pulserave_user');
-    return saved ? JSON.parse(saved) : CURRENT_USER;
+    if (saved) {
+      try {
+        return JSON.parse(saved);
+      } catch (e) {
+        console.error('Failed to parse saved user:', e);
+      }
+    }
+    const uniqueId = 'user_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+    const randomNum = Math.floor(Math.random() * 899) + 100;
+    return {
+      id: uniqueId,
+      username: `Raver_${randomNum}`,
+      avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${uniqueId}`,
+      is_online: true,
+      status_message: 'В ритме вечеринки 🎧',
+      is_vip: false,
+      watch_time_minutes: 0,
+      parties_hosted: 0,
+    };
   });
 
   const [rooms, setRooms] = useState<Room[]>(() => {
@@ -107,14 +126,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const grouped: Record<string, RoomMember[]> = {};
       data.forEach((m: any) => {
         if (!grouped[m.room_id]) grouped[m.room_id] = [];
-        // Убираем дубликаты пользователей
         if (!grouped[m.room_id].some(existing => existing.user_id === m.user_id)) {
           grouped[m.room_id].push(m as RoomMember);
         }
       });
       setActiveMembersByRoom(grouped);
 
-      // Синхронизируем счетчик зрителей
       setRooms(prev => prev.map(r => {
         const count = grouped[r.id]?.length || r.member_count || 1;
         return { ...r, member_count: count };
@@ -122,7 +139,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Загрузка данных и подписка
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsRoomsLoaded(true);
@@ -134,7 +150,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchQueue();
     fetchMembers();
 
-    // Быстрый опрос каждые 2 секунды для мгновенной синхронизации чата на телефонах
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
@@ -152,7 +167,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    // Realtime подписки
     const roomsChannel = supabase
       .channel('realtime:rooms')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {

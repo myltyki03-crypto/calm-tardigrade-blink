@@ -46,7 +46,6 @@ const Index = () => {
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
-  // Все комнаты отображаются в ленте!
   const filteredRooms = rooms.filter((r) => {
     const matchesCategory = activeCategory === 'all' || r.category === activeCategory;
     const matchesSearch =
@@ -57,7 +56,7 @@ const Index = () => {
 
   const handleRoomClick = (room: Room) => {
     const isOwner = room.host_id === currentUser.id;
-    if (room.is_private && room.access_code && !isOwner) {
+    if (room.is_private && !isOwner) {
       setSelectedPrivateRoom(room);
       setInputPassword('');
     } else {
@@ -69,7 +68,8 @@ const Index = () => {
     e.preventDefault();
     if (!selectedPrivateRoom) return;
 
-    if (inputPassword.trim() === selectedPrivateRoom.access_code?.trim()) {
+    const expectedPass = selectedPrivateRoom.access_code?.trim() || '';
+    if (inputPassword.trim() === expectedPass) {
       showSuccess('Пароль верный!');
       const targetId = selectedPrivateRoom.id;
       setSelectedPrivateRoom(null);
