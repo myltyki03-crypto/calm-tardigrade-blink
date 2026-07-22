@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Plus, Users, LogIn } from 'lucide-react';
+import { Play, Plus, Users, LogIn, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRooms } from '@/context/RoomContext';
 import { AuthModal } from '@/components/AuthModal';
+import { DirectChatModal } from '@/components/DirectChatModal';
 
 interface NavbarProps {
   onOpenCreateModal: () => void;
@@ -17,8 +18,9 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenFriendsDrawer,
 }) => {
   const navigate = useNavigate();
-  const { currentUser, isLoggedIn, friendRequests } = useRooms();
+  const { currentUser, isLoggedIn, friendRequests, unreadDirectCount } = useRooms();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isDirectChatOpen, setIsDirectChatOpen] = useState(false);
 
   const myId = currentUser.id;
   const myName = currentUser.username.toLowerCase();
@@ -72,6 +74,22 @@ export const Navbar: React.FC<NavbarProps> = ({
               )}
             </Button>
 
+            {/* Кнопка Личных Сообщений (ЛС) */}
+            <Button
+              onClick={() => setIsDirectChatOpen(true)}
+              variant="ghost"
+              size="sm"
+              className="hidden md:flex text-slate-300 hover:text-white relative text-xs h-8 gap-1.5"
+            >
+              <MessageSquare className="h-4 w-4 text-pink-400" />
+              <span>ЛС</span>
+              {unreadDirectCount > 0 && (
+                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-white bg-pink-600 rounded-full animate-pulse shadow-md">
+                  {unreadDirectCount}
+                </span>
+              )}
+            </Button>
+
             <Button
               onClick={onOpenCreateModal}
               size="sm"
@@ -109,6 +127,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <DirectChatModal isOpen={isDirectChatOpen} onClose={() => setIsDirectChatOpen(false)} />
     </>
   );
 };

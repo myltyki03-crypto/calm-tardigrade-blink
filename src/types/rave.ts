@@ -29,6 +29,18 @@ export interface FriendRequest {
   created_at: string;
 }
 
+export interface DirectMessage {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_avatar?: string;
+  receiver_id: string;
+  receiver_name: string;
+  message: string;
+  created_at: string;
+  is_read?: boolean;
+}
+
 export interface QueueItem {
   id: string;
   room_id: string;
