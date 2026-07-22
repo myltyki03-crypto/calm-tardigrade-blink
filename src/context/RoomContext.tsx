@@ -152,7 +152,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const payload = {
           id: currentUser.id || `usr_${currentUser.username}`,
           username: currentUser.username,
-          avatar_url: currentUser.avatar_url,
+          avatar_url: currentUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`,
           status_message: currentUser.status_message || 'В ритме вечеринки 🎧',
         };
         supabase.from('profiles').upsert([payload]).then(({ error }) => {
@@ -345,14 +345,20 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchMessages = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
-    const { data } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
-    if (data) {
-      const grouped: Record<string, ChatMessage[]> = {};
-      data.forEach((msg: any) => {
-        if (!grouped[msg.room_id]) grouped[msg.room_id] = [];
-        grouped[msg.room_id].push(msg as ChatMessage);
+    const { data, error } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
+    if (!error && data) {
+      setMessagesByRoom((prev) => {
+        const updated = { ...prev };
+        data.forEach((msg: ChatMessage) => {
+          if (!updated[msg.room_id]) {
+            updated[msg.room_id] = [];
+          }
+          if (!updated[msg.room_id].some((m) => m.id === msg.id)) {
+            updated[msg.room_id] = [...updated[msg.room_id], msg];
+          }
+        });
+        return updated;
       });
-      setMessagesByRoom((prev) => ({ ...prev, ...grouped }));
     }
   }, []);
 
@@ -409,14 +415,23 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .order('created_at', { ascending: true });
 
       if (!dmErr && dmData) {
-        setDirectMessages(dmData as DirectMessage[]);
+        setDirectMessages((prev) => {
+          const map = new Map<string, DirectMessage>();
+          // Сначала сохраняем существующие локальные сообщения
+          prev.forEach((m) => map.set(m.id, m));
+          // Затем добавляем или обновляем полученные из базы
+          (dmData as DirectMessage[]).forEach((m) => map.set(m.id, m));
+          return Array.from(map.values()).sort(
+            (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          );
+        });
       }
     } catch (e) {
       console.error('Error fetching friends/DM:', e);
     }
   }, []);
 
-  // Единая стабильная подписка Realtime
+  // Единая подписка Realtime
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsRoomsLoaded(true);
@@ -429,15 +444,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchRoomMembers();
     fetchFriendData();
 
-    console.log('[Realtime] Подключение к каналу...');
-
     const realtimeChannel = supabase
       .channel('public:pulserave-global-channel')
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
         (payload) => {
-          console.log('✅ [Realtime Event] Входящее личное сообщение:', payload);
           const newDm = payload.new as DirectMessage;
           if (newDm && newDm.id) {
             setDirectMessages((prev) => {
@@ -450,16 +462,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'friend_requests' },
-        (payload) => {
-          console.log('✅ [Realtime Event] Заявки в друзья:', payload);
-          fetchFriendData();
-        }
+        () => fetchFriendData()
       )
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'chat_messages' },
         (payload) => {
-          console.log('✅ [Realtime Event] Сообщение в комнате:', payload);
           const newMsg = payload.new as ChatMessage;
           if (newMsg && newMsg.room_id) {
             setMessagesByRoom((prev) => {
@@ -488,9 +496,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         { event: '*', schema: 'public', table: 'room_members' },
         () => fetchRoomMembers()
       )
-      .subscribe((status, err) => {
-        console.log(`📡 [Realtime Status] Статус подписки: ${status}`, err || '');
-      });
+      .subscribe();
 
     const interval = setInterval(() => {
       fetchRooms();
@@ -503,7 +509,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => {
       clearInterval(interval);
       if (supabase) {
-        console.log('[Realtime] Отписка от канала');
         supabase.removeChannel(realtimeChannel);
       }
     };
@@ -511,7 +516,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Друзья логика
   const sendFriendRequest = async (targetUser: UserProfile) => {
-    if (!currentUser.id) {
+    if (!currentUser.username) {
       showError('Войдите в аккаунт, чтобы добавлять в друзья');
       return;
     }
@@ -550,10 +555,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const newReq: FriendRequest = {
       id: `freq-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      sender_id: currentUser.id,
+      sender_id: currentUser.id || `usr_${currentUser.username}`,
       sender_name: currentUser.username,
-      sender_avatar: currentUser.avatar_url,
-      receiver_id: targetUser.id,
+      sender_avatar: currentUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`,
+      receiver_id: targetUser.id || `usr_${targetUser.username}`,
       receiver_name: targetUser.username,
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -639,21 +644,24 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const sendDirectMessage = async (receiver: UserProfile, messageText: string) => {
-    if (!currentUser.id) {
+    if (!currentUser.username) {
       showError('Войдите в аккаунт, чтобы писать ЛС');
       return;
     }
 
     if (!messageText.trim()) return;
 
+    const senderId = currentUser.id || `usr_${currentUser.username}`;
+    const receiverId = receiver.id || `usr_${receiver.username}`;
+
     const newDm: DirectMessage = {
       id: `dm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      sender_id: currentUser.id,
+      sender_id: senderId,
       sender_name: currentUser.username,
-      sender_avatar: currentUser.avatar_url,
-      receiver_id: receiver.id,
+      sender_avatar: currentUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`,
+      receiver_id: receiverId,
       receiver_name: receiver.username,
-      receiver_avatar: receiver.avatar_url,
+      receiver_avatar: receiver.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(receiver.username)}`,
       message: messageText.trim(),
       created_at: new Date().toISOString(),
     };
@@ -664,18 +672,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('direct_messages').insert([{
-        id: newDm.id,
-        sender_id: newDm.sender_id,
-        sender_name: newDm.sender_name,
-        sender_avatar: newDm.sender_avatar,
-        receiver_id: newDm.receiver_id,
-        receiver_name: newDm.receiver_name,
-        receiver_avatar: newDm.receiver_avatar,
-        message: newDm.message,
-        created_at: newDm.created_at,
-      }]);
-
+      const { error } = await supabase.from('direct_messages').insert([newDm]);
       if (error) {
         console.error('Failed to insert DM into Supabase:', error);
       }
@@ -697,15 +694,13 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const sId = m.sender_id;
         const rId = m.receiver_id;
 
-        const isFromMeToTarget =
-          (sId === myId || (sName && myName && sName === myName)) &&
-          (rId === tId || (rName && tName && rName === tName) || (rName && tId && rName === tId.toLowerCase()));
+        const isFromMe = sId === myId || (sName && myName && sName === myName);
+        const isFromTarget = sId === tId || (sName && tName && sName === tName) || (tId && sName === tId.toLowerCase());
 
-        const isFromTargetToMe =
-          (sId === tId || (sName && tName && sName === tName) || (sName && tId && sName === tId.toLowerCase())) &&
-          (rId === myId || (rName && myName && rName === myName));
+        const isToMe = rId === myId || (rName && myName && rName === myName);
+        const isToTarget = rId === tId || (rName && tName && rName === tName) || (tId && rName === tId.toLowerCase());
 
-        return isFromMeToTarget || isFromTargetToMe;
+        return (isFromMe && isToTarget) || (isFromTarget && isToMe);
       })
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   };
@@ -827,13 +822,23 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const sendMessage = async (roomId: string, message: ChatMessage) => {
+    const cleanMsg: ChatMessage = {
+      ...message,
+      user_id: message.user_id || currentUser.id || `usr_${currentUser.username}`,
+      user_name: message.user_name || currentUser.username || 'Гость',
+      user_avatar: message.user_avatar || currentUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(currentUser.username)}`,
+    };
+
     setMessagesByRoom((prev) => ({
       ...prev,
-      [roomId]: [...(prev[roomId] || []), message],
+      [roomId]: [...(prev[roomId] || []).filter((m) => m.id !== cleanMsg.id), cleanMsg],
     }));
 
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('chat_messages').insert([message]);
+      const { error } = await supabase.from('chat_messages').insert([cleanMsg]);
+      if (error) {
+        console.error('Failed to insert chat_message into Supabase:', error);
+      }
     }
   };
 
