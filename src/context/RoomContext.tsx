@@ -1,6 +1,8 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Room, ChatMessage, QueueItem, UserProfile } from '@/types/rave';
 import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE, CURRENT_USER } from '@/data/mockRaveData';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { showSuccess, showError } from '@/utils/toast';
 
 interface RoomContextType {
   currentUser: UserProfile;
@@ -41,107 +43,232 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : { 'room-1': INITIAL_QUEUE };
   });
 
+  // 1. Загрузка данных из Supabase и подписка на Realtime изменения
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) {
+      console.log('Supabase не настроен, используется локальное хранилище.');
+      return;
+    }
+
+    // Загрузка комнат из базы
+    const fetchRooms = async () => {
+      const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
+      if (!error && data && data.length > 0) {
+        setRooms(data as Room[]);
+      }
+    };
+
+    // Загрузка сообщений из базы
+    const fetchMessages = async () => {
+      const { data, error } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
+      if (!error && data) {
+        const grouped: Record<string, ChatMessage[]> = {};
+        data.forEach((msg: any) => {
+          if (!grouped[msg.room_id]) grouped[msg.room_id] = [];
+          grouped[msg.room_id].push(msg as ChatMessage);
+        });
+        setMessagesByRoom((prev) => ({ ...prev, ...grouped }));
+      }
+    };
+
+    // Загрузка очереди треков
+    const fetchQueue = async () => {
+      const { data, error } = await supabase.from('queue_items').select('*').order('votes', { ascending: false });
+      if (!error && data) {
+        const grouped: Record<string, QueueItem[]> = {};
+        data.forEach((item: any) => {
+          if (!grouped[item.room_id]) grouped[item.room_id] = [];
+          grouped[item.room_id].push(item as QueueItem);
+        });
+        setQueueByRoom((prev) => ({ ...prev, ...grouped }));
+      }
+    };
+
+    fetchRooms();
+    fetchMessages();
+    fetchQueue();
+
+    // Настройка Realtime канала для комнат
+    const roomsSubscription = supabase
+      .channel('public:rooms')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          setRooms((prev) => [payload.new as Room, ...prev.filter((r) => r.id !== payload.new.id)]);
+        } else if (payload.eventType === 'UPDATE') {
+          setRooms((prev) => prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new } : r)));
+        } else if (payload.eventType === 'DELETE') {
+          setRooms((prev) => prev.filter((r) => r.id !== payload.old.id));
+        }
+      })
+      .subscribe();
+
+    // Настройка Realtime канала для сообщений чата
+    const chatSubscription = supabase
+      .channel('public:chat_messages')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
+        const newMsg = payload.new as ChatMessage;
+        setMessagesByRoom((prev) => ({
+          ...prev,
+          [newMsg.room_id]: [...(prev[newMsg.room_id] || []), newMsg],
+        }));
+      })
+      .subscribe();
+
+    // Настройка Realtime канала для очереди
+    const queueSubscription = supabase
+      .channel('public:queue_items')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_items' }, (payload) => {
+        if (payload.eventType === 'INSERT') {
+          const newItem = payload.new as QueueItem;
+          setQueueByRoom((prev) => ({
+            ...prev,
+            [newItem.room_id]: [...(prev[newItem.room_id] || []), newItem],
+          }));
+        } else if (payload.eventType === 'UPDATE') {
+          const updated = payload.new as QueueItem;
+          setQueueByRoom((prev) => ({
+            ...prev,
+            [updated.room_id]: (prev[updated.room_id] || []).map((item) =>
+              item.id === updated.id ? updated : item
+            ),
+          }));
+        } else if (payload.eventType === 'DELETE') {
+          const deleted = payload.old as QueueItem;
+          setQueueByRoom((prev) => ({
+            ...prev,
+            [deleted.room_id]: (prev[deleted.room_id] || []).filter((item) => item.id !== deleted.id),
+          }));
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(roomsSubscription);
+      supabase.removeChannel(chatSubscription);
+      supabase.removeChannel(queueSubscription);
+    };
+  }, []);
+
+  // Сохранение пользователя локально
   useEffect(() => {
     localStorage.setItem('pulserave_user', JSON.stringify(currentUser));
   }, [currentUser]);
 
+  // Сохранение комнат локально (резервный вариант)
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
-
-  useEffect(() => {
-    localStorage.setItem('pulserave_queue', JSON.stringify(queueByRoom));
-  }, [queueByRoom]);
 
   const updateUserProfile = (updated: Partial<UserProfile>) => {
     setCurrentUser((prev) => ({ ...prev, ...updated }));
   };
 
-  const addRoom = (newRoom: Room) => {
+  const addRoom = async (newRoom: Room) => {
     setRooms((prev) => [newRoom, ...prev]);
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('rooms').insert([newRoom]);
+      if (error) console.error('Ошибка создания комнаты в Supabase:', error);
+    }
   };
 
-  const deleteRoom = (roomId: string) => {
+  const deleteRoom = async (roomId: string) => {
     setRooms((prev) => prev.filter((r) => r.id !== roomId));
-    setMessagesByRoom((prev) => {
-      const next = { ...prev };
-      delete next[roomId];
-      return next;
-    });
-    setQueueByRoom((prev) => {
-      const next = { ...prev };
-      delete next[roomId];
-      return next;
-    });
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('rooms').delete().eq('id', roomId);
+      if (error) console.error('Ошибка удаления комнаты из Supabase:', error);
+    }
   };
 
   const getRoomById = (id: string) => {
     return rooms.find((r) => r.id === id);
   };
 
-  const sendMessage = (roomId: string, message: ChatMessage) => {
+  const sendMessage = async (roomId: string, message: ChatMessage) => {
     setMessagesByRoom((prev) => ({
       ...prev,
       [roomId]: [...(prev[roomId] || []), message],
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('chat_messages').insert([message]);
+      if (error) console.error('Ошибка отправки сообщения в Supabase:', error);
+    }
   };
 
-  const addQueueItem = (roomId: string, item: QueueItem) => {
+  const addQueueItem = async (roomId: string, item: QueueItem) => {
     setQueueByRoom((prev) => ({
       ...prev,
       [roomId]: [...(prev[roomId] || []), item],
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      const { error } = await supabase.from('queue_items').insert([item]);
+      if (error) console.error('Ошибка добавления в очередь Supabase:', error);
+    }
   };
 
-  const voteQueueItem = (roomId: string, itemId: string) => {
+  const voteQueueItem = async (roomId: string, itemId: string) => {
+    const currentItem = (queueByRoom[roomId] || []).find((i) => i.id === itemId);
+    const newVotes = (currentItem?.votes || 0) + 1;
+
     setQueueByRoom((prev) => ({
       ...prev,
       [roomId]: (prev[roomId] || []).map((item) =>
-        item.id === itemId ? { ...item, votes: item.votes + 1 } : item
+        item.id === itemId ? { ...item, votes: newVotes } : item
       ),
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('queue_items').update({ votes: newVotes }).eq('id', itemId);
+    }
   };
 
-  const changeRoomMedia = (roomId: string, url: string, title?: string, thumbnail?: string) => {
+  const changeRoomMedia = async (roomId: string, url: string, title?: string, thumbnail?: string) => {
+    const updatePayload = {
+      current_media_url: url,
+      current_media_title: title || 'Playing video',
+      current_media_thumbnail: thumbnail,
+      playback_position_seconds: 0,
+      last_updated_at: new Date().toISOString(),
+      is_playing: true,
+    };
+
     setRooms((prev) =>
-      prev.map((r) => {
-        if (r.id === roomId) {
-          return {
-            ...r,
-            current_media_url: url,
-            current_media_title: title || r.current_media_title || 'Playing video',
-            current_media_thumbnail: thumbnail || r.current_media_thumbnail,
-            playback_position_seconds: 0,
-            last_updated_at: new Date().toISOString(),
-            is_playing: true,
-          };
-        }
-        return r;
-      })
+      prev.map((r) => (r.id === roomId ? { ...r, ...updatePayload } : r))
     );
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('rooms').update(updatePayload).eq('id', roomId);
+    }
   };
 
-  const updateRoomProgress = (roomId: string, seconds: number, isPlaying?: boolean) => {
+  const updateRoomProgress = async (roomId: string, seconds: number, isPlaying?: boolean) => {
+    const updatePayload = {
+      playback_position_seconds: seconds,
+      last_updated_at: new Date().toISOString(),
+      ...(isPlaying !== undefined && { is_playing: isPlaying }),
+    };
+
     setRooms((prev) =>
-      prev.map((r) => {
-        if (r.id === roomId) {
-          return {
-            ...r,
-            playback_position_seconds: seconds,
-            last_updated_at: new Date().toISOString(),
-            is_playing: isPlaying !== undefined ? isPlaying : r.is_playing,
-          };
-        }
-        return r;
-      })
+      prev.map((r) => (r.id === roomId ? { ...r, ...updatePayload } : r))
     );
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('rooms').update(updatePayload).eq('id', roomId);
+    }
   };
 
-  const removeQueueItem = (roomId: string, itemId: string) => {
+  const removeQueueItem = async (roomId: string, itemId: string) => {
     setQueueByRoom((prev) => ({
       ...prev,
       [roomId]: (prev[roomId] || []).filter((item) => item.id !== itemId),
     }));
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('queue_items').delete().eq('id', itemId);
+    }
   };
 
   return (
