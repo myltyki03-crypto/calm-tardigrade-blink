@@ -393,9 +393,9 @@ export const RoomPage = () => {
           </div>
         </div>
 
-        {/* Правая колонка - Боковая панель со вкладками (Чат / Очередь / Участники) */}
-        <div className="lg:col-span-5 xl:col-span-4 flex flex-col h-[520px] lg:h-[600px] w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden shadow-2xl">
-          <Tabs value={sidebarTab} onValueChange={(val: any) => setSidebarTab(val)} className="flex flex-col h-full w-full">
+        {/* Правая колонка - Боковая панель со вкладками */}
+        <div className="lg:col-span-5 xl:col-span-4 flex flex-col h-[540px] lg:h-[600px] w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden shadow-2xl">
+          <Tabs value={sidebarTab} onValueChange={(val: any) => setSidebarTab(val)} className="flex flex-col h-full w-full min-h-0">
             <TabsList className="grid grid-cols-3 bg-slate-950 p-1 border-b border-purple-900/40 rounded-none shrink-0 h-11">
               <TabsTrigger
                 value="chat"
@@ -417,7 +417,10 @@ export const RoomPage = () => {
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="chat" className="flex-1 min-h-0 m-0 p-0 focus-visible:outline-none flex flex-col">
+            <TabsContent
+              value="chat"
+              className="m-0 p-0 focus-visible:outline-none flex-1 min-h-0 h-full data-[state=active]:flex data-[state=active]:flex-col"
+            >
               <RoomChat
                 messages={roomMessages}
                 onSendMessage={handleSendMessage}
@@ -425,7 +428,10 @@ export const RoomPage = () => {
               />
             </TabsContent>
 
-            <TabsContent value="queue" className="flex-1 min-h-0 m-0 p-0 focus-visible:outline-none flex flex-col">
+            <TabsContent
+              value="queue"
+              className="m-0 p-0 focus-visible:outline-none flex-1 min-h-0 h-full data-[state=active]:flex data-[state=active]:flex-col"
+            >
               <RoomQueue
                 queue={roomQueue}
                 currentMediaUrl={room.current_media_url}
@@ -436,7 +442,10 @@ export const RoomPage = () => {
               />
             </TabsContent>
 
-            <TabsContent value="members" className="flex-1 min-h-0 m-0 p-0 focus-visible:outline-none flex flex-col">
+            <TabsContent
+              value="members"
+              className="m-0 p-0 focus-visible:outline-none flex-1 min-h-0 h-full data-[state=active]:flex data-[state=active]:flex-col"
+            >
               <RoomMembersList members={roomMembers} hostId={room.host_id} />
             </TabsContent>
           </Tabs>
