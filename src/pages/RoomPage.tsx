@@ -15,7 +15,7 @@ import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { CURRENT_USER } from '@/data/mockRaveData';
 import { ChatMessage, QueueItem } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
-import { showSuccess } from '@/utils/toast';
+import { showSuccess, showError } from '@/utils/toast';
 
 type MobileTab = 'chat' | 'queue' | 'info';
 
@@ -129,6 +129,10 @@ export const RoomPage = () => {
   };
 
   const handlePlayQueueItem = (item: QueueItem) => {
+    if (!isHost) {
+      showError('Only the room creator can switch videos.');
+      return;
+    }
     const ytDetails = extractYouTubeDetails(item.url);
     changeRoomMedia(room.id, item.url, item.title, ytDetails.thumbnail);
     removeQueueItem(room.id, item.id);
@@ -137,6 +141,10 @@ export const RoomPage = () => {
 
   const handleChangeMediaSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isHost) {
+      showError('Only the room creator can switch videos.');
+      return;
+    }
     if (!newMediaUrl.trim()) return;
     const ytDetails = extractYouTubeDetails(newMediaUrl);
     changeRoomMedia(room.id, newMediaUrl.trim(), `YouTube Video (${ytDetails.videoId})`, ytDetails.thumbnail);
@@ -167,13 +175,16 @@ export const RoomPage = () => {
             </Button>
 
             <div className="flex items-center gap-1.5">
-              <Button
-                onClick={() => setIsChangeMediaOpen(true)}
-                size="sm"
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-[11px] h-7 gap-1"
-              >
-                <Video className="h-3.5 w-3.5" /> Change Video
-              </Button>
+              {/* Кнопка смены видео показывается только ведущему */}
+              {isHost && (
+                <Button
+                  onClick={() => setIsChangeMediaOpen(true)}
+                  size="sm"
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-[11px] h-7 gap-1"
+                >
+                  <Video className="h-3.5 w-3.5" /> Change Video
+                </Button>
+              )}
 
               <Button
                 onClick={() => {
@@ -307,7 +318,7 @@ export const RoomPage = () => {
         </div>
       </main>
 
-      {/* Change Video Dialog */}
+      {/* Change Video Dialog (Host Only) */}
       <Dialog open={isChangeMediaOpen} onOpenChange={setIsChangeMediaOpen}>
         <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
           <DialogHeader>

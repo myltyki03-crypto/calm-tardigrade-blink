@@ -11,6 +11,7 @@ import {
   Settings,
   Subtitles,
   Check,
+  Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -20,7 +21,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Room } from '@/types/rave';
-import { showSuccess } from '@/utils/toast';
+import { showError, showSuccess } from '@/utils/toast';
 
 declare global {
   interface Window {
@@ -108,7 +109,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             if (dur && dur > 0) setDuration(dur);
           },
           onStateChange: (event: any) => {
-            // 1 = PLAYING, 2 = PAUSED
             if (event.data === 1) {
               setIsPlaying(true);
             } else if (event.data === 2) {
@@ -127,7 +127,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       };
     }
 
-    // Регулярный опрос реальной длительности и позиции
     interval = setInterval(() => {
       if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         const cur = ytPlayerRef.current.getCurrentTime();
@@ -180,7 +179,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Автоматическое скрытие плеера через 3.5 секунды бездействия
   const handleUserActivity = () => {
     setShowControls(true);
     if (controlsTimeoutRef.current) {
@@ -197,7 +195,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setShowControls((prev) => !prev);
   };
 
-  // Переключение субтитров
   const toggleCaptions = () => {
     const nextState = !isCaptionsOn;
     setIsCaptionsOn(nextState);
@@ -213,7 +210,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Изменение скорости
   const handleSpeedChange = (speed: number) => {
     setCurrentSpeed(speed);
     if (ytPlayerRef.current?.setPlaybackRate) {
@@ -222,8 +218,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Переключение воспроизведения/паузы
+  // Пауза / Воспроизведение только для Ведущего
   const handleTogglePlay = () => {
+    if (!isHost) {
+      showError('Only the room creator can pause or play the video.');
+      return;
+    }
+
     if (!ytPlayerRef.current) return;
     if (isPlaying) {
       ytPlayerRef.current.pauseVideo();
@@ -236,7 +237,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Изменение громкости
   const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume);
     if (!ytPlayerRef.current) return;
@@ -253,7 +253,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Включение / выключение звука
   const handleToggleMute = () => {
     if (!ytPlayerRef.current) return;
     if (isMuted) {
@@ -266,8 +265,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Промотка видео на точную секунду
+  // Перемотка только для Ведущего
   const handleSeek = (newProgressPercent: number) => {
+    if (!isHost) {
+      showError('Only the room creator can seek the timeline.');
+      return;
+    }
+
     if (duration > 0 && ytPlayerRef.current?.seekTo) {
       const targetSeconds = (newProgressPercent / 100) * duration;
       setCurrentTime(targetSeconds);
@@ -275,7 +279,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Пересинхронизация
   const handleSyncClick = () => {
     if (ytPlayerRef.current?.seekTo) {
       ytPlayerRef.current.seekTo(currentTime, true);
@@ -303,18 +306,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border border-purple-900/40 shadow-2xl aspect-video'
       }`}
     >
-      {/* Video Container Frame */}
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        {/* Element mounted by YouTube API */}
         <div ref={playerContainerRef} className="h-full w-full" />
 
-        {/* Clickable Overlay to Toggle Controls */}
         <div
           onClick={handleVideoAreaClick}
           className="absolute inset-0 z-10 cursor-pointer"
         />
 
-        {/* Sync Status Floating Badge */}
         {!isFullscreen && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
@@ -341,7 +340,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* Floating Quick Reaction Bar */}
         <div
           onClick={(e) => e.stopPropagation()}
           className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/40 transition-opacity duration-300 ${
@@ -360,14 +358,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      {/* Floating Control Bar Overlay */}
       <div
         onClick={(e) => e.stopPropagation()}
         className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent flex flex-col gap-2 transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
-        {/* Seek timeline */}
+        {/* Timeline */}
         <div className="flex items-center gap-2 px-1">
           <span className="text-[10px] font-mono text-purple-300 w-10">
             {formatTime(currentTime)}
@@ -376,24 +373,36 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             value={[progressPercent]}
             max={100}
             step={0.1}
+            disabled={!isHost}
             onValueChange={(val) => handleSeek(val[0])}
-            className="flex-1 cursor-pointer"
+            className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
           />
           <span className="text-[10px] font-mono text-slate-400 w-10 text-right">
             {formatTime(duration)}
           </span>
         </div>
 
-        {/* Controls layout */}
+        {/* Control buttons */}
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Play/Pause */}
+            {/* Play/Pause Button */}
             <Button
               onClick={handleTogglePlay}
               size="icon"
-              className="h-9 w-9 rounded-full bg-pink-600 hover:bg-pink-500 text-white shadow-md shadow-pink-500/30 shrink-0"
+              title={isHost ? (isPlaying ? 'Pause' : 'Play') : 'Only Creator can Pause/Play'}
+              className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
+                isHost
+                  ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
+                  : 'bg-slate-800 hover:bg-slate-700 text-slate-400'
+              }`}
             >
-              {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4 ml-0.5 fill-white" />}
+              {isPlaying ? (
+                <Pause className="h-4 w-4" />
+              ) : isHost ? (
+                <Play className="h-4 w-4 ml-0.5 fill-white" />
+              ) : (
+                <Lock className="h-3.5 w-3.5 text-amber-400" />
+              )}
             </Button>
 
             {/* Volume Controls */}
@@ -421,13 +430,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             </div>
           </div>
 
-          {/* Right Player Buttons: Title, Subtitles, Settings, Fullscreen */}
           <div className="flex items-center gap-1.5 sm:gap-2">
             <span className="hidden md:inline-block truncate max-w-[150px] lg:max-w-[220px] text-xs font-semibold text-purple-200 mr-2">
               {room.current_media_title || 'Playing Stream'}
             </span>
 
-            {/* Subtitles Button (CC) */}
             <Button
               onClick={toggleCaptions}
               size="icon"
@@ -440,7 +447,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <Subtitles className="h-4 w-4" />
             </Button>
 
-            {/* Settings Menu Popover */}
             <Popover>
               <PopoverTrigger asChild>
                 <Button
@@ -471,7 +477,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               </PopoverContent>
             </Popover>
 
-            {/* Fullscreen Button */}
             <Button
               onClick={toggleFullscreen}
               size="icon"
