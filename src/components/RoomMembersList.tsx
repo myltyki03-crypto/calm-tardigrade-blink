@@ -21,11 +21,12 @@ export const RoomMembersList: React.FC<RoomMembersListProps> = ({ members, hostI
         <div className="space-y-2">
           {members.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-500">
-              Пока нет участников
+              Пока нет участников в сети
             </div>
           ) : (
             members.map((member) => {
-              const isOwner = member.user_id === hostId || member.role === 'host';
+              // Строгая проверка: Владельцем является только тот, у кого user_id совпадает с hostId комнаты
+              const isOwner = member.user_id === hostId;
               const defaultAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(member.user_name || 'user')}`;
               const avatarSrc = member.user_avatar || defaultAvatar;
 
@@ -50,14 +51,18 @@ export const RoomMembersList: React.FC<RoomMembersListProps> = ({ members, hostI
                     <div>
                       <div className="flex items-center gap-1.5">
                         <span className="font-semibold text-slate-200">{member.user_name}</span>
-                        {isOwner && (
+                        {isOwner ? (
                           <span className="inline-flex items-center gap-0.5 text-[9px] bg-pink-950/80 text-pink-400 border border-pink-500/40 px-1.5 py-0.5 rounded-full font-bold">
                             <Crown className="h-2.5 w-2.5" /> Владелец
+                          </span>
+                        ) : (
+                          <span className="text-[9px] bg-purple-950/60 text-purple-300 border border-purple-800/30 px-1.5 py-0.5 rounded-full font-medium">
+                            Зритель
                           </span>
                         )}
                       </div>
                       <span className="text-[10px] text-slate-500 flex items-center gap-1 mt-0.5">
-                        <Radio className="h-2.5 w-2.5 text-emerald-400" /> Смотрит трансляцию
+                        <Radio className="h-2.5 w-2.5 text-emerald-400 animate-pulse" /> Смотрит трансляцию
                       </span>
                     </div>
                   </div>

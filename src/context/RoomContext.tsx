@@ -218,14 +218,31 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isSupabaseConfigured || !supabase) return;
     const { data } = await supabase.from('room_members').select('*');
     if (data) {
+      const now = Date.now();
       const grouped: Record<string, RoomMember[]> = {};
+
       data.forEach((m: any) => {
-        if (!grouped[m.room_id]) grouped[m.room_id] = [];
-        if (!grouped[m.room_id].some(existing => existing.user_id === m.user_id)) {
-          grouped[m.room_id].push(m as RoomMember);
+        // Фильтруем участников: активными считаются те, у кого joined_at обновлялся не позднее 15 секунд назад
+        const lastActive = m.joined_at ? new Date(m.joined_at).getTime() : 0;
+        const isRecent = now - lastActive < 15000;
+
+        if (isRecent) {
+          if (!grouped[m.room_id]) grouped[m.room_id] = [];
+          if (!grouped[m.room_id].some((existing) => existing.user_id === m.user_id)) {
+            grouped[m.room_id].push(m as RoomMember);
+          }
         }
       });
+
       setActiveMembersByRoom(grouped);
+
+      // Синхронизируем количество онлайн зрителей в объекте комнаты
+      setRooms((prev) =>
+        prev.map((r) => {
+          const count = grouped[r.id]?.length || 1;
+          return r.member_count !== count ? { ...r, member_count: count } : r;
+        })
+      );
     }
   }, []);
 
@@ -282,9 +299,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       joined_at: new Date().toISOString(),
     };
 
-    setActiveMembersByRoom(prev => {
+    setActiveMembersByRoom((prev) => {
       const list = prev[roomId] || [];
-      const filtered = list.filter(m => m.user_id !== currentUser.id);
+      const filtered = list.filter((m) => m.user_id !== currentUser.id);
       return { ...prev, [roomId]: [...filtered, memberObj] };
     });
 
@@ -295,13 +312,17 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const leaveRoomPresence = async (roomId: string) => {
     if (!currentUser.id) return;
-    setActiveMembersByRoom(prev => ({
+    setActiveMembersByRoom((prev) => ({
       ...prev,
-      [roomId]: (prev[roomId] || []).filter(m => m.user_id !== currentUser.id)
+      [roomId]: (prev[roomId] || []).filter((m) => m.user_id !== currentUser.id),
     }));
 
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('room_members').delete().eq('room_id', roomId).eq('user_id', currentUser.id);
+      await supabase
+        .from('room_members')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', currentUser.id);
     }
   };
 
@@ -381,7 +402,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const deleteRoom = async (roomId: string) => {
-    const targetRoom = rooms.find(r => r.id === roomId);
+    const targetRoom = rooms.find((r) => r.id === roomId);
     if (targetRoom && targetRoom.host_id !== currentUser.id) {
       showError('Только владелец комнаты может ее удалить!');
       return;
