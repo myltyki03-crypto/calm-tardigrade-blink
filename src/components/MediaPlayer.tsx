@@ -20,8 +20,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [isPlaying, setIsPlaying] = useState(room.is_playing);
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
-  const [progress, setProgress] = useState(15);
-  const totalDurationSeconds = 300; // Примерная длительность медиа (5 минут)
+  
+  // Real video playback state
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
 
   // Извлечение ID видео YouTube
   const getYouTubeVideoId = (url: string = '') => {
@@ -49,6 +51,49 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       );
     }
   };
+
+  // Слушаем живые события от YouTube iframe API
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+        
+        if (data && data.event === 'infoDelivery' && data.info) {
+          if (typeof data.info.currentTime === 'number') {
+            setCurrentTime(data.info.currentTime);
+          }
+          if (typeof data.info.duration === 'number' && data.info.duration > 0) {
+            setDuration(data.info.duration);
+          }
+          if (typeof data.info.playerState === 'number') {
+            // playerState 1 = playing, 2 = paused
+            if (data.info.playerState === 1) setIsPlaying(true);
+            if (data.info.playerState === 2) setIsPlaying(false);
+          }
+        }
+      } catch (err) {
+        // Игнорируем не-JSON сообщения
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    // Подключаемся к плееру для систематического получения обновлений времени
+    const pingInterval = setInterval(() => {
+      sendPlayerCommand('listening', []);
+    }, 1000);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+      clearInterval(pingInterval);
+    };
+  }, [videoId]);
+
+  // Сброс времени при смене видео
+  useEffect(() => {
+    setCurrentTime(0);
+    setDuration(0);
+  }, [videoId]);
 
   // Переключение воспроизведения/паузы
   const handleTogglePlay = () => {
@@ -90,42 +135,33 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Промотка видео
+  // Промотка видео на точную секунду
   const handleSeek = (newProgressPercent: number) => {
-    setProgress(newProgressPercent);
-    const targetSeconds = (newProgressPercent / 100) * totalDurationSeconds;
-    sendPlayerCommand('seekTo', [targetSeconds, true]);
+    if (duration > 0) {
+      const targetSeconds = (newProgressPercent / 100) * duration;
+      setCurrentTime(targetSeconds);
+      sendPlayerCommand('seekTo', [targetSeconds, true]);
+    }
   };
 
   // Пересинхронизация с сервером/хостом
   const handleSyncClick = () => {
-    sendPlayerCommand('seekTo', [45, true]);
+    sendPlayerCommand('seekTo', [currentTime, true]);
     sendPlayerCommand('playVideo');
     setIsPlaying(true);
     showSuccess('Synchronized with Host Stream!');
   };
 
-  // Имитация хода таймлайна во время проигрывания
-  useEffect(() => {
-    let interval: any;
-    if (isPlaying) {
-      interval = setInterval(() => {
-        setProgress((prev) => (prev >= 100 ? 0 : prev + 0.3));
-      }, 1000);
-    }
-    return () => clearInterval(interval);
-  }, [isPlaying]);
-
-  // Ссылка для YouTube Embed с включенным enablejsapi=1
   const embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1&mute=0&controls=0&origin=${window.location.origin}`;
 
   const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const currentSeconds = (progress / 100) * totalDurationSeconds;
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div className="relative flex flex-col rounded-2xl border border-purple-900/40 bg-slate-950 overflow-hidden shadow-2xl">
@@ -175,18 +211,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       <div className="p-3 bg-slate-900/90 border-t border-purple-950 flex flex-col gap-2">
         {/* Seek timeline */}
         <div className="flex items-center gap-2 px-1">
-          <span className="text-[10px] font-mono text-purple-300 w-9">
-            {formatTime(currentSeconds)}
+          <span className="text-[10px] font-mono text-purple-300 w-10">
+            {formatTime(currentTime)}
           </span>
           <Slider
-            value={[progress]}
+            value={[progressPercent]}
             max={100}
             step={0.1}
             onValueChange={(val) => handleSeek(val[0])}
             className="flex-1 cursor-pointer"
           />
-          <span className="text-[10px] font-mono text-slate-400 w-9 text-right">
-            {formatTime(totalDurationSeconds)}
+          <span className="text-[10px] font-mono text-slate-400 w-10 text-right">
+            {formatTime(duration)}
           </span>
         </div>
 
