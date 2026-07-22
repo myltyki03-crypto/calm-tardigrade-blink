@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Crown, Clock, Radio, UserPlus, MessageSquare, Check, Clock3 } from 'lucide-react';
+import { Crown, Clock, Radio, UserPlus, MessageSquare, Check, Clock3, UserX } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -25,7 +25,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   targetUser,
   isOwner = false,
 }) => {
-  const { currentUser, sendFriendRequest, getFriendStatusWith } = useRooms();
+  const { currentUser, sendFriendRequest, getFriendStatusWith, removeFriend } = useRooms();
   const [isDmOpen, setIsDmOpen] = useState(false);
 
   if (!targetUser) return null;
@@ -35,11 +35,17 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   const defaultAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(targetUser.username || 'user')}`;
   const displayAvatar = targetUser.avatar_url || defaultAvatar;
 
-  const friendStatus = getFriendStatusWith(targetUser.id);
+  const friendStatus = getFriendStatusWith(targetUser.id, targetUser.username);
 
   const handleOpenDm = () => {
     onClose();
     setIsDmOpen(true);
+  };
+
+  const handleRemoveFriend = () => {
+    if (window.confirm(`Вы уверены, что хотите удалить ${targetUser.username} из друзей?`)) {
+      removeFriend(targetUser.id);
+    }
   };
 
   return (
@@ -87,47 +93,50 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
               </p>
             </div>
 
-            {/* Кнопки взаимодействия (Добавить в друзья / Написать ЛС) */}
+            {/* Кнопки взаимодействия (Добавить в друзья / Удалить из друзей / Написать ЛС) */}
             {!isMe && (
-              <div className="flex items-center gap-2 pt-2 w-full">
-                {friendStatus === 'none' && (
-                  <Button
-                    onClick={() => sendFriendRequest(targetUser)}
-                    size="sm"
-                    className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs h-9 rounded-xl gap-1.5 shadow-md"
-                  >
-                    <UserPlus className="h-3.5 w-3.5" /> В друзья
-                  </Button>
-                )}
+              <div className="flex flex-col gap-2 pt-2 w-full">
+                <div className="flex items-center gap-2 w-full">
+                  {friendStatus === 'none' && (
+                    <Button
+                      onClick={() => sendFriendRequest(targetUser)}
+                      size="sm"
+                      className="flex-1 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs h-9 rounded-xl gap-1.5 shadow-md"
+                    >
+                      <UserPlus className="h-3.5 w-3.5" /> В друзья
+                    </Button>
+                  )}
 
-                {friendStatus === 'pending_sent' && (
-                  <Button
-                    disabled
-                    size="sm"
-                    className="flex-1 bg-slate-800 text-amber-300 font-bold text-xs h-9 rounded-xl gap-1.5 opacity-90"
-                  >
-                    <Clock3 className="h-3.5 w-3.5 animate-spin" /> Заявка отправлена
-                  </Button>
-                )}
+                  {friendStatus === 'pending_sent' && (
+                    <Button
+                      disabled
+                      size="sm"
+                      className="flex-1 bg-slate-800 text-amber-300 font-bold text-xs h-9 rounded-xl gap-1.5 opacity-90"
+                    >
+                      <Clock3 className="h-3.5 w-3.5 animate-spin" /> Заявка отправлена
+                    </Button>
+                  )}
 
-                {friendStatus === 'accepted' && (
-                  <Button
-                    disabled
-                    size="sm"
-                    className="flex-1 bg-emerald-950/80 border border-emerald-500/40 text-emerald-300 font-bold text-xs h-9 rounded-xl gap-1.5"
-                  >
-                    <Check className="h-3.5 w-3.5" /> В друзьях
-                  </Button>
-                )}
+                  {friendStatus === 'accepted' && (
+                    <Button
+                      onClick={handleRemoveFriend}
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 border-red-500/50 text-red-300 hover:bg-red-950/40 hover:text-red-200 font-bold text-xs h-9 rounded-xl gap-1.5"
+                    >
+                      <UserX className="h-3.5 w-3.5 text-red-400" /> Удалить из друзей
+                    </Button>
+                  )}
 
-                <Button
-                  onClick={handleOpenDm}
-                  size="sm"
-                  variant="outline"
-                  className="flex-1 border-purple-800 text-purple-200 hover:bg-purple-900/60 font-bold text-xs h-9 rounded-xl gap-1.5"
-                >
-                  <MessageSquare className="h-3.5 w-3.5 text-pink-400" /> Написать ЛС
-                </Button>
+                  <Button
+                    onClick={handleOpenDm}
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 border-purple-800 text-purple-200 hover:bg-purple-900/60 font-bold text-xs h-9 rounded-xl gap-1.5"
+                  >
+                    <MessageSquare className="h-3.5 w-3.5 text-pink-400" /> Написать ЛС
+                  </Button>
+                </div>
               </div>
             )}
 

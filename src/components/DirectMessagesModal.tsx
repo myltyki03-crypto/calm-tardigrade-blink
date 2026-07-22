@@ -12,6 +12,7 @@ import {
   Image as ImageIcon,
   Mic,
   Trash2,
+  User,
 } from 'lucide-react';
 import {
   Dialog,
@@ -25,6 +26,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRooms } from '@/context/RoomContext';
 import { UserProfile } from '@/types/rave';
 import { VoicePlayer } from '@/components/VoicePlayer';
+import { UserProfileModal } from '@/components/UserProfileModal';
 import { showError, showSuccess } from '@/utils/toast';
 
 interface DirectMessagesModalProps {
@@ -126,6 +128,9 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   const [mobileShowChat, setMobileShowChat] = useState<boolean>(false);
   const [fullImagePreview, setFullImagePreview] = useState<string | null>(null);
 
+  const [selectedProfileUser, setSelectedProfileUser] = useState<UserProfile | null>(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState<boolean>(false);
+
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -199,6 +204,11 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   const handleSelectUser = (user: UserProfile) => {
     setActiveDmUserId(user.username);
     setMobileShowChat(true);
+  };
+
+  const handleOpenUserProfile = (user: UserProfile) => {
+    setSelectedProfileUser(user);
+    setIsProfileModalOpen(true);
   };
 
   const handleSendMessage = (e: React.FormEvent) => {
@@ -477,19 +487,34 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                 {selectedUser ? (
                   <>
                     <div className="p-2.5 px-3 border-b border-purple-900/40 bg-slate-950 flex items-center justify-between shrink-0">
-                      <div className="flex items-center gap-2">
+                      <div
+                        onClick={() => handleOpenUserProfile(selectedUser)}
+                        className="flex items-center gap-2 cursor-pointer hover:opacity-80 transition-opacity"
+                        title="Нажмите, чтобы открыть профиль"
+                      >
                         <img
                           src={selectedUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(selectedUser.username)}`}
                           alt={selectedUser.username}
-                          className="h-7 w-7 rounded-full object-cover ring-1 ring-pink-500/50"
+                          className="h-8 w-8 rounded-full object-cover ring-2 ring-pink-500/50"
                         />
                         <div>
-                          <span className="text-xs font-bold text-slate-100 block">{selectedUser.username}</span>
+                          <span className="text-xs font-bold text-slate-100 block hover:underline">
+                            {selectedUser.username}
+                          </span>
                           <span className="text-[9px] text-emerald-400 flex items-center gap-1">
                             <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> В сети
                           </span>
                         </div>
                       </div>
+
+                      <Button
+                        onClick={() => handleOpenUserProfile(selectedUser)}
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-[10px] px-2.5 border-purple-800 text-purple-200 hover:bg-purple-900/60 rounded-xl gap-1"
+                      >
+                        <User className="h-3 w-3 text-pink-400" /> Профиль
+                      </Button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-slate-950/40">
@@ -648,6 +673,12 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
           )}
         </DialogContent>
       </Dialog>
+
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        targetUser={selectedProfileUser}
+      />
 
       {fullImagePreview && (
         <Dialog open={Boolean(fullImagePreview)} onOpenChange={() => setFullImagePreview(null)}>
