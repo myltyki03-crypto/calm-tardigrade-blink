@@ -147,7 +147,7 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
           </div>
           <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed">
             <li>Перейдите в <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="h-2.5 w-2.5" /></a> в ваш проект</li>
-            <li>Откройте <strong className="text-purple-300">SQL Editor</strong> -> <strong className="text-purple-300">New Query</strong></li>
+            <li>Откройте <strong className="text-purple-300">SQL Editor</strong> &rarr; <strong className="text-purple-300">New Query</strong></li>
             <li>Вставьте этот SQL-код и нажмите <strong className="text-emerald-400">Run</strong></li>
           </ol>
         </div>
