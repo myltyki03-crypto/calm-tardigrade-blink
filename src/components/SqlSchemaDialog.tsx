@@ -25,19 +25,11 @@ interface SqlSchemaDialogProps {
 }
 
 const FULL_SQL_SCHEMA = `-- ==========================================
--- PULSERAVE COMPLETE SUPABASE DATABASE SETUP (REALTIME FIX)
--- Скопируйте этот код и запустите в Supabase -> SQL Editor -> Run
+-- PULSERAVE COMPLETE SUPABASE DATABASE SETUP (SAFE)
+-- Скопируйте и запустите в Supabase -> SQL Editor -> Run
 -- ==========================================
 
-drop table if exists public.direct_messages cascade;
-drop table if exists public.friend_requests cascade;
-drop table if exists public.room_members cascade;
-drop table if exists public.chat_messages cascade;
-drop table if exists public.queue_items cascade;
-drop table if exists public.rooms cascade;
-drop table if exists public.profiles cascade;
-
-create table public.profiles (
+create table if not exists public.profiles (
   id text primary key,
   username text not null,
   avatar_url text,
@@ -49,7 +41,7 @@ create table public.profiles (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.rooms (
+create table if not exists public.rooms (
   id text primary key,
   title text not null,
   description text,
@@ -71,7 +63,7 @@ create table public.rooms (
   last_updated_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.queue_items (
+create table if not exists public.queue_items (
   id text primary key,
   room_id text references public.rooms(id) on delete cascade not null,
   title text not null,
@@ -83,7 +75,7 @@ create table public.queue_items (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.chat_messages (
+create table if not exists public.chat_messages (
   id text primary key,
   room_id text references public.rooms(id) on delete cascade not null,
   user_id text not null,
@@ -94,7 +86,7 @@ create table public.chat_messages (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.room_members (
+create table if not exists public.room_members (
   id text primary key,
   room_id text references public.rooms(id) on delete cascade not null,
   user_id text,
@@ -104,7 +96,7 @@ create table public.room_members (
   joined_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.friend_requests (
+create table if not exists public.friend_requests (
   id text primary key,
   sender_id text not null,
   sender_name text not null,
@@ -115,7 +107,7 @@ create table public.friend_requests (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-create table public.direct_messages (
+create table if not exists public.direct_messages (
   id text primary key,
   sender_id text not null,
   sender_name text not null,
@@ -127,7 +119,7 @@ create table public.direct_messages (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Выдача полных прав роли anon (так как используется кастомная авторизация без JWT)
+-- Выдача прав
 grant all on table public.profiles to anon, authenticated, service_role;
 grant all on table public.rooms to anon, authenticated, service_role;
 grant all on table public.queue_items to anon, authenticated, service_role;
@@ -136,7 +128,7 @@ grant all on table public.room_members to anon, authenticated, service_role;
 grant all on table public.friend_requests to anon, authenticated, service_role;
 grant all on table public.direct_messages to anon, authenticated, service_role;
 
--- Отключение RLS, чтобы WAL декодер Realtime не блокировал анонимные подписки
+-- Отключение RLS
 alter table public.profiles disable row level security;
 alter table public.rooms disable row level security;
 alter table public.queue_items disable row level security;
@@ -145,7 +137,7 @@ alter table public.room_members disable row level security;
 alter table public.friend_requests disable row level security;
 alter table public.direct_messages disable row level security;
 
--- Установка REPLICA IDENTITY FULL
+-- Настройка REPLICA IDENTITY
 alter table public.profiles replica identity full;
 alter table public.rooms replica identity full;
 alter table public.queue_items replica identity full;
@@ -154,7 +146,7 @@ alter table public.room_members replica identity full;
 alter table public.friend_requests replica identity full;
 alter table public.direct_messages replica identity full;
 
--- Добавление всех таблиц в публикацию Supabase Realtime
+-- Публикация в Realtime
 alter publication supabase_realtime add table public.profiles;
 alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.chat_messages;
@@ -170,7 +162,7 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
 
   const [supabaseUrl, setSupabaseUrl] = useState(activeConfig.url || '');
   const [supabaseKey, setSupabaseKey] = useState(
-    activeConfig.key || 'sb_publishable_2GZpwssfzVzCtIvMHeYOrA_3Q_RRJXO'
+    activeConfig.key || ''
   );
 
   const handleCopy = () => {
@@ -194,7 +186,7 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
   };
 
   return (
-    <Dialog open={isOpen} onClose={onClose}>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 flex items-center justify-between">
@@ -243,7 +235,7 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
                 2) Supabase Anon Public Key <span className="text-pink-400">*</span>
               </Label>
               <Input
-                placeholder="sb_publishable_... или eyJhbG..."
+                placeholder="eyJhbGciOi..."
                 value={supabaseKey}
                 onChange={(e) => setSupabaseKey(e.target.value)}
                 className="bg-slate-900 border-purple-800 text-xs h-9 text-cyan-300 mt-1 placeholder:text-slate-600 focus:border-pink-500 font-mono"
