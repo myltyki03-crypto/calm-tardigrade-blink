@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Pause,
+  RefreshCw,
   Volume2,
   VolumeX,
   Maximize,
@@ -370,6 +371,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  const handleSyncClick = () => {
+    const syncTime = getCalculatedHostTime();
+    if (ytPlayerRef.current?.seekTo) {
+      ytPlayerRef.current.seekTo(syncTime, true);
+      if (room.is_playing) {
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+      }
+      showSuccess('Синхронизировано!');
+    }
+  };
+
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
     const mins = Math.floor(seconds / 60);
@@ -399,6 +412,28 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           onClick={handleVideoAreaClick}
           className="absolute inset-0 z-10 cursor-pointer"
         />
+
+        {/* Кнопка синхронизации */}
+        {!isFullscreen && !needUserGesture && (
+          <div
+            className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
+              showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+            }`}
+          >
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSyncClick();
+              }}
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Синхронизировать
+            </Button>
+          </div>
+        )}
 
         {/* Кнопка разблокировки видео для смартфонов */}
         {(needUserGesture || (!isPlaying && room.is_playing && !isHost)) && (
