@@ -97,7 +97,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, []);
 
-  // Инициализация YT.Player с подмотанным временем
+  // Инициализация YT.Player
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
 
@@ -115,6 +115,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           fs: 0,
           modestbranding: 1,
           rel: 0,
+          iv_load_policy: 3,
+          autohide: 1,
           start: Math.floor(startSec),
           origin: window.location.origin,
         },
@@ -153,7 +155,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         const dur = ytPlayerRef.current.getDuration();
         if (typeof cur === 'number') {
           setCurrentTime(cur);
-          // Периодическое сохранение прогресса
           updateRoomProgress(room.id, cur, ytPlayerRef.current.getPlayerState?.() === 1);
         }
         if (typeof dur === 'number' && dur > 0) setDuration(dur);
@@ -339,7 +340,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        <div ref={playerContainerRef} className="h-full w-full" />
+        {/* Iframe контейнер с отключенным pointer-events для исключения проявления подсказок YouTube */}
+        <div ref={playerContainerRef} className="h-full w-full pointer-events-none scale-[1.04]" />
 
         <div
           onClick={handleVideoAreaClick}
@@ -374,7 +376,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/40 transition-opacity duration-300 ${
+          className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-full border border-purple-800/40 transition-opacity duration-300 ${
             showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
         >
@@ -390,9 +392,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
+      {/* Нижняя сплошная плашка управления */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent flex flex-col gap-2 transition-all duration-300 ${
+        className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-slate-950/95 backdrop-blur-md border-t border-purple-900/40 flex flex-col gap-2 transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
