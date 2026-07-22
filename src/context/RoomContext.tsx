@@ -46,7 +46,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Загрузка данных из Supabase и подписка на Realtime изменения
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
-      console.warn('Supabase не настроен в VITE_SUPABASE_URL!');
       return;
     }
 
@@ -56,6 +55,15 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Error fetching rooms:', error);
       } else if (data && data.length > 0) {
         setRooms(data as Room[]);
+      } else if (data && data.length === 0) {
+        // Если таблица пустая, автоматически заполняем начальными комнатами
+        const { error: seedErr } = await supabase.from('rooms').insert(INITIAL_ROOMS);
+        if (!seedErr) {
+          setRooms(INITIAL_ROOMS);
+          // Добавляем стартовые сообщения и очереди
+          await supabase.from('chat_messages').insert(INITIAL_MESSAGES);
+          await supabase.from('queue_items').insert(INITIAL_QUEUE);
+        }
       }
     };
 
@@ -157,8 +165,22 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
 
-  const updateUserProfile = (updated: Partial<UserProfile>) => {
-    setCurrentUser((prev) => ({ ...prev, ...updated }));
+  const updateUserProfile = async (updated: Partial<UserProfile>) => {
+    const newProfile = { ...currentUser, ...updated };
+    setCurrentUser(newProfile);
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('profiles').upsert([
+        {
+          id: newProfile.id,
+          username: newProfile.username,
+          avatar_url: newProfile.avatar_url,
+          status_message: newProfile.status_message,
+          watch_time_minutes: newProfile.watch_time_minutes || 0,
+          parties_hosted: newProfile.parties_hosted || 0,
+        },
+      ]);
+    }
   };
 
   const addRoom = async (newRoom: Room) => {
