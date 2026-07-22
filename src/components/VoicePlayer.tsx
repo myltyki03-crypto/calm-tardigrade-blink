@@ -12,35 +12,45 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  // Точное декодирование звуковых сэмплов через Web Audio API
+  useEffect(() => {
+    if (!src) return;
+
+    let isCancelled = false;
+
+    const decodeExactDuration = async () => {
+      try {
+        const response = await fetch(src);
+        const arrayBuffer = await response.arrayBuffer();
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) return;
+
+        const audioCtx = new AudioCtx();
+        const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+
+        if (!isCancelled && audioBuffer && audioBuffer.duration > 0) {
+          setDuration(audioBuffer.duration);
+        }
+        audioCtx.close();
+      } catch (e) {
+        console.error('Failed to decode audio duration:', e);
+      }
+    };
+
+    decodeExactDuration();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [src]);
+
+  // Отслеживание текущего времени воспроизведения
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
 
-    let isCalibrating = false;
-
-    // Спец-хак для сжатых WebM записей с мобильных браузеров
-    const calibrateDuration = () => {
-      if (isCalibrating) return;
-      isCalibrating = true;
-
-      // Принудительно запрашиваем реальный конец аудиопотока
-      audio.currentTime = 1e101;
-
-      const handleSeekEnd = () => {
-        audio.removeEventListener('timeupdate', handleSeekEnd);
-        const realDuration = audio.currentTime;
-        audio.currentTime = 0;
-        setDuration(realDuration);
-        isCalibrating = false;
-      };
-
-      audio.addEventListener('timeupdate', handleSeekEnd);
-    };
-
     const handleTimeUpdate = () => {
-      if (!isCalibrating && audio.currentTime < 1e100) {
-        setCurrentTime(audio.currentTime);
-      }
+      setCurrentTime(audio.currentTime);
     };
 
     const handleEnded = () => {
@@ -48,14 +58,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
       setCurrentTime(0);
     };
 
-    audio.addEventListener('loadedmetadata', calibrateDuration);
-    audio.addEventListener('durationchange', calibrateDuration);
     audio.addEventListener('timeupdate', handleTimeUpdate);
     audio.addEventListener('ended', handleEnded);
 
     return () => {
-      audio.removeEventListener('loadedmetadata', calibrateDuration);
-      audio.removeEventListener('durationchange', calibrateDuration);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
       audio.removeEventListener('ended', handleEnded);
     };
@@ -69,7 +75,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
       audio.pause();
       setIsPlaying(false);
     } else {
-      audio.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
+      audio
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => setIsPlaying(false));
     }
   };
 
@@ -90,7 +99,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
 
   return (
     <div className="flex items-center gap-2.5 py-1 min-w-[180px] sm:min-w-[220px]">
-      <audio ref={audioRef} src={src} preload="metadata" />
+      <audio ref={audioRef} src={src} preload="auto" />
 
       <button
         type="button"
@@ -118,7 +127,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
             type="range"
             min="0"
             max={duration || 100}
-            step="0.1"
+            step="0.01"
             value={currentTime}
             onChange={handleSeek}
             className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-black/20 accent-pink-400"
