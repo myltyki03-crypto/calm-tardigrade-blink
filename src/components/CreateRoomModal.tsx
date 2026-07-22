@@ -21,20 +21,33 @@ import {
 } from '@/components/ui/select';
 import { CategoryType, Room } from '@/types/rave';
 import { CURRENT_USER } from '@/data/mockRaveData';
+import { useRooms } from '@/context/RoomContext';
 import { showSuccess } from '@/utils/toast';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onRoomCreated: (newRoom: Room) => void;
 }
+
+const extractYouTubeDetails = (url: string) => {
+  let videoId = '4xDzrJKXOOY';
+  if (url.includes('youtube.com/watch?v=')) {
+    videoId = url.split('v=')[1]?.split('&')[0] || videoId;
+  } else if (url.includes('youtu.be/')) {
+    videoId = url.split('youtu.be/')[1]?.split('?')[0] || videoId;
+  }
+  return {
+    videoId,
+    thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+  };
+};
 
 export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   isOpen,
   onClose,
-  onRoomCreated,
 }) => {
   const navigate = useNavigate();
+  const { addRoom } = useRooms();
   const [title, setTitle] = useState('');
   const [mediaUrl, setMediaUrl] = useState('https://www.youtube.com/watch?v=4xDzrJKXOOY');
   const [category, setCategory] = useState<CategoryType>('music');
@@ -45,6 +58,8 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
 
+    const ytDetails = extractYouTubeDetails(mediaUrl);
+
     const newRoom: Room = {
       id: `room-${Date.now()}`,
       title: title.trim(),
@@ -54,9 +69,9 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       host_avatar: CURRENT_USER.avatar_url,
       is_private: isPrivate,
       member_count: 1,
-      current_media_url: mediaUrl,
-      current_media_title: 'Custom party stream',
-      current_media_thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+      current_media_url: mediaUrl.trim() || 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
+      current_media_title: title.trim(),
+      current_media_thumbnail: ytDetails.thumbnail,
       playback_position_seconds: 0,
       is_playing: true,
       allow_guest_queue: allowGuestQueue,
@@ -64,7 +79,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       created_at: new Date().toISOString(),
     };
 
-    onRoomCreated(newRoom);
+    addRoom(newRoom);
     showSuccess('Party Room Created!');
     onClose();
     navigate(`/room/${newRoom.id}`);
@@ -99,7 +114,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
           <div className="space-y-1.5">
             <Label htmlFor="mediaUrl" className="text-xs font-semibold text-slate-300">
-              Initial YouTube or Stream URL
+              YouTube Video or Stream URL
             </Label>
             <Input
               id="mediaUrl"

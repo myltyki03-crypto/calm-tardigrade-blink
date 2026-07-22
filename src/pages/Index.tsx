@@ -4,13 +4,13 @@ import { RoomCard } from '@/components/RoomCard';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
 import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
-import { CategoryType, Room } from '@/types/rave';
-import { INITIAL_ROOMS } from '@/data/mockRaveData';
+import { CategoryType } from '@/types/rave';
+import { useRooms } from '@/context/RoomContext';
 import { Sparkles, Radio, Music, Film, Tv, Gamepad2, PlayCircle, Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 
 const Index = () => {
-  const [rooms, setRooms] = useState<Room[]>(INITIAL_ROOMS);
+  const { rooms } = useRooms();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   
@@ -27,10 +27,6 @@ const Index = () => {
     { id: 'gaming', label: 'Gaming', icon: Gamepad2 },
     { id: 'livestream', label: 'Live Streams', icon: Radio },
   ];
-
-  const handleRoomCreated = (newRoom: Room) => {
-    setRooms([newRoom, ...rooms]);
-  };
 
   const filteredRooms = rooms.filter((r) => {
     const matchesCategory = activeCategory === 'all' || r.category === activeCategory;
@@ -116,7 +112,6 @@ const Index = () => {
       <CreateRoomModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-        onRoomCreated={handleRoomCreated}
       />
       <FriendsDrawer
         isOpen={isFriendsDrawerOpen}

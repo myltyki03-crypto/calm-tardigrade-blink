@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Shield, Share2, Sparkles } from 'lucide-react';
+import { ArrowLeft, Users, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Navbar } from '@/components/Navbar';
 import { MediaPlayer } from '@/components/MediaPlayer';
@@ -8,24 +8,39 @@ import { RoomChat } from '@/components/RoomChat';
 import { RoomQueue } from '@/components/RoomQueue';
 import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
-import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE, CURRENT_USER } from '@/data/mockRaveData';
+import { CreateRoomModal } from '@/components/CreateRoomModal';
+import { CURRENT_USER } from '@/data/mockRaveData';
 import { ChatMessage, QueueItem } from '@/types/rave';
+import { useRooms } from '@/context/RoomContext';
 import { showSuccess } from '@/utils/toast';
 
 export const RoomPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { getRoomById, messagesByRoom, sendMessage, queueByRoom, addQueueItem, voteQueueItem } = useRooms();
 
-  const room = INITIAL_ROOMS.find((r) => r.id === id) || INITIAL_ROOMS[0];
-  const isHost = room.host_id === CURRENT_USER.id;
+  const room = id ? getRoomById(id) : undefined;
 
-  const [messages, setMessages] = useState<ChatMessage[]>(INITIAL_MESSAGES);
-  const [queue, setQueue] = useState<QueueItem[]>(INITIAL_QUEUE);
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
-
-  // Modals state
   const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  if (!room) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
+        <h2 className="text-2xl font-bold mb-2">Room not found</h2>
+        <p className="text-slate-400 text-sm mb-4">The party room you are looking for does not exist or has ended.</p>
+        <Button onClick={() => navigate('/')} className="bg-purple-600 hover:bg-purple-500">
+          Back to Party List
+        </Button>
+      </div>
+    );
+  }
+
+  const isHost = room.host_id === CURRENT_USER.id;
+  const roomMessages = messagesByRoom[room.id] || [];
+  const roomQueue = queueByRoom[room.id] || [];
 
   const handleSendReaction = (emoji: string) => {
     const reactionObj = {
@@ -50,7 +65,7 @@ export const RoomPage = () => {
       type: 'chat',
       created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
-    setMessages((prev) => [...prev, newMsg]);
+    sendMessage(room.id, newMsg);
   };
 
   const handleAddQueueItem = (url: string) => {
@@ -59,23 +74,22 @@ export const RoomPage = () => {
       room_id: room.id,
       title: 'Requested Video Track',
       url: url,
+      duration_seconds: 200,
       added_by_name: CURRENT_USER.username,
       votes: 1,
       created_at: new Date().toISOString(),
     };
-    setQueue((prev) => [...prev, newItem]);
+    addQueueItem(room.id, newItem);
   };
 
   const handleVoteItem = (itemId: string) => {
-    setQueue((prev) =>
-      prev.map((item) => (item.id === itemId ? { ...item, votes: item.votes + 1 } : item))
-    );
+    voteQueueItem(room.id, itemId);
   };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       <Navbar
-        onOpenCreateModal={() => {}}
+        onOpenCreateModal={() => setIsCreateModalOpen(true)}
         onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
@@ -118,7 +132,7 @@ export const RoomPage = () => {
             <div>
               <h2 className="text-lg font-bold text-slate-100">{room.title}</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Hosted by <span className="text-pink-400 font-medium">{room.host_name}</span> • {room.description}
+                Hosted by <span className="text-pink-400 font-medium">{room.host_name}</span> {room.description ? `• ${room.description}` : ''}
               </p>
             </div>
 
@@ -134,14 +148,14 @@ export const RoomPage = () => {
         <div className="lg:col-span-4 flex flex-col gap-4 h-[650px] lg:h-auto">
           <div className="h-1/2 flex-1">
             <RoomChat
-              messages={messages}
+              messages={roomMessages}
               onSendMessage={handleSendMessage}
               floatingReactions={floatingReactions}
             />
           </div>
           <div className="h-1/2 flex-1">
             <RoomQueue
-              queue={queue}
+              queue={roomQueue}
               onAddQueueItem={handleAddQueueItem}
               onVoteItem={handleVoteItem}
               isHost={isHost}
@@ -157,6 +171,10 @@ export const RoomPage = () => {
       <SqlSchemaDialog
         isOpen={isSqlModalOpen}
         onClose={() => setIsSqlModalOpen(false)}
+      />
+      <CreateRoomModal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
       />
     </div>
   );
