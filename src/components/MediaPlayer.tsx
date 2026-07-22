@@ -164,14 +164,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="relative flex flex-col rounded-2xl border border-purple-900/40 bg-slate-950 overflow-hidden shadow-2xl">
+    <div className="relative flex flex-col rounded-2xl border border-purple-900/40 bg-slate-950 overflow-hidden shadow-2xl select-none">
       {/* Video Container Frame */}
-      <div className="relative aspect-video w-full bg-black overflow-hidden group">
+      <div className="relative aspect-video w-full bg-black overflow-hidden group select-none">
         <iframe
           ref={iframeRef}
           src={embedUrl}
           title={room.current_media_title || 'Media Stream'}
-          className="h-full w-full object-cover border-0 pointer-events-none"
+          className="h-full w-full border-0 select-none"
           allow="autoplay; encrypted-media"
         />
 
