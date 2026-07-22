@@ -485,7 +485,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           fetchRoomMembers();
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        console.log('Global Realtime Subscription status:', status, err);
+      });
 
     const interval = setInterval(() => {
       fetchRooms();
@@ -493,7 +495,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fetchQueue();
       fetchRoomMembers();
       fetchFriendData();
-    }, 3000);
+    }, 2500);
 
     return () => {
       clearInterval(interval);

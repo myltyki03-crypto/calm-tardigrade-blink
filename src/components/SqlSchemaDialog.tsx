@@ -25,7 +25,7 @@ interface SqlSchemaDialogProps {
 }
 
 const FULL_SQL_SCHEMA = `-- ==========================================
--- PULSERAVE COMPLETE SUPABASE DATABASE SETUP
+-- PULSERAVE COMPLETE SUPABASE DATABASE SETUP (REALTIME FIX)
 -- Скопируйте этот код и запустите в Supabase -> SQL Editor -> Run
 -- ==========================================
 
@@ -127,27 +127,39 @@ create table public.direct_messages (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
-alter table public.profiles enable row level security;
-alter table public.rooms enable row level security;
-alter table public.queue_items enable row level security;
-alter table public.chat_messages enable row level security;
-alter table public.room_members enable row level security;
-alter table public.friend_requests enable row level security;
-alter table public.direct_messages enable row level security;
+-- Выдача полных прав роли anon (так как используется кастомная авторизация без JWT)
+grant all on table public.profiles to anon, authenticated, service_role;
+grant all on table public.rooms to anon, authenticated, service_role;
+grant all on table public.queue_items to anon, authenticated, service_role;
+grant all on table public.chat_messages to anon, authenticated, service_role;
+grant all on table public.room_members to anon, authenticated, service_role;
+grant all on table public.friend_requests to anon, authenticated, service_role;
+grant all on table public.direct_messages to anon, authenticated, service_role;
 
-create policy "Public Profiles Policy" on public.profiles for all using (true) with check (true);
-create policy "Public Rooms Policy" on public.rooms for all using (true) with check (true);
-create policy "Public Queue Policy" on public.queue_items for all using (true) with check (true);
-create policy "Public Chat Policy" on public.chat_messages for all using (true) with check (true);
-create policy "Public Members Policy" on public.room_members for all using (true) with check (true);
-create policy "Public Friend Requests Policy" on public.friend_requests for all using (true) with check (true);
-create policy "Public Direct Messages Policy" on public.direct_messages for all using (true) with check (true);
+-- Отключение RLS, чтобы WAL декодер Realtime не блокировал анонимные подписки
+alter table public.profiles disable row level security;
+alter table public.rooms disable row level security;
+alter table public.queue_items disable row level security;
+alter table public.chat_messages disable row level security;
+alter table public.room_members disable row level security;
+alter table public.friend_requests disable row level security;
+alter table public.direct_messages disable row level security;
 
+-- Установка REPLICA IDENTITY FULL
+alter table public.profiles replica identity full;
+alter table public.rooms replica identity full;
+alter table public.queue_items replica identity full;
+alter table public.chat_messages replica identity full;
+alter table public.room_members replica identity full;
+alter table public.friend_requests replica identity full;
+alter table public.direct_messages replica identity full;
+
+-- Добавление всех таблиц в публикацию Supabase Realtime
+alter publication supabase_realtime add table public.profiles;
 alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.chat_messages;
 alter publication supabase_realtime add table public.queue_items;
 alter publication supabase_realtime add table public.room_members;
-alter publication supabase_realtime add table public.profiles;
 alter publication supabase_realtime add table public.friend_requests;
 alter publication supabase_realtime add table public.direct_messages;
 `;
