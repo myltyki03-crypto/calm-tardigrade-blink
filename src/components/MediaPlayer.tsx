@@ -340,7 +340,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        {/* Iframe контейнер с отключенным pointer-events для исключения проявления подсказок YouTube */}
+        {/* Iframe контейнер */}
         <div ref={playerContainerRef} className="h-full w-full pointer-events-none scale-[1.04]" />
 
         <div
@@ -376,7 +376,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/90 backdrop-blur-md p-1 rounded-full border border-purple-800/40 transition-opacity duration-300 ${
+          className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/30 transition-opacity duration-300 ${
             showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
         >
@@ -392,16 +392,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      {/* Нижняя сплошная плашка управления */}
+      {/* Прозрачная нижняя плашка управления с мягким темным градиентом */}
       <div
         onClick={(e) => e.stopPropagation()}
-        className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-slate-950/95 backdrop-blur-md border-t border-purple-900/40 flex flex-col gap-2 transition-all duration-300 ${
+        className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/90 via-slate-950/50 to-transparent flex flex-col gap-2 transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
         {/* Timeline */}
         <div className="flex items-center gap-2 px-1">
-          <span className="text-[10px] font-mono text-purple-300 w-10">
+          <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
             {formatTime(currentTime)}
           </span>
           <Slider
@@ -412,7 +412,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             onValueChange={(val) => handleSeek(val[0])}
             className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
           />
-          <span className="text-[10px] font-mono text-slate-400 w-10 text-right">
+          <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
             {formatTime(duration)}
           </span>
         </div>
@@ -428,7 +428,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
                 isHost
                   ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-400'
+                  : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400'
               }`}
             >
               {isPlaying ? (
@@ -444,7 +444,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             <div className="flex items-center gap-2">
               <button
                 onClick={handleToggleMute}
-                className="text-slate-400 hover:text-slate-200 transition-colors"
+                className="text-slate-200 hover:text-white transition-colors drop-shadow"
               >
                 {isMuted || volume === 0 ? (
                   <VolumeX className="h-4 w-4 text-red-400" />
@@ -459,14 +459,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 onValueChange={(val) => handleVolumeChange(val[0])}
                 className="w-16 sm:w-24 cursor-pointer"
               />
-              <span className="text-[10px] font-mono text-slate-400 w-6 hidden sm:inline">
+              <span className="text-[10px] font-mono text-slate-300 w-6 hidden sm:inline font-bold drop-shadow">
                 {isMuted ? '0%' : `${volume}%`}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="hidden md:inline-block truncate max-w-[150px] lg:max-w-[220px] text-xs font-semibold text-purple-200 mr-2">
+            <span className="hidden md:inline-block truncate max-w-[150px] lg:max-w-[220px] text-xs font-semibold text-purple-200 mr-2 drop-shadow">
               {room.current_media_title || 'Playing Stream'}
             </span>
 
@@ -474,8 +474,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               onClick={toggleCaptions}
               size="icon"
               variant="ghost"
-              className={`h-8 w-8 rounded-lg text-slate-300 hover:text-white ${
-                isCaptionsOn ? 'bg-pink-950/60 text-pink-400 border border-pink-500/50' : 'hover:bg-slate-800/80'
+              className={`h-8 w-8 rounded-lg text-slate-200 hover:text-white ${
+                isCaptionsOn ? 'bg-pink-950/80 text-pink-400 border border-pink-500/50' : 'hover:bg-slate-900/60'
               }`}
               title="Subtitles / CC"
             >
@@ -487,13 +487,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/80"
+                  className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
                   title="Player Settings"
                 >
                   <Settings className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-48 bg-slate-900 border-purple-900/60 p-2 text-slate-200 text-xs shadow-xl">
+              <PopoverContent className="w-48 bg-slate-900/95 backdrop-blur-md border-purple-900/60 p-2 text-slate-200 text-xs shadow-xl">
                 <div className="font-semibold text-purple-300 px-2 py-1 mb-1 border-b border-purple-950">
                   Playback Speed
                 </div>
@@ -516,7 +516,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               onClick={toggleFullscreen}
               size="icon"
               variant="ghost"
-              className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/80"
+              className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
               title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             >
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
