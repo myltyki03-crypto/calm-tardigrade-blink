@@ -43,7 +43,6 @@ export const RoomPage = () => {
     addQueueItem,
     voteQueueItem,
     changeRoomMedia,
-    removeQueueItem,
     deleteRoom,
   } = useRooms();
 
@@ -135,7 +134,7 @@ export const RoomPage = () => {
     }
     const ytDetails = extractYouTubeDetails(item.url);
     changeRoomMedia(room.id, item.url, item.title, ytDetails.thumbnail);
-    removeQueueItem(room.id, item.id);
+    // Не удаляем трек из плейлиста, сохраняем его
     showSuccess(`Now playing: ${item.title}`);
   };
 
@@ -309,6 +308,7 @@ export const RoomPage = () => {
           <div className={`h-full flex-1 ${activeMobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomQueue
               queue={roomQueue}
+              currentMediaUrl={room.current_media_url}
               onAddQueueItem={handleAddQueueItem}
               onVoteItem={handleVoteItem}
               onPlayNow={handlePlayQueueItem}

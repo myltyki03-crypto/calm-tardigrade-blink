@@ -28,13 +28,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     'room-1': INITIAL_MESSAGES,
   });
 
-  const [queueByRoom, setQueueByRoom] = useState<Record<string, QueueItem[]>>({
-    'room-1': INITIAL_QUEUE,
+  const [queueByRoom, setQueueByRoom] = useState<Record<string, QueueItem[]>>(() => {
+    const saved = localStorage.getItem('pulserave_queue');
+    return saved ? JSON.parse(saved) : { 'room-1': INITIAL_QUEUE };
   });
 
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
+
+  useEffect(() => {
+    localStorage.setItem('pulserave_queue', JSON.stringify(queueByRoom));
+  }, [queueByRoom]);
 
   const addRoom = (newRoom: Room) => {
     setRooms((prev) => [newRoom, ...prev]);
