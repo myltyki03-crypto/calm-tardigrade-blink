@@ -1,5 +1,5 @@
-import React from 'react';
-import { Users, UserPlus, Send } from 'lucide-react';
+import React, { useState } from 'react';
+import { Users, UserPlus, Send, Check, X, Trash2, Clock } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -8,7 +8,9 @@ import {
   SheetDescription,
 } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
-import { MOCK_FRIENDS } from '@/data/mockRaveData';
+import { Input } from '@/components/ui/input';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useRooms } from '@/context/RoomContext';
 import { showSuccess } from '@/utils/toast';
 
 interface FriendsDrawerProps {
@@ -17,95 +19,224 @@ interface FriendsDrawerProps {
 }
 
 export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose }) => {
-  const handleInvite = (friendName: string) => {
-    showSuccess(`Приглашение отправлено пользователю ${friendName}!`);
+  const {
+    currentUser,
+    friendsList,
+    friendRequests,
+    sendFriendRequest,
+    acceptFriendRequest,
+    rejectFriendRequest,
+    removeFriend,
+  } = useRooms();
+
+  const [targetUsername, setTargetUsername] = useState('');
+  const [isSending, setIsSending] = useState(false);
+
+  // Фильтруем входящие заявки текущему пользователю
+  const incomingRequests = friendRequests.filter(
+    (r) => r.receiver_id === currentUser.id && r.status === 'pending'
+  );
+
+  // Фильтруем исходящие оставшиеся заявки
+  const outgoingRequests = friendRequests.filter(
+    (r) => r.sender_id === currentUser.id && r.status === 'pending'
+  );
+
+  const handleAddSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!targetUsername.trim()) return;
+
+    setIsSending(true);
+    const success = await sendFriendRequest(targetUsername.trim());
+    setIsSending(false);
+
+    if (success) {
+      setTargetUsername('');
+    }
+  };
+
+  const handleInviteToRoom = (friendName: string) => {
+    navigator.clipboard.writeText(window.location.href);
+    showSuccess(`Ссылка на вашу комнату скопирована для ${friendName}!`);
   };
 
   const handleShareLink = () => {
     navigator.clipboard.writeText(window.location.origin);
-    showSuccess('Ссылка на вечеринку скопирована в буфер обмена!');
+    showSuccess('Ссылка на PULSERAVE скопирована в буфер обмена!');
   };
 
   return (
     <Sheet open={isOpen} onOpenChange={onClose}>
-      <SheetContent className="bg-slate-900 text-slate-100 border-purple-900/60 w-full sm:max-w-xs">
-        <SheetHeader className="pb-3 border-b border-purple-900/40">
+      <SheetContent className="bg-slate-900 text-slate-100 border-purple-900/60 w-full sm:max-w-sm flex flex-col p-4">
+        <SheetHeader className="pb-3 border-b border-purple-900/40 shrink-0">
           <SheetTitle className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 flex items-center gap-2">
-            <Users className="h-4 w-4 text-pink-500" /> Друзья и вечеринки
+            <Users className="h-4 w-4 text-pink-500" /> Друзья и заявки
           </SheetTitle>
           <SheetDescription className="text-slate-400 text-xs">
-            Смотрите, кто онлайн, и приглашайте друзей в вашу комнату.
+            Добавляйте друзей по нику и приглашайте их смотреть видео вместе.
           </SheetDescription>
         </SheetHeader>
 
-        <div className="py-4 space-y-4">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-              Друзья онлайн ({MOCK_FRIENDS.length})
-            </span>
-            <Button
-              onClick={handleShareLink}
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs border-purple-800 text-purple-300 hover:bg-purple-950"
-            >
-              <UserPlus className="h-3 w-3 mr-1" /> Ссылка
-            </Button>
-          </div>
+        {/* Форма отправки заявки по нику */}
+        <form onSubmit={handleAddSubmit} className="pt-3 pb-2 border-b border-purple-900/30 flex gap-2 shrink-0">
+          <Input
+            placeholder="Никнейм пользователя..."
+            value={targetUsername}
+            onChange={(e) => setTargetUsername(e.target.value)}
+            className="bg-slate-950 border-purple-900/60 text-xs text-slate-100 placeholder:text-slate-500 h-9 rounded-xl focus:border-pink-500"
+          />
+          <Button
+            type="submit"
+            disabled={isSending}
+            className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs h-9 px-3 rounded-xl font-bold shrink-0 gap-1"
+          >
+            <UserPlus className="h-3.5 w-3.5" /> Добавить
+          </Button>
+        </form>
 
-          {MOCK_FRIENDS.length === 0 ? (
-            <div className="text-center py-10 px-2 space-y-3 bg-slate-950/50 rounded-2xl border border-purple-950">
-              <Users className="h-8 w-8 text-purple-500/50 mx-auto" />
-              <p className="text-xs text-slate-400 font-medium">Сейчас нет друзей в сети.</p>
-              <p className="text-[11px] text-slate-500">
-                Поделитесь ссылкой на комнату с друзьями, чтобы смотреть видео вместе!
-              </p>
-              <Button
-                onClick={handleShareLink}
-                size="sm"
-                className="bg-pink-600 hover:bg-pink-500 text-white text-xs h-8 rounded-xl w-full"
-              >
-                Скопировать ссылку-приглашение
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {MOCK_FRIENDS.map((friend) => (
-                <div
-                  key={friend.id}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/70 border border-purple-950 hover:border-purple-800/40 transition-colors"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="relative">
-                      <img
-                        src={friend.avatar_url}
-                        alt={friend.username}
-                        className="h-8 w-8 rounded-full object-cover"
-                      />
-                      {friend.is_online && (
-                        <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-slate-200">{friend.username}</p>
-                      <p className="text-[10px] text-slate-400 truncate max-w-[110px]">
-                        {friend.status_message}
-                      </p>
-                    </div>
-                  </div>
+        <ScrollArea className="flex-1 pr-1 py-2">
+          <div className="space-y-4">
+            {/* Секция: Входящие заявки */}
+            {incomingRequests.length > 0 && (
+              <div className="space-y-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-pink-400 flex items-center gap-1">
+                  <Clock className="h-3 w-3" /> Входящие заявки ({incomingRequests.length})
+                </span>
 
-                  <Button
-                    onClick={() => handleInvite(friend.username)}
-                    size="sm"
-                    className="h-7 text-[11px] px-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg"
-                  >
-                    <Send className="h-3 w-3 mr-1" /> Позвать
-                  </Button>
+                <div className="space-y-1.5">
+                  {incomingRequests.map((req) => (
+                    <div
+                      key={req.id}
+                      className="p-2.5 rounded-xl bg-purple-950/60 border border-pink-500/40 flex items-center justify-between gap-2"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <img
+                          src={req.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(req.sender_name)}`}
+                          alt={req.sender_name}
+                          className="h-8 w-8 rounded-full object-cover shrink-0 ring-1 ring-pink-500"
+                        />
+                        <div className="min-w-0">
+                          <p className="text-xs font-bold text-white truncate">{req.sender_name}</p>
+                          <p className="text-[10px] text-pink-300">Хочет добавиться в друзья</p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          onClick={() => acceptFriendRequest(req.id)}
+                          size="icon"
+                          className="h-7 w-7 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg"
+                          title="Принять"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          onClick={() => rejectFriendRequest(req.id)}
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-slate-400 hover:text-red-400 hover:bg-red-950/40 rounded-lg"
+                          title="Отклонить"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              </div>
+            )}
+
+            {/* Секция: Исходящие заявки */}
+            {outgoingRequests.length > 0 && (
+              <div className="space-y-1.5">
+                <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider">
+                  Отправленные заявки ({outgoingRequests.length})
+                </span>
+                {outgoingRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="p-2 rounded-lg bg-slate-950/40 border border-purple-950 flex items-center justify-between text-xs text-slate-400"
+                  >
+                    <span>Заявка для <strong className="text-slate-200">{req.receiver_name}</strong></span>
+                    <span className="text-[10px] text-amber-400">Ожидает ответа</span>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Секция: Список друзей */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-xs font-semibold uppercase text-slate-300 tracking-wider">
+                  Мои друзья ({friendsList.length})
+                </span>
+                <Button
+                  onClick={handleShareLink}
+                  size="sm"
+                  variant="ghost"
+                  className="h-6 text-[10px] text-purple-300 hover:bg-purple-950 px-2"
+                >
+                  Ссылка
+                </Button>
+              </div>
+
+              {friendsList.length === 0 ? (
+                <div className="text-center py-8 px-2 space-y-2 bg-slate-950/50 rounded-2xl border border-purple-950">
+                  <Users className="h-7 w-7 text-purple-500/40 mx-auto" />
+                  <p className="text-xs text-slate-300 font-medium">У вас пока нет друзей</p>
+                  <p className="text-[11px] text-slate-500">
+                    Введите логин друга в поле выше, чтобы отправить заявку!
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {friendsList.map((friend) => (
+                    <div
+                      key={friend.id}
+                      className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/70 border border-purple-950 hover:border-purple-800/40 transition-colors"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <div className="relative shrink-0">
+                          <img
+                            src={friend.avatar_url}
+                            alt={friend.username}
+                            className="h-8 w-8 rounded-full object-cover"
+                          />
+                          <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-xs font-semibold text-slate-200 truncate">{friend.username}</p>
+                          <p className="text-[10px] text-emerald-400 font-mono">
+                            В сети
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <Button
+                          onClick={() => handleInviteToRoom(friend.username)}
+                          size="sm"
+                          className="h-7 text-[11px] px-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg gap-1"
+                        >
+                          <Send className="h-3 w-3" /> Позвать
+                        </Button>
+                        <Button
+                          onClick={() => removeFriend(friend.id)}
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-slate-500 hover:text-red-400 hover:bg-red-950/30 rounded-lg"
+                          title="Удалить из друзей"
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        </ScrollArea>
       </SheetContent>
     </Sheet>
   );

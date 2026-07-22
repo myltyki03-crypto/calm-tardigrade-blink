@@ -18,6 +18,17 @@ export interface RegisteredAccount extends UserProfile {
   created_at: string;
 }
 
+export interface FriendRequest {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_avatar?: string;
+  receiver_id: string;
+  receiver_name: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+}
+
 export interface QueueItem {
   id: string;
   room_id: string;
@@ -76,5 +87,5 @@ export interface Room {
   allow_guest_queue: boolean;
   allow_guest_control: boolean;
   created_at: string;
-  skip_votes?: string[]; // Массив user_id проголосовавших за пропуск
+  skip_votes?: string[];
 }
