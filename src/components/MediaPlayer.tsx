@@ -38,6 +38,20 @@ interface MediaPlayerProps {
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
+const QUALITY_LABELS: Record<string, string> = {
+  auto: 'Автомат',
+  hd2160: '2160p (4K)',
+  hd1440: '1440p (2K)',
+  hd1080: '1080p HD',
+  hd720: '720p HD',
+  large: '480p',
+  medium: '360p',
+  small: '240p',
+  tiny: '144p',
+};
+
+const DEFAULT_QUALITIES = ['auto', 'hd1080', 'hd720', 'large', 'medium', 'small', 'tiny'];
+
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   room,
   isHost,
@@ -57,6 +71,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isCaptionsOn, setIsCaptionsOn] = useState(false);
   const [currentSpeed, setCurrentSpeed] = useState(1);
+  const [currentQuality, setCurrentQuality] = useState('auto');
+  const [availableQualities, setAvailableQualities] = useState<string[]>(DEFAULT_QUALITIES);
   const [showControls, setShowControls] = useState(true);
 
   const [currentTime, setCurrentTime] = useState(0);
@@ -85,6 +101,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   const videoId = getYouTubeVideoId(room.current_media_url);
+
+  const updateQualityLevels = () => {
+    if (ytPlayerRef.current?.getAvailableQualityLevels) {
+      const levels: string[] = ytPlayerRef.current.getAvailableQualityLevels();
+      if (levels && levels.length > 0) {
+        const uniqueLevels = Array.from(new Set(['auto', ...levels]));
+        setAvailableQualities(uniqueLevels);
+      }
+    }
+    if (ytPlayerRef.current?.getPlaybackQuality) {
+      const q = ytPlayerRef.current.getPlaybackQuality();
+      if (q && q !== 'unknown') {
+        setCurrentQuality(q);
+      }
+    }
+  };
 
   useEffect(() => {
     if (!window.YT) {
@@ -136,11 +168,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             }
             const dur = event.target.getDuration();
             if (dur && dur > 0) setDuration(dur);
+
+            updateQualityLevels();
           },
           onStateChange: (event: any) => {
             if (event.data === 1) {
               setIsPlaying(true);
               setNeedUserGesture(false);
+              updateQualityLevels();
             } else if (event.data === 2) {
               setIsPlaying(false);
             }
@@ -317,6 +352,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     if (ytPlayerRef.current?.setPlaybackRate) {
       ytPlayerRef.current.setPlaybackRate(speed);
       showSuccess(`Скорость: ${speed}x`);
+    }
+  };
+
+  const handleQualityChange = (quality: string) => {
+    setCurrentQuality(quality);
+    if (ytPlayerRef.current) {
+      if (ytPlayerRef.current.setPlaybackQuality) {
+        ytPlayerRef.current.setPlaybackQuality(quality);
+      }
+      if (ytPlayerRef.current.setPlaybackQualityRange) {
+        ytPlayerRef.current.setPlaybackQualityRange(quality, quality);
+      }
+      showSuccess(`Качество: ${QUALITY_LABELS[quality] || quality}`);
     }
   };
 
@@ -562,16 +610,38 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                   <Settings className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
-              <PopoverContent className="w-48 bg-slate-900/95 backdrop-blur-md border-purple-900/60 p-2 text-slate-200 text-xs shadow-xl">
-                <div className="font-semibold text-purple-300 px-2 py-1 mb-1 border-b border-purple-950">
-                  Скорость воспроизведения
+              <PopoverContent className="w-52 bg-slate-900/95 backdrop-blur-md border-purple-900/60 p-2 text-slate-200 text-xs shadow-xl max-h-72 overflow-y-auto">
+                {/* Качество видео */}
+                <div className="font-semibold text-pink-400 px-2 py-1 mb-1 border-b border-purple-950 flex items-center justify-between">
+                  <span>Качество видео</span>
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    {QUALITY_LABELS[currentQuality] || currentQuality}
+                  </span>
+                </div>
+                <div className="space-y-0.5 mb-3">
+                  {availableQualities.map((qual) => (
+                    <button
+                      key={qual}
+                      onClick={() => handleQualityChange(qual)}
+                      className="w-full flex items-center justify-between px-2 py-1 rounded-md hover:bg-purple-950/60 transition-colors text-left"
+                    >
+                      <span>{QUALITY_LABELS[qual] || qual}</span>
+                      {currentQuality === qual && <Check className="h-3.5 w-3.5 text-pink-400" />}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Скорость воспроизведения */}
+                <div className="font-semibold text-purple-300 px-2 py-1 mb-1 border-b border-purple-950 flex items-center justify-between">
+                  <span>Скорость</span>
+                  <span className="text-[10px] text-slate-400 font-normal">{currentSpeed}x</span>
                 </div>
                 <div className="space-y-0.5">
                   {PLAYBACK_SPEEDS.map((speed) => (
                     <button
                       key={speed}
                       onClick={() => handleSpeedChange(speed)}
-                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-purple-950/60 transition-colors text-left"
+                      className="w-full flex items-center justify-between px-2 py-1 rounded-md hover:bg-purple-950/60 transition-colors text-left"
                     >
                       <span>{speed === 1 ? 'Обычная (1x)' : `${speed}x`}</span>
                       {currentSpeed === speed && <Check className="h-3.5 w-3.5 text-pink-400" />}
