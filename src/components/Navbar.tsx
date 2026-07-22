@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Plus, Users, Database, Wifi, WifiOff } from 'lucide-react';
+import { Play, Plus, Users, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRooms } from '@/context/RoomContext';
@@ -9,13 +9,12 @@ import { isSupabaseConfigured } from '@/lib/supabase';
 interface NavbarProps {
   onOpenCreateModal: () => void;
   onOpenFriendsDrawer: () => void;
-  onOpenSqlModal: () => void;
+  onOpenSqlModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateModal,
   onOpenFriendsDrawer,
-  onOpenSqlModal,
 }) => {
   const navigate = useNavigate();
   const { currentUser } = useRooms();
@@ -57,16 +56,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 md:gap-3">
-          <Button
-            onClick={onOpenSqlModal}
-            variant="outline"
-            size="sm"
-            className="hidden sm:flex border-purple-800/50 bg-purple-950/20 text-purple-300 hover:bg-purple-900/40 hover:text-white gap-1.5 text-xs h-8"
-          >
-            <Database className="h-3.5 w-3.5 text-cyan-400" />
-            <span>SQL</span>
-          </Button>
-
           <Button
             onClick={onOpenFriendsDrawer}
             variant="ghost"
