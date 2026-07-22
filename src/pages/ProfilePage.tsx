@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Radio, Edit3, User, Upload, RefreshCw, MessageSquare, Image, LogOut, Trash2 } from 'lucide-react';
+import { ArrowLeft, Clock, Radio, Edit3, User, Upload, RefreshCw, MessageSquare, Image, LogOut, Trash2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -26,12 +26,10 @@ export const ProfilePage = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [username, setUsername] = useState(currentUser.username);
   const [statusMessage, setStatusMessage] = useState(currentUser.status_message || '');
   const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url || getDefaultAvatar(currentUser.username));
 
   const handleOpenEdit = () => {
-    setUsername(currentUser.username);
     setStatusMessage(currentUser.status_message || '');
     setAvatarUrl(currentUser.avatar_url || getDefaultAvatar(currentUser.username));
     setIsEditModalOpen(true);
@@ -57,19 +55,17 @@ export const ProfilePage = () => {
   };
 
   const handleResetToDefaultAvatar = () => {
-    const defaultImg = getDefaultAvatar(username || 'raver');
+    const defaultImg = getDefaultAvatar(currentUser.username || 'raver');
     setAvatarUrl(defaultImg);
     showSuccess('Установлена аватарка по умолчанию');
   };
 
   const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!username.trim()) return;
 
-    const finalAvatar = avatarUrl.trim() || getDefaultAvatar(username);
+    const finalAvatar = avatarUrl.trim() || getDefaultAvatar(currentUser.username);
 
     const success = await updateUserProfile({
-      username: username.trim(),
       status_message: statusMessage.trim(),
       avatar_url: finalAvatar,
     });
@@ -186,22 +182,26 @@ export const ProfilePage = () => {
               Редактирование профиля
             </DialogTitle>
             <DialogDescription className="text-slate-400 text-xs">
-              Загрузите фото с компьютера или используйте стандартный аватар.
+              Вы можете изменить статус и фото профиля.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSaveProfile} className="space-y-4 py-2">
             <div className="space-y-1.5">
-              <Label htmlFor="username" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <User className="h-3.5 w-3.5 text-pink-400" /> Имя пользователя
+              <Label htmlFor="username" className="text-xs font-semibold text-slate-400 flex items-center justify-between">
+                <span className="flex items-center gap-1.5">
+                  <User className="h-3.5 w-3.5 text-slate-500" /> Имя пользователя (Ник)
+                </span>
+                <span className="text-[10px] text-slate-500 flex items-center gap-1 font-normal">
+                  <Lock className="h-3 w-3 text-slate-500" /> Ник нельзя изменить
+                </span>
               </Label>
               <Input
                 id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Введите имя..."
-                className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
-                required
+                value={currentUser.username}
+                disabled
+                readOnly
+                className="bg-slate-950/50 border-purple-950/50 text-slate-400 text-xs cursor-not-allowed select-none"
               />
             </div>
 
@@ -234,11 +234,11 @@ export const ProfilePage = () => {
               <div className="flex items-center gap-3">
                 <div className="h-16 w-16 rounded-full overflow-hidden ring-2 ring-pink-500/50 bg-slate-950 shrink-0">
                   <img
-                    src={avatarUrl || getDefaultAvatar(username)}
+                    src={avatarUrl || getDefaultAvatar(currentUser.username)}
                     alt="Превью"
                     className="h-full w-full object-cover"
                     onError={(e) => {
-                      (e.target as HTMLImageElement).src = getDefaultAvatar(username);
+                      (e.target as HTMLImageElement).src = getDefaultAvatar(currentUser.username);
                     }}
                   />
                 </div>

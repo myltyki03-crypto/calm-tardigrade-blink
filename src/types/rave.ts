@@ -18,28 +18,6 @@ export interface RegisteredAccount extends UserProfile {
   created_at: string;
 }
 
-export interface FriendRequest {
-  id: string;
-  sender_id: string;
-  sender_name: string;
-  sender_avatar?: string;
-  receiver_id: string;
-  receiver_name: string;
-  status: 'pending' | 'accepted' | 'rejected';
-  created_at: string;
-}
-
-export interface DirectMessage {
-  id: string;
-  sender_id: string;
-  sender_name: string;
-  sender_avatar?: string;
-  receiver_id: string;
-  receiver_name: string;
-  message: string;
-  created_at: string;
-}
-
 export interface QueueItem {
   id: string;
   room_id: string;
