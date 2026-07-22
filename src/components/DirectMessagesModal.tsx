@@ -11,7 +11,6 @@ import {
   ArrowLeft,
   Image as ImageIcon,
   Mic,
-  Square,
   Trash2,
 } from 'lucide-react';
 import {
@@ -72,7 +71,6 @@ const formatDateHeader = (timeStr?: string) => {
   }
 };
 
-// Функция сжатия загруженных фотографий
 const compressImage = (file: File): Promise<string> => {
   return new Promise((resolve) => {
     const reader = new FileReader();
@@ -128,7 +126,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   const [mobileShowChat, setMobileShowChat] = useState<boolean>(false);
   const [fullImagePreview, setFullImagePreview] = useState<string | null>(null);
 
-  // Запись голосового сообщения
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -140,7 +137,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
 
   const myName = currentUser.username.toLowerCase();
 
-  // Формируем список уникальных собеседников
   const conversationUsersMap = new Map<string, UserProfile>();
 
   directMessages.forEach((msg) => {
@@ -196,7 +192,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
 
   const activeMessages = selectedUser ? getDirectMessagesWith(selectedUser.id, selectedUser.username) : [];
 
-  // Автопрокрутка вниз при отправке или получении нового сообщения
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages.length, mobileShowChat, isRecording]);
@@ -213,7 +208,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     setInputText('');
   };
 
-  // Выбор и отправка фото
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedUser) return;
@@ -234,7 +228,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     }
   };
 
-  // Запуск записи голосового
   const handleStartRecording = async () => {
     if (!selectedUser) return;
     try {
@@ -260,7 +253,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     }
   };
 
-  // Завершение и отправка голосового
   const handleStopAndSendRecording = () => {
     if (!mediaRecorderRef.current) return;
 
@@ -284,7 +276,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
   };
 
-  // Отмена записи
   const handleCancelRecording = () => {
     if (mediaRecorderRef.current) {
       mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
@@ -293,7 +284,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
   };
 
-  // Фильтрация входящих заявок
   const pendingRequests = friendRequests.filter((r) => {
     const isForMe =
       r.receiver_id === currentUser.id ||
@@ -438,7 +428,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                           onClick={() => handleSelectUser(user)}
                           className={`flex items-center justify-between p-3 border-b border-purple-950/50 cursor-pointer transition-all ${
                             isSelected
-                              ? 'bg-purple-950/90 border-pink-500/50'
+                              ? 'bg-purple-900/80 border-pink-500/50'
                               : 'hover:bg-purple-950/30'
                           }`}
                         >
@@ -502,7 +492,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                       </div>
                     </div>
 
-                    <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
+                    <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-slate-950/40">
                       {activeMessages.length === 0 ? (
                         <div className="text-center py-12 text-slate-500 text-xs">
                           Нет сообщений с {selectedUser.username}. Напишите первое сообщение!
@@ -525,7 +515,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                             <React.Fragment key={msg.id}>
                               {showDateDivider && (
                                 <div className="flex justify-center my-3 sticky top-1 z-10">
-                                  <span className="text-[10px] font-bold text-purple-200 bg-slate-950/90 border border-purple-800/60 px-3 py-0.5 rounded-full backdrop-blur-md shadow-md">
+                                  <span className="text-[10px] font-bold text-purple-200 bg-slate-900 border border-purple-800/60 px-3 py-0.5 rounded-full backdrop-blur-md shadow-md">
                                     {dateHeader}
                                   </span>
                                 </div>
@@ -534,8 +524,8 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                                 <div
                                   className={`max-w-[85%] rounded-2xl p-2.5 text-xs leading-relaxed ${
                                     isMe
-                                      ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-tr-none shadow-md'
-                                      : 'bg-slate-950 border border-purple-900/60 text-slate-200 rounded-tl-none'
+                                      ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 text-white rounded-tr-none shadow-md'
+                                      : 'bg-slate-800/90 border border-purple-500/40 text-slate-100 rounded-tl-none shadow-md'
                                   }`}
                                 >
                                   {isPhoto ? (
@@ -550,10 +540,10 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                                   ) : isAudio ? (
                                     <VoicePlayer src={msg.message} isMe={isMe} />
                                   ) : (
-                                    <p className="break-words px-1">{msg.message}</p>
+                                    <p className="break-words px-1 font-medium">{msg.message}</p>
                                   )}
 
-                                  <div className={`text-[9px] mt-1 text-right font-mono ${isMe ? 'text-pink-200/80' : 'text-slate-400'}`}>
+                                  <div className={`text-[9px] mt-1 text-right font-mono ${isMe ? 'text-pink-100' : 'text-slate-300'}`}>
                                     {formatMsgTime(msg.created_at)}
                                   </div>
                                 </div>
@@ -565,7 +555,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                       <div ref={messagesEndRef} />
                     </div>
 
-                    {/* Панель ввода или записи голосового */}
                     <div className="p-2 border-t border-purple-900/40 bg-slate-950 flex items-center gap-2 shrink-0">
                       <input
                         ref={fileInputRef}
@@ -660,7 +649,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
         </DialogContent>
       </Dialog>
 
-      {/* Просмотр фото на весь экран */}
       {fullImagePreview && (
         <Dialog open={Boolean(fullImagePreview)} onOpenChange={() => setFullImagePreview(null)}>
           <DialogContent className="bg-slate-950/95 border-purple-900/60 p-2 sm:max-w-3xl flex flex-col items-center justify-center">

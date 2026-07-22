@@ -100,17 +100,17 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="flex items-center gap-3 py-1.5 px-1 min-w-[210px] sm:min-w-[240px]">
+    <div className="flex items-center gap-3 py-1 px-1 min-w-[210px] sm:min-w-[240px]">
       <audio ref={audioRef} src={src} preload="auto" />
 
       {/* Кнопка Play / Pause */}
       <button
         type="button"
         onClick={togglePlay}
-        className={`relative h-10 w-10 rounded-full flex items-center justify-center shrink-0 transition-all duration-200 shadow-lg active:scale-95 ${
+        className={`relative h-10 w-10 rounded-full flex items-center justify-center shrink-0 transition-all duration-200 shadow-md active:scale-95 ${
           isMe
-            ? 'bg-white text-pink-600 hover:bg-slate-100 shadow-pink-900/30'
-            : 'bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:opacity-90 shadow-purple-950/50'
+            ? 'bg-white text-pink-600 hover:bg-slate-100'
+            : 'bg-gradient-to-r from-pink-500 via-purple-500 to-cyan-400 text-white hover:opacity-95'
         }`}
       >
         {isPlaying ? (
@@ -118,23 +118,20 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
         ) : (
           <Play className="h-4 w-4 fill-current ml-0.5" />
         )}
-        {isPlaying && (
-          <span className="absolute -inset-1 rounded-full border border-pink-400/60 animate-ping pointer-events-none" />
-        )}
       </button>
 
       <div className="flex-1 flex flex-col justify-center min-w-0">
         <div className="flex items-center justify-between mb-1.5">
           <span className={`text-[11px] font-bold flex items-center gap-1 ${isMe ? 'text-white' : 'text-pink-300'}`}>
-            <Volume2 className="h-3 w-3 text-cyan-400" /> Голосовое
+            <Volume2 className="h-3.5 w-3.5 text-cyan-300" /> Голосовое
           </span>
-          <span className={`text-[10px] font-mono font-semibold ${isMe ? 'text-pink-100' : 'text-slate-300'}`}>
+          <span className={`text-[10px] font-mono font-bold ${isMe ? 'text-pink-100' : 'text-cyan-200'}`}>
             {isPlaying ? formatTime(currentTime) : formatTime(duration)}
           </span>
         </div>
 
-        {/* Шкала воспроизведения с высоким контрастом */}
-        <div className="relative flex items-center w-full h-2 rounded-full bg-slate-950/60 p-0.5 border border-purple-800/40 overflow-hidden">
+        {/* Шкала воспроизведения */}
+        <div className="relative flex items-center w-full h-2 rounded-full bg-slate-900/80 p-0.5 border border-purple-400/40 overflow-hidden">
           <div
             className="h-full rounded-full bg-gradient-to-r from-pink-500 via-purple-400 to-cyan-400 transition-all duration-75"
             style={{ width: `${progressPercent}%` }}
