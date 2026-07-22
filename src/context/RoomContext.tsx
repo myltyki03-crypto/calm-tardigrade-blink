@@ -7,8 +7,8 @@ import { showSuccess, showError } from '@/utils/toast';
 interface RoomContextType {
   currentUser: UserProfile;
   isLoggedIn: boolean;
-  registerUser: (username: string, password_hash: string, avatar_url?: string) => boolean;
-  loginUser: (username: string, password_hash: string) => boolean;
+  registerUser: (username: string, password_hash: string, avatar_url?: string) => Promise<boolean>;
+  loginUser: (username: string, password_hash: string) => Promise<boolean>;
   logoutUser: () => void;
   updateUserProfile: (updated: Partial<UserProfile>) => void;
   rooms: Room[];
@@ -97,13 +97,28 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser, isLoggedIn]);
 
-  const registerUser = (username: string, password_hash: string, avatar_url?: string): boolean => {
+  const registerUser = async (username: string, password_hash: string, avatar_url?: string): Promise<boolean> => {
     const cleanName = username.trim();
-    const existing = accounts.find((a) => a.username.toLowerCase() === cleanName.toLowerCase());
 
-    if (existing) {
+    // 1. Проверяем локальный список
+    const existingLocal = accounts.find((a) => a.username.toLowerCase() === cleanName.toLowerCase());
+    if (existingLocal) {
       showError('Пользователь с таким логином уже существует');
       return false;
+    }
+
+    // 2. Если Supabase подключен - проверяем наличие в облаке
+    if (isSupabaseConfigured && supabase) {
+      const { data } = await supabase
+        .from('profiles')
+        .select('*')
+        .ilike('username', cleanName)
+        .maybeSingle();
+
+      if (data) {
+        showError('Пользователь с таким логином уже зарегистрирован в облаке!');
+        return false;
+      }
     }
 
     const userId = 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
@@ -125,25 +140,70 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoggedIn(true);
 
     if (isSupabaseConfigured && supabase) {
-      supabase.from('profiles').upsert([
+      const { error } = await supabase.from('profiles').upsert([
         {
           id: newAcc.id,
           username: newAcc.username,
           avatar_url: newAcc.avatar_url,
           status_message: newAcc.status_message,
+          password_hash: newAcc.password_hash,
         },
       ]);
+      if (error) {
+        console.error('Ошибка сохранения профиля в Supabase:', error);
+      }
     }
 
     showSuccess(`Аккаунт ${cleanName} успешно зарегистрирован!`);
     return true;
   };
 
-  const loginUser = (username: string, password_hash: string): boolean => {
+  const loginUser = async (username: string, password_hash: string): Promise<boolean> => {
     const cleanName = username.trim();
-    const found = accounts.find(
+
+    // 1. Проверяем локальные аккаунты
+    let found = accounts.find(
       (a) => a.username.toLowerCase() === cleanName.toLowerCase() && a.password_hash === password_hash
     );
+
+    // 2. Если локально не найден, но Supabase подключен — ищем в облаке Supabase!
+    if (!found && isSupabaseConfigured && supabase) {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('*')
+        .ilike('username', cleanName)
+        .maybeSingle();
+
+      if (data && !error) {
+        if (data.password_hash === password_hash || !data.password_hash) {
+          found = {
+            id: data.id,
+            username: data.username,
+            password_hash: password_hash,
+            avatar_url: data.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(data.username)}`,
+            is_online: true,
+            status_message: data.status_message || 'В ритме вечеринки 🎧',
+            is_vip: Boolean(data.is_vip),
+            watch_time_minutes: data.watch_time_minutes || 0,
+            parties_hosted: data.parties_hosted || 0,
+            created_at: data.created_at || new Date().toISOString(),
+          };
+
+          // Добавляем аккаунт в локальный массив устройства
+          setAccounts((prev) => {
+            if (!prev.some((a) => a.id === found!.id)) {
+              return [...prev, found!];
+            }
+            return prev;
+          });
+
+          // Если в БД не было записано пароля (старая регистрация), обновляем пароль
+          if (!data.password_hash) {
+            await supabase.from('profiles').update({ password_hash }).eq('id', data.id);
+          }
+        }
+      }
+    }
 
     if (!found) {
       showError('Неверный логин или пароль');
@@ -255,7 +315,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchQueue();
     fetchMembers();
 
-    // Supabase Realtime канал для мгновенной передачи изменений мотки между устройствами
     const channel = supabase
       .channel('rooms_realtime')
       .on(

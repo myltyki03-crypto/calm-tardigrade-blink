@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Lock, LogIn, UserPlus, Sparkles, ShieldCheck } from 'lucide-react';
+import { User, Lock, LogIn, UserPlus, Sparkles, ShieldCheck, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ interface AuthModalProps {
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const { registerUser, loginUser } = useRooms();
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('register');
+  const [isLoading, setIsLoading] = useState(false);
 
   // Форма входа
   const [loginUsername, setLoginUsername] = useState('');
@@ -32,22 +33,27 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
   const [regPassword, setRegPassword] = useState('');
   const [regConfirmPassword, setRegConfirmPassword] = useState('');
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!loginUsername.trim() || !loginPassword.trim()) {
       showError('Заполните все поля');
       return;
     }
 
-    const success = loginUser(loginUsername.trim(), loginPassword.trim());
-    if (success) {
-      setLoginUsername('');
-      setLoginPassword('');
-      onClose();
+    setIsLoading(true);
+    try {
+      const success = await loginUser(loginUsername.trim(), loginPassword.trim());
+      if (success) {
+        setLoginUsername('');
+        setLoginPassword('');
+        onClose();
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent) => {
+  const handleRegisterSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!regUsername.trim() || !regPassword.trim()) {
       showError('Заполните логин и пароль');
@@ -64,14 +70,19 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       return;
     }
 
-    const defaultAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(regUsername.trim())}`;
-    const success = registerUser(regUsername.trim(), regPassword.trim(), defaultAvatar);
+    setIsLoading(true);
+    try {
+      const defaultAvatar = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(regUsername.trim())}`;
+      const success = await registerUser(regUsername.trim(), regPassword.trim(), defaultAvatar);
 
-    if (success) {
-      setRegUsername('');
-      setRegPassword('');
-      setRegConfirmPassword('');
-      onClose();
+      if (success) {
+        setRegUsername('');
+        setRegPassword('');
+        setRegConfirmPassword('');
+        onClose();
+      }
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -157,9 +168,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs h-9 rounded-xl shadow-lg shadow-pink-500/20 mt-2"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs h-9 rounded-xl shadow-lg shadow-pink-500/20 mt-2 gap-1.5"
               >
-                Зарегистрироваться
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Зарегистрироваться'}
               </Button>
             </form>
           </TabsContent>
@@ -198,9 +210,10 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
 
               <Button
                 type="submit"
-                className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs h-9 rounded-xl shadow-lg shadow-pink-500/20 mt-2"
+                disabled={isLoading}
+                className="w-full bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs h-9 rounded-xl shadow-lg shadow-pink-500/20 mt-2 gap-1.5"
               >
-                Войти в аккаунт
+                {isLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Войти в аккаунт'}
               </Button>
             </form>
           </TabsContent>

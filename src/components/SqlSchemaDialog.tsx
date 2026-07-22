@@ -43,6 +43,7 @@ create table public.profiles (
   is_vip boolean default false,
   watch_time_minutes integer default 0,
   parties_hosted integer default 0,
+  password_hash text,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -123,7 +124,6 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
   const [copied, setCopied] = useState(false);
   const activeConfig = getActiveSupabaseConfig();
 
-  // Авто-подстановка сохраненных данных или переданного ранее ключа
   const [supabaseUrl, setSupabaseUrl] = useState(activeConfig.url || '');
   const [supabaseKey, setSupabaseKey] = useState(
     activeConfig.key || 'sb_publishable_2GZpwssfzVzCtIvMHeYOrA_3Q_RRJXO'
@@ -174,7 +174,6 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
           </DialogDescription>
         </DialogHeader>
 
-        {/* Яркая форма ввода ключей прямо вверху */}
         <form onSubmit={handleSaveKeys} className="bg-gradient-to-b from-purple-950/80 to-slate-950 p-4 rounded-2xl border-2 border-pink-500/50 space-y-3 shadow-xl">
           <div className="font-bold text-sm text-pink-400 flex items-center gap-2">
             <Key className="h-4 w-4 text-cyan-400" /> 1. Введите ключи проекта Supabase:
@@ -232,7 +231,6 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
           </div>
         </form>
 
-        {/* Инструкция по SQL */}
         <div className="bg-slate-950 p-3.5 rounded-xl border border-purple-900/60 space-y-2 text-xs mt-2">
           <div className="font-bold text-slate-200 flex items-center gap-1.5">
             <Terminal className="h-4 w-4 text-purple-400" /> 2. Запустите этот SQL в Supabase (SQL Editor):
