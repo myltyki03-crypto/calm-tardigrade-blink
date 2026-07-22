@@ -9,7 +9,6 @@ import {
   Minimize,
   Lock,
   Tv,
-  SkipForward,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -36,7 +35,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   isHost,
   floatingReactions = [],
 }) => {
-  const { updateRoomProgress, voteToSkip } = useRooms();
+  const { updateRoomProgress } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
@@ -394,7 +393,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const currentHostname = window.location.hostname || 'localhost';
-  const skipVotesCount = room.skip_votes?.length || 0;
 
   return (
     <div
@@ -453,7 +451,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
         />
 
-        {/* Левый верхний блок синхронизации и пропуска */}
+        {/* Левый верхний блок синхронизации */}
         {!isFullscreen && !needUserGesture && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
@@ -474,19 +472,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 Синхронизировать
               </Button>
             )}
-
-            {/* Кнопка Skip Vote (Голосование за пропуск) */}
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                voteToSkip(room.id);
-              }}
-              size="sm"
-              className="h-7 text-[11px] px-2.5 bg-pink-950/90 border border-pink-500/50 text-pink-300 hover:bg-pink-900 rounded-full shadow-lg backdrop-blur-md font-bold gap-1"
-            >
-              <SkipForward className="h-3 w-3 text-pink-400" />
-              <span>Пропустить ({skipVotesCount})</span>
-            </Button>
           </div>
         )}
 
