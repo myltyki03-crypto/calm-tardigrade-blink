@@ -25,8 +25,8 @@ interface SqlSchemaDialogProps {
 }
 
 const FULL_SQL_SCHEMA = `-- ==========================================
--- PULSERAVE COMPLETE SUPABASE DATABASE SETUP (SAFE)
--- Скопируйте и запустите в Supabase -> SQL Editor -> Run
+-- PULSERAVE COMPLETE SUPABASE DATABASE SETUP & RLS FIX
+-- Выполните в Supabase -> SQL Editor -> Run
 -- ==========================================
 
 create table if not exists public.profiles (
@@ -119,16 +119,7 @@ create table if not exists public.direct_messages (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- Выдача прав
-grant all on table public.profiles to anon, authenticated, service_role;
-grant all on table public.rooms to anon, authenticated, service_role;
-grant all on table public.queue_items to anon, authenticated, service_role;
-grant all on table public.chat_messages to anon, authenticated, service_role;
-grant all on table public.room_members to anon, authenticated, service_role;
-grant all on table public.friend_requests to anon, authenticated, service_role;
-grant all on table public.direct_messages to anon, authenticated, service_role;
-
--- Отключение RLS
+-- ПРИНУДИТЕЛЬНОЕ ОТКЛЮЧЕНИЕ RLS (Убирает ошибку "violates row-level security policy")
 alter table public.profiles disable row level security;
 alter table public.rooms disable row level security;
 alter table public.queue_items disable row level security;
@@ -137,7 +128,16 @@ alter table public.room_members disable row level security;
 alter table public.friend_requests disable row level security;
 alter table public.direct_messages disable row level security;
 
--- Настройка REPLICA IDENTITY
+-- ВЫДАЧА ПРАВ
+grant all on table public.profiles to anon, authenticated, service_role;
+grant all on table public.rooms to anon, authenticated, service_role;
+grant all on table public.queue_items to anon, authenticated, service_role;
+grant all on table public.chat_messages to anon, authenticated, service_role;
+grant all on table public.room_members to anon, authenticated, service_role;
+grant all on table public.friend_requests to anon, authenticated, service_role;
+grant all on table public.direct_messages to anon, authenticated, service_role;
+
+-- Настройка REPLICA IDENTITY для мгновенных сообщений
 alter table public.profiles replica identity full;
 alter table public.rooms replica identity full;
 alter table public.queue_items replica identity full;
@@ -146,7 +146,7 @@ alter table public.room_members replica identity full;
 alter table public.friend_requests replica identity full;
 alter table public.direct_messages replica identity full;
 
--- Публикация в Realtime
+-- Добавление в Realtime
 alter publication supabase_realtime add table public.profiles;
 alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.chat_messages;
