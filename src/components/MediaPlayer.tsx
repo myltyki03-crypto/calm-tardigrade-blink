@@ -167,9 +167,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
     window.addEventListener('message', handleMessage);
 
+    // Запрашиваем состояние плеера и длительность каждые 500мс
     const pingInterval = setInterval(() => {
       sendPlayerCommand('listening', []);
-    }, 1000);
+      sendPlayerCommand('getDuration', []);
+      sendPlayerCommand('getCurrentTime', []);
+    }, 500);
 
     return () => {
       window.removeEventListener('message', handleMessage);
@@ -182,6 +185,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   useEffect(() => {
     setCurrentTime(0);
     setDuration(0);
+    // Сразу запрашиваем длительность нового видео
+    setTimeout(() => {
+      sendPlayerCommand('listening', []);
+      sendPlayerCommand('getDuration', []);
+    }, 300);
   }, [videoId]);
 
   // Переключение воспроизведения/паузы
@@ -224,14 +232,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Эффективная длительность (если YouTube еще не вернул точный duration)
-  const effectiveDuration = duration > 0 ? duration : 300;
-
   // Промотка видео на точную секунду
   const handleSeek = (newProgressPercent: number) => {
-    const targetSeconds = (newProgressPercent / 100) * effectiveDuration;
-    setCurrentTime(targetSeconds);
-    sendPlayerCommand('seekTo', [targetSeconds, true]);
+    if (duration > 0) {
+      const targetSeconds = (newProgressPercent / 100) * duration;
+      setCurrentTime(targetSeconds);
+      sendPlayerCommand('seekTo', [targetSeconds, true]);
+    }
   };
 
   // Пересинхронизация
@@ -251,7 +258,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressPercent = effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div
@@ -344,7 +351,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             className="flex-1 cursor-pointer"
           />
           <span className="text-[10px] font-mono text-slate-400 w-10 text-right">
-            {formatTime(effectiveDuration)}
+            {formatTime(duration)}
           </span>
         </div>
 
