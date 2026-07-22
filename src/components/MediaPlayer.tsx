@@ -12,6 +12,7 @@ import {
   Subtitles,
   Check,
   Lock,
+  VolumeUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -49,7 +50,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Рефы для защиты от частых авто-перемоток у гостей
   const lastAutoSeekTimeRef = useRef<number>(0);
   const lastHostSyncSaveRef = useRef<number>(0);
 
@@ -63,8 +63,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+  const [needUserGesture, setNeedUserGesture] = useState(false);
 
-  // Расчет примерного текущего времени с учетом времени изменения у хоста
   const getCalculatedHostTime = () => {
     let startSec = room.playback_position_seconds || 0;
     if (room.is_playing && room.last_updated_at) {
@@ -116,19 +116,25 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           rel: 0,
           iv_load_policy: 3,
           autohide: 1,
+          playsinline: 1, // ВАЖНО ДЛЯ МОБИЛЬНЫХ ТЕЛЕФОНОВ (iOS / Android)
           start: Math.floor(startSec),
           origin: window.location.origin,
         },
         events: {
           onReady: (event: any) => {
-            if (room.is_playing) {
-              event.target.playVideo();
-            } else {
-              event.target.pauseVideo();
-            }
             event.target.setVolume(volume);
             if (startSec > 0) {
               event.target.seekTo(startSec, true);
+            }
+            if (room.is_playing) {
+              const playPromise = event.target.playVideo();
+              if (playPromise && typeof playPromise.catch === 'function') {
+                playPromise.catch(() => {
+                  setNeedUserGesture(true);
+                });
+              }
+            } else {
+              event.target.pauseVideo();
             }
             const dur = event.target.getDuration();
             if (dur && dur > 0) setDuration(dur);
@@ -136,6 +142,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           onStateChange: (event: any) => {
             if (event.data === 1) {
               setIsPlaying(true);
+              setNeedUserGesture(false);
             } else if (event.data === 2) {
               setIsPlaying(false);
             }
@@ -162,15 +169,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setCurrentTime(cur);
 
           if (isHost) {
-            // Хост отправляет свой прогресс в базу раз в 8 секунд
             if (now - lastHostSyncSaveRef.current > 8000) {
               lastHostSyncSaveRef.current = now;
               const playerState = ytPlayerRef.current.getPlayerState?.();
               updateRoomProgress(room.id, cur, playerState === 1);
             }
           } else {
-            // Умная синхронизация для Гостя:
-            // Корректируем только при сильном отставании (>6 сек) и не чаще чем раз в 8 секунд!
             const targetHostTime = getCalculatedHostTime();
             const timeDiff = Math.abs(cur - targetHostTime);
 
@@ -199,7 +203,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   useEffect(() => {
     if (!isHost && ytPlayerRef.current) {
       if (room.is_playing && !isPlaying) {
-        ytPlayerRef.current.playVideo();
+        const p = ytPlayerRef.current.playVideo();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => setNeedUserGesture(true));
+        }
         setIsPlaying(true);
       } else if (!room.is_playing && isPlaying) {
         ytPlayerRef.current.pauseVideo();
@@ -234,6 +241,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, []);
 
+  const handleMobileUnlockClick = () => {
+    if (ytPlayerRef.current) {
+      const syncTime = getCalculatedHostTime();
+      ytPlayerRef.current.unMute();
+      ytPlayerRef.current.setVolume(volume || 80);
+      ytPlayerRef.current.seekTo(syncTime, true);
+      ytPlayerRef.current.playVideo();
+      setIsMuted(false);
+      setIsPlaying(true);
+      setNeedUserGesture(false);
+      showSuccess('Видео и звук запущены!');
+    }
+  };
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
 
@@ -261,6 +282,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   const handleVideoAreaClick = () => {
+    if (needUserGesture) {
+      handleMobileUnlockClick();
+      return;
+    }
     setShowControls((prev) => !prev);
   };
 
@@ -288,6 +313,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   const handleTogglePlay = () => {
+    if (needUserGesture) {
+      handleMobileUnlockClick();
+      return;
+    }
+
     if (!isHost) {
       showError('Только владелец комнаты может управлять воспроизведением!');
       return;
@@ -387,7 +417,24 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           className="absolute inset-0 z-10 cursor-pointer"
         />
 
-        {!isFullscreen && (
+        {/* Кнопка запуска видео для мобильных устройств, если мобильный браузер заблокировал автовоспроизведение */}
+        {(needUserGesture || (!isPlaying && room.is_playing && !isHost)) && (
+          <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
+            <Button
+              onClick={handleMobileUnlockClick}
+              size="lg"
+              className="bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs sm:text-sm h-11 px-6 rounded-2xl shadow-xl shadow-pink-500/40 animate-bounce gap-2"
+            >
+              <Play className="h-5 w-5 fill-white" />
+              <span>Нажмите для запуска видео и звука</span>
+            </Button>
+            <p className="text-[11px] text-slate-400 mt-2">
+              Мобильный браузер требует клика для старта трансляции со звуком
+            </p>
+          </div>
+        )}
+
+        {!isFullscreen && !needUserGesture && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
               showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
