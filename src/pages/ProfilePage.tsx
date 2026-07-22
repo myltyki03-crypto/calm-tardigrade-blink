@@ -62,20 +62,22 @@ export const ProfilePage = () => {
     showSuccess('Установлена аватарка по умолчанию');
   };
 
-  const handleSaveProfile = (e: React.FormEvent) => {
+  const handleSaveProfile = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) return;
 
     const finalAvatar = avatarUrl.trim() || getDefaultAvatar(username);
 
-    updateUserProfile({
+    const success = await updateUserProfile({
       username: username.trim(),
       status_message: statusMessage.trim(),
       avatar_url: finalAvatar,
     });
 
-    showSuccess('Профиль успешно обновлен!');
-    setIsEditModalOpen(false);
+    if (success) {
+      showSuccess('Профиль успешно обновлен!');
+      setIsEditModalOpen(false);
+    }
   };
 
   const handleLogout = () => {
@@ -256,7 +258,7 @@ export const ProfilePage = () => {
               </Button>
               <Button
                 type="submit"
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-semibold text-xs"
               >
                 Сохранить
               </Button>

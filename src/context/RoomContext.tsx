@@ -11,7 +11,7 @@ interface RoomContextType {
   registerUser: (username: string, password_hash: string, avatar_url?: string) => Promise<boolean>;
   loginUser: (username: string, password_hash: string) => Promise<boolean>;
   logoutUser: () => void;
-  updateUserProfile: (updated: Partial<UserProfile>) => void;
+  updateUserProfile: (updated: Partial<UserProfile>) => Promise<boolean>;
   rooms: Room[];
   isRoomsLoaded: boolean;
   refreshRooms: () => Promise<void>;
@@ -530,7 +530,36 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return null;
   };
 
-  const updateUserProfile = async (updated: Partial<UserProfile>) => {
+  const updateUserProfile = async (updated: Partial<UserProfile>): Promise<boolean> => {
+    if (updated.username) {
+      const cleanName = updated.username.trim();
+      if (cleanName.toLowerCase() !== currentUser.username.toLowerCase()) {
+        // Проверка в локальных аккаунтах
+        const isTakenLocal = accounts.some(
+          (acc) => acc.id !== currentUser.id && acc.username.toLowerCase() === cleanName.toLowerCase()
+        );
+        if (isTakenLocal) {
+          showError('Имя пользователя уже занято!');
+          return false;
+        }
+
+        // Проверка в базе Supabase
+        if (isSupabaseConfigured && supabase) {
+          const { data } = await supabase
+            .from('profiles')
+            .select('id, username')
+            .ilike('username', cleanName)
+            .neq('id', currentUser.id)
+            .maybeSingle();
+
+          if (data) {
+            showError('Имя пользователя уже занято другим аккаунтом!');
+            return false;
+          }
+        }
+      }
+    }
+
     const newProfile = { ...currentUser, ...updated };
     setCurrentUser(newProfile);
 
@@ -548,6 +577,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         },
       ]);
     }
+
+    return true;
   };
 
   const addRoom = async (newRoom: Room) => {
