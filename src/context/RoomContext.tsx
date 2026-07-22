@@ -8,9 +8,11 @@ interface RoomContextType {
   currentUser: UserProfile;
   updateUserProfile: (updated: Partial<UserProfile>) => void;
   rooms: Room[];
+  isRoomsLoaded: boolean;
   addRoom: (room: Room) => void;
   deleteRoom: (roomId: string) => void;
   getRoomById: (id: string) => Room | undefined;
+  fetchRoomDirectly: (id: string) => Promise<Room | null>;
   messagesByRoom: Record<string, ChatMessage[]>;
   sendMessage: (roomId: string, message: ChatMessage) => void;
   queueByRoom: Record<string, QueueItem[]>;
@@ -34,6 +36,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : INITIAL_ROOMS;
   });
 
+  const [isRoomsLoaded, setIsRoomsLoaded] = useState<boolean>(!isSupabaseConfigured);
+
   const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({
     'room-1': INITIAL_MESSAGES,
   });
@@ -46,24 +50,27 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Загрузка данных из Supabase и подписка на Realtime изменения
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
+      setIsRoomsLoaded(true);
       return;
     }
 
     const fetchRooms = async () => {
-      const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
-      if (error) {
-        console.error('Error fetching rooms:', error);
-      } else if (data && data.length > 0) {
-        setRooms(data as Room[]);
-      } else if (data && data.length === 0) {
-        // Если таблица пустая, автоматически заполняем начальными комнатами
-        const { error: seedErr } = await supabase.from('rooms').insert(INITIAL_ROOMS);
-        if (!seedErr) {
-          setRooms(INITIAL_ROOMS);
-          // Добавляем стартовые сообщения и очереди
-          await supabase.from('chat_messages').insert(INITIAL_MESSAGES);
-          await supabase.from('queue_items').insert(INITIAL_QUEUE);
+      try {
+        const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
+        if (error) {
+          console.error('Error fetching rooms:', error);
+        } else if (data && data.length > 0) {
+          setRooms(data as Room[]);
+        } else if (data && data.length === 0) {
+          const { error: seedErr } = await supabase.from('rooms').insert(INITIAL_ROOMS);
+          if (!seedErr) {
+            setRooms(INITIAL_ROOMS);
+            await supabase.from('chat_messages').insert(INITIAL_MESSAGES);
+            await supabase.from('queue_items').insert(INITIAL_QUEUE);
+          }
         }
+      } finally {
+        setIsRoomsLoaded(true);
       }
     };
 
@@ -164,6 +171,17 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
+
+  const fetchRoomDirectly = async (id: string): Promise<Room | null> => {
+    if (!isSupabaseConfigured || !supabase) return null;
+    const { data } = await supabase.from('rooms').select('*').eq('id', id).single();
+    if (data) {
+      const fetched = data as Room;
+      setRooms((prev) => [fetched, ...prev.filter((r) => r.id !== fetched.id)]);
+      return fetched;
+    }
+    return null;
+  };
 
   const updateUserProfile = async (updated: Partial<UserProfile>) => {
     const newProfile = { ...currentUser, ...updated };
@@ -302,9 +320,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         currentUser,
         updateUserProfile,
         rooms,
+        isRoomsLoaded,
         addRoom,
         deleteRoom,
         getRoomById,
+        fetchRoomDirectly,
         messagesByRoom,
         sendMessage,
         queueByRoom,

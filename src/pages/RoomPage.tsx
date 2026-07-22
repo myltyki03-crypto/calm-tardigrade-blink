@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2 } from 'lucide-react';
+import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Navbar } from '@/components/Navbar';
@@ -11,7 +11,7 @@ import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
-import { ChatMessage, QueueItem } from '@/types/rave';
+import { ChatMessage, QueueItem, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess, showError } from '@/utils/toast';
 
@@ -36,6 +36,8 @@ export const RoomPage = () => {
   const {
     currentUser,
     getRoomById,
+    fetchRoomDirectly,
+    isRoomsLoaded,
     messagesByRoom,
     sendMessage,
     queueByRoom,
@@ -45,7 +47,28 @@ export const RoomPage = () => {
     deleteRoom,
   } = useRooms();
 
-  const room = id ? getRoomById(id) : undefined;
+  const [directRoom, setDirectRoom] = useState<Room | null>(null);
+  const [isFetchingDirect, setIsFetchingDirect] = useState<boolean>(true);
+
+  const room = (id ? getRoomById(id) : undefined) || directRoom || undefined;
+
+  useEffect(() => {
+    let isMounted = true;
+    if (id && !getRoomById(id)) {
+      setIsFetchingDirect(true);
+      fetchRoomDirectly(id).then((found) => {
+        if (isMounted) {
+          if (found) setDirectRoom(found);
+          setIsFetchingDirect(false);
+        }
+      });
+    } else {
+      setIsFetchingDirect(false);
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [id, isRoomsLoaded]);
 
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('chat');
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
@@ -53,6 +76,15 @@ export const RoomPage = () => {
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  if (!isRoomsLoaded || isFetchingDirect) {
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 space-y-3">
+        <Loader2 className="h-8 w-8 text-pink-500 animate-spin" />
+        <p className="text-slate-400 text-xs font-medium">Connecting to watch party room...</p>
+      </div>
+    );
+  }
 
   if (!room) {
     return (
