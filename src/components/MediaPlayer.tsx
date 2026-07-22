@@ -249,23 +249,25 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           allow="autoplay; encrypted-media; fullscreen"
         />
 
-        {/* Sync Status Floating Badge */}
-        <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
-          <div className="flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md px-3 py-1 text-xs text-white border border-purple-500/40">
-            <Radio className="h-3.5 w-3.5 text-pink-500 animate-pulse" />
-            <span className="font-semibold text-purple-200">LIVE SYNC</span>
-          </div>
+        {/* Sync Status Floating Badge - скрывается в полноэкранном режиме */}
+        {!isFullscreen && (
+          <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md px-3 py-1 text-xs text-white border border-purple-500/40">
+              <Radio className="h-3.5 w-3.5 text-pink-500 animate-pulse" />
+              <span className="font-semibold text-purple-200">LIVE SYNC</span>
+            </div>
 
-          <Button
-            onClick={handleSyncClick}
-            size="sm"
-            variant="outline"
-            className="h-7 text-[11px] px-2.5 bg-slate-950/70 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/50 rounded-full"
-          >
-            <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-            Resync
-          </Button>
-        </div>
+            <Button
+              onClick={handleSyncClick}
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] px-2.5 bg-slate-950/70 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/50 rounded-full"
+            >
+              <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
+              Resync
+            </Button>
+          </div>
+        )}
 
         {/* Floating Quick Reaction Bar */}
         <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/40">
