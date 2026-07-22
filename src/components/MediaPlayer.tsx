@@ -494,11 +494,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* ПАНЕЛЬ РЕАКЦИЙ RAVE ПРЯМО ПОВЕРХ ВИДЕО (Плавающая над управлением) */}
+        {/* ПАНЕЛЬ РЕАКЦИЙ RAVE (По центру снизу над панелью управления) */}
         {onSendReaction && (
           <div
             onClick={(e) => e.stopPropagation()}
-            className={`absolute bottom-16 right-3 z-30 flex items-center gap-1 sm:gap-1.5 p-1.5 rounded-full bg-slate-950/80 border border-pink-500/50 backdrop-blur-md shadow-2xl transition-all duration-300 ${
+            className={`absolute bottom-16 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-2 p-1.5 sm:p-2 rounded-full bg-slate-950/80 border border-pink-500/50 backdrop-blur-md shadow-2xl transition-all duration-300 ${
               showControls ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-90 pointer-events-none'
             }`}
           >
@@ -506,7 +506,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <button
                 key={emoji}
                 onClick={() => onSendReaction(emoji)}
-                className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-purple-950/80 border border-purple-800/50 hover:bg-pink-600 hover:border-pink-400 hover:scale-125 active:scale-90 text-sm sm:text-base flex items-center justify-center transition-all duration-150 shadow"
+                className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-purple-950/80 border border-purple-800/50 hover:bg-pink-600 hover:border-pink-400 hover:scale-125 active:scale-90 text-base sm:text-lg flex items-center justify-center transition-all duration-150 shadow"
                 title={`Запустить реакцию ${emoji}`}
               >
                 {emoji}
