@@ -15,6 +15,7 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateModal,
   onOpenFriendsDrawer,
+  onOpenSqlModal,
 }) => {
   const navigate = useNavigate();
   const { currentUser } = useRooms();
@@ -41,18 +42,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </Link>
 
-        {/* Connection status indicator */}
-        <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border bg-slate-900/80">
+        {/* Connection status indicator (Clickable for Setup) */}
+        <button
+          onClick={onOpenSqlModal}
+          className="hidden lg:flex items-center gap-1.5 text-[11px] font-medium px-3 py-1 rounded-full border bg-slate-900/80 hover:bg-slate-800 transition-colors cursor-pointer border-purple-900/50"
+          title="Нажмите для просмотра инструкций по настройке базы"
+        >
           {isSupabaseConfigured ? (
-            <span className="flex items-center gap-1 text-emerald-400">
+            <span className="flex items-center gap-1 text-emerald-400 font-semibold">
               <Wifi className="h-3 w-3 animate-pulse" /> Supabase Sync Active
             </span>
           ) : (
-            <span className="flex items-center gap-1 text-amber-400" title="Подключите базу данных Supabase для работы межустройствами">
+            <span className="flex items-center gap-1 text-amber-400 font-semibold">
               <WifiOff className="h-3 w-3" /> Offline (Local Mode)
             </span>
           )}
-        </div>
+        </button>
 
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 md:gap-3">
