@@ -20,7 +20,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { CategoryType, Room } from '@/types/rave';
-import { CURRENT_USER } from '@/data/mockRaveData';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess } from '@/utils/toast';
 
@@ -85,7 +84,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   onClose,
 }) => {
   const navigate = useNavigate();
-  const { addRoom } = useRooms();
+  const { addRoom, currentUser } = useRooms();
   const [title, setTitle] = useState('');
   const [mediaUrl, setMediaUrl] = useState('');
   const [category, setCategory] = useState<CategoryType>('music');
@@ -113,9 +112,9 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       id: `room-${Date.now()}`,
       title: title.trim(),
       category: category,
-      host_id: CURRENT_USER.id,
-      host_name: CURRENT_USER.username,
-      host_avatar: CURRENT_USER.avatar_url,
+      host_id: currentUser.id,
+      host_name: currentUser.username,
+      host_avatar: currentUser.avatar_url,
       is_private: isPrivate,
       member_count: 1,
       current_media_url: finalUrl,

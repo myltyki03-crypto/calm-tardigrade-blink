@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
-import { Send, Smile, Mic, MicOff, Flame, Sparkles } from 'lucide-react';
+import { Send, Mic, MicOff, Sparkles } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { ChatMessage } from '@/types/rave';
-import { CURRENT_USER } from '@/data/mockRaveData';
+import { useRooms } from '@/context/RoomContext';
 
 interface RoomChatProps {
   messages: ChatMessage[];
@@ -17,6 +17,7 @@ export const RoomChat: React.FC<RoomChatProps> = ({
   onSendMessage,
   floatingReactions,
 }) => {
+  const { currentUser } = useRooms();
   const [inputText, setInputText] = useState('');
   const [isMicOn, setIsMicOn] = useState(false);
 
@@ -76,7 +77,7 @@ export const RoomChat: React.FC<RoomChatProps> = ({
               );
             }
 
-            const isMe = msg.user_id === CURRENT_USER.id;
+            const isMe = msg.user_id === currentUser.id;
 
             return (
               <div

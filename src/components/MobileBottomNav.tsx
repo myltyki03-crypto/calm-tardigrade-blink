@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Home, Plus, Users, User } from 'lucide-react';
-import { CURRENT_USER } from '@/data/mockRaveData';
+import { Home, Plus, Users } from 'lucide-react';
+import { useRooms } from '@/context/RoomContext';
 
 interface MobileBottomNavProps {
   onOpenCreateModal: () => void;
@@ -14,6 +14,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
+  const { currentUser } = useRooms();
 
   const isHome = location.pathname === '/';
   const isProfile = location.pathname === '/profile';
@@ -55,8 +56,8 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
       >
         <div className={`h-5 w-5 rounded-full overflow-hidden ring-1 ${isProfile ? 'ring-pink-400' : 'ring-purple-900'}`}>
           <img
-            src={CURRENT_USER.avatar_url}
-            alt={CURRENT_USER.username}
+            src={currentUser.avatar_url}
+            alt={currentUser.username}
             className="h-full w-full object-cover"
           />
         </div>

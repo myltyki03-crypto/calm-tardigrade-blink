@@ -12,7 +12,6 @@ import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
-import { CURRENT_USER } from '@/data/mockRaveData';
 import { ChatMessage, QueueItem } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess, showError } from '@/utils/toast';
@@ -36,6 +35,7 @@ export const RoomPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const {
+    currentUser,
     getRoomById,
     messagesByRoom,
     sendMessage,
@@ -71,7 +71,7 @@ export const RoomPage = () => {
     );
   }
 
-  const isHost = room.host_id === CURRENT_USER.id;
+  const isHost = room.host_id === currentUser.id;
   const roomMessages = messagesByRoom[room.id] || [];
   const roomQueue = queueByRoom[room.id] || [];
 
@@ -97,9 +97,9 @@ export const RoomPage = () => {
     const newMsg: ChatMessage = {
       id: `msg-${Date.now()}`,
       room_id: room.id,
-      user_id: CURRENT_USER.id,
-      user_name: CURRENT_USER.username,
-      user_avatar: CURRENT_USER.avatar_url,
+      user_id: currentUser.id,
+      user_name: currentUser.username,
+      user_avatar: currentUser.avatar_url,
       message: text,
       type: 'chat',
       created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -116,7 +116,7 @@ export const RoomPage = () => {
       url: url,
       thumbnail_url: ytDetails.thumbnail,
       duration_seconds: 240,
-      added_by_name: CURRENT_USER.username,
+      added_by_name: currentUser.username,
       votes: 1,
       created_at: new Date().toISOString(),
     };
@@ -134,7 +134,6 @@ export const RoomPage = () => {
     }
     const ytDetails = extractYouTubeDetails(item.url);
     changeRoomMedia(room.id, item.url, item.title, ytDetails.thumbnail);
-    // Не удаляем трек из плейлиста, сохраняем его
     showSuccess(`Now playing: ${item.title}`);
   };
 

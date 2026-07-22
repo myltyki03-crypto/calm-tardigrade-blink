@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Play, Plus, Users, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { CURRENT_USER } from '@/data/mockRaveData';
+import { useRooms } from '@/context/RoomContext';
 
 interface NavbarProps {
   onOpenCreateModal: () => void;
@@ -17,6 +17,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenSqlModal,
 }) => {
   const navigate = useNavigate();
+  const { currentUser } = useRooms();
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-purple-900/40 bg-slate-950/90 backdrop-blur-md">
@@ -78,8 +79,8 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="p-0.5 h-8 w-8 md:h-9 md:w-9 rounded-full ring-2 ring-purple-500/40 hover:ring-purple-400 transition-all overflow-hidden"
           >
             <img
-              src={CURRENT_USER.avatar_url}
-              alt={CURRENT_USER.username}
+              src={currentUser.avatar_url}
+              alt={currentUser.username}
               className="h-full w-full object-cover rounded-full"
             />
           </Button>

@@ -1,8 +1,10 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Room, ChatMessage, QueueItem } from '@/types/rave';
-import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE } from '@/data/mockRaveData';
+import { Room, ChatMessage, QueueItem, UserProfile } from '@/types/rave';
+import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE, CURRENT_USER } from '@/data/mockRaveData';
 
 interface RoomContextType {
+  currentUser: UserProfile;
+  updateUserProfile: (updated: Partial<UserProfile>) => void;
   rooms: Room[];
   addRoom: (room: Room) => void;
   deleteRoom: (roomId: string) => void;
@@ -20,6 +22,11 @@ interface RoomContextType {
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
 
 export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('pulserave_user');
+    return saved ? JSON.parse(saved) : CURRENT_USER;
+  });
+
   const [rooms, setRooms] = useState<Room[]>(() => {
     const saved = localStorage.getItem('pulserave_rooms');
     return saved ? JSON.parse(saved) : INITIAL_ROOMS;
@@ -35,12 +42,20 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   useEffect(() => {
+    localStorage.setItem('pulserave_user', JSON.stringify(currentUser));
+  }, [currentUser]);
+
+  useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
 
   useEffect(() => {
     localStorage.setItem('pulserave_queue', JSON.stringify(queueByRoom));
   }, [queueByRoom]);
+
+  const updateUserProfile = (updated: Partial<UserProfile>) => {
+    setCurrentUser((prev) => ({ ...prev, ...updated }));
+  };
 
   const addRoom = (newRoom: Room) => {
     setRooms((prev) => [newRoom, ...prev]);
@@ -132,6 +147,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <RoomContext.Provider
       value={{
+        currentUser,
+        updateUserProfile,
         rooms,
         addRoom,
         deleteRoom,
