@@ -25,6 +25,7 @@ export interface FriendRequest {
   sender_avatar?: string;
   receiver_id: string;
   receiver_name: string;
+  receiver_avatar?: string;
   status: 'pending' | 'accepted' | 'rejected';
   created_at: string;
 }

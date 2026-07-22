@@ -215,7 +215,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (a) => a.username.toLowerCase() === cleanName.toLowerCase() && a.password_hash === password_hash
     );
 
-    if (!found && isSupabaseConfigured && supabase) {
+    if (isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -238,10 +238,13 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           };
 
           setAccounts((prev) => {
-            if (!prev.some((a) => a.id === found!.id)) {
-              return [...prev, found!];
+            const idx = prev.findIndex((a) => a.username.toLowerCase() === cleanName.toLowerCase());
+            if (idx >= 0) {
+              const updated = [...prev];
+              updated[idx] = found!;
+              return updated;
             }
-            return prev;
+            return [...prev, found!];
           });
         }
       }
@@ -423,13 +426,13 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const markDirectMessagesAsRead = async (friendId: string, friendName: string) => {
     if (!currentUser.id) return;
     const myId = currentUser.id;
-    const myName = currentUser.username.toLowerCase();
-    const friendNameLower = friendName.toLowerCase();
+    const myName = (currentUser.username || '').toLowerCase();
+    const friendNameLower = (friendName || '').toLowerCase();
 
     setDirectMessages((prev) =>
       prev.map((m) => {
-        const isForMe = m.receiver_id === myId || m.receiver_name.toLowerCase() === myName;
-        const isFromFriend = m.sender_id === friendId || m.sender_name.toLowerCase() === friendNameLower;
+        const isForMe = m.receiver_id === myId || (m.receiver_name && m.receiver_name.toLowerCase() === myName);
+        const isFromFriend = m.sender_id === friendId || (m.sender_name && m.sender_name.toLowerCase() === friendNameLower);
         if (isForMe && isFromFriend && !m.is_read) {
           return { ...m, is_read: true };
         }
@@ -494,10 +497,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const existingReq = friendRequests.find(
       (r) =>
-        ((r.sender_id === currentUser.id || r.sender_name.toLowerCase() === myNameLower) &&
-         (r.receiver_id === targetId || r.receiver_name.toLowerCase() === targetNameLower)) ||
-        ((r.sender_id === targetId || r.sender_name.toLowerCase() === targetNameLower) &&
-         (r.receiver_id === currentUser.id || r.receiver_name.toLowerCase() === myNameLower))
+        r &&
+        (((r.sender_id === currentUser.id || (r.sender_name && r.sender_name.toLowerCase() === myNameLower)) &&
+          (r.receiver_id === targetId || (r.receiver_name && r.receiver_name.toLowerCase() === targetNameLower))) ||
+         ((r.sender_id === targetId || (r.sender_name && r.sender_name.toLowerCase() === targetNameLower)) &&
+          (r.receiver_id === currentUser.id || (r.receiver_name && r.receiver_name.toLowerCase() === myNameLower))))
     );
 
     if (existingReq && existingReq.status !== 'rejected') {
@@ -509,6 +513,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
 
+    const targetAvatar = targetUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(targetName)}`;
+
     const newReq: FriendRequest = {
       id: `freq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       sender_id: currentUser.id,
@@ -516,6 +522,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sender_avatar: currentUser.avatar_url,
       receiver_id: targetId,
       receiver_name: targetName,
+      receiver_avatar: targetAvatar,
       status: 'pending',
       created_at: new Date().toISOString(),
     };
@@ -573,24 +580,34 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     showSuccess('Пользователь удален из друзей');
   };
 
-  // Список друзей
-  const myId = currentUser.id;
-  const myName = currentUser.username.toLowerCase();
+  // Безопасный расчет списка друзей
+  const myId = currentUser?.id || '';
+  const myName = (currentUser?.username || '').toLowerCase();
 
   const friendsList: UserProfile[] = friendRequests
     .filter((r) => {
-      if (r.status !== 'accepted') return false;
-      const isSender = r.sender_id === myId || r.sender_name.toLowerCase() === myName;
-      const isReceiver = r.receiver_id === myId || r.receiver_name.toLowerCase() === myName;
+      if (!r || r.status !== 'accepted') return false;
+      if (!myId && !myName) return false;
+
+      const sId = r.sender_id || '';
+      const rId = r.receiver_id || '';
+      const sName = (r.sender_name || '').toLowerCase();
+      const rName = (r.receiver_name || '').toLowerCase();
+
+      const isSender = (myId && sId === myId) || (myName && sName === myName);
+      const isReceiver = (myId && rId === myId) || (myName && rName === myName);
       return isSender || isReceiver;
     })
     .map((r) => {
-      const isSender = r.sender_id === myId || r.sender_name.toLowerCase() === myName;
+      const sId = r.sender_id || '';
+      const sName = (r.sender_name || '').toLowerCase();
+      const isSender = (myId && sId === myId) || (myName && sName === myName);
+
       const friendId = isSender ? r.receiver_id : r.sender_id;
       const friendName = isSender ? r.receiver_name : r.sender_name;
-      const friendAvatar =
-        (isSender ? undefined : r.sender_avatar) ||
-        `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`;
+      const friendAvatar = isSender
+        ? (r.receiver_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`)
+        : (r.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`);
 
       return {
         id: friendId,
@@ -602,12 +619,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
 
   // Подсчет непрочитанных личных сообщений
-  const unreadDirectCount = directMessages.filter(
-    (m) =>
-      (m.receiver_id === myId || m.receiver_name.toLowerCase() === myName) &&
-      m.sender_id !== myId &&
-      !m.is_read
-  ).length;
+  const unreadDirectCount = directMessages.filter((m) => {
+    if (!m || m.is_read) return false;
+    const isForMe = (myId && m.receiver_id === myId) || (myName && m.receiver_name && m.receiver_name.toLowerCase() === myName);
+    const isNotFromMe = m.sender_id !== myId && (!m.sender_name || m.sender_name.toLowerCase() !== myName);
+    return isForMe && isNotFromMe;
+  }).length;
 
   const joinRoomPresence = async (roomId: string) => {
     if (!currentUser.id) return;

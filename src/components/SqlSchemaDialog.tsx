@@ -56,6 +56,7 @@ create table public.friend_requests (
   sender_avatar text,
   receiver_id text not null,
   receiver_name text not null,
+  receiver_avatar text,
   status text default 'pending',
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );

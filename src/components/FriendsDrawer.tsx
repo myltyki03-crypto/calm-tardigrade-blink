@@ -37,24 +37,25 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
   const [chatFriend, setChatFriend] = useState<UserProfile | null>(null);
   const [isDirectChatOpen, setIsDirectChatOpen] = useState(false);
 
-  const myId = currentUser.id;
-  const myName = currentUser.username.toLowerCase();
+  const myId = currentUser.id || '';
+  const myName = (currentUser.username || '').toLowerCase();
 
   // Фильтруем входящие заявки текущему пользователю
   const incomingRequests = friendRequests.filter(
     (r) =>
+      r &&
       r.status === 'pending' &&
-      ((r.receiver_id && r.receiver_id === myId) ||
-       (r.receiver_name && r.receiver_name.toLowerCase() === myName)) &&
-      r.sender_id !== myId &&
-      r.sender_name.toLowerCase() !== myName
+      ((myId && r.receiver_id === myId) ||
+       (myName && r.receiver_name && r.receiver_name.toLowerCase() === myName)) &&
+      (r.sender_id !== myId && r.sender_name && r.sender_name.toLowerCase() !== myName)
   );
 
   // Фильтруем исходящие заявки
   const outgoingRequests = friendRequests.filter(
     (r) =>
+      r &&
       r.status === 'pending' &&
-      (r.sender_id === myId || r.sender_name.toLowerCase() === myName)
+      ((myId && r.sender_id === myId) || (myName && r.sender_name && r.sender_name.toLowerCase() === myName))
   );
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -96,7 +97,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
           {!isSupabaseConfigured && (
             <div className="bg-amber-950/60 border border-amber-500/40 p-2 rounded-xl text-[11px] text-amber-200 mt-2 flex items-center gap-2">
               <WifiOff className="h-4 w-4 text-amber-400 shrink-0" />
-              <span>Для связи разных устройств (ПК и телефон) подключите базу Supabase.</span>
+              <span>Для синхронизации между ПК и телефоном подключите Supabase.</span>
             </div>
           )}
 
@@ -111,7 +112,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
             <Button
               type="submit"
               disabled={isSending}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs h-9 px-3 rounded-xl font-bold shrink-0 gap-1"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white text-xs h-9 px-3 rounded-xl font-bold shrink-0 gap-1"
             >
               <UserPlus className="h-3.5 w-3.5" /> Добавить
             </Button>
