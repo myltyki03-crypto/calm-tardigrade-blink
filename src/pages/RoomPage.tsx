@@ -12,7 +12,6 @@ import { RoomQueue } from '@/components/RoomQueue';
 import { RoomMembersList } from '@/components/RoomMembersList';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
-import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { ChatMessage, QueueItem, Room, RoomMember } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess, showError } from '@/utils/toast';
@@ -326,7 +325,7 @@ export const RoomPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-20 md:pb-0 w-full overflow-x-hidden">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans w-full overflow-x-hidden">
       <Navbar
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
@@ -491,7 +490,7 @@ export const RoomPage = () => {
         </div>
 
         {/* 📱 МОБИЛЬНЫЙ КОНТЕНТ ВКЛАДОК */}
-        <div className="lg:hidden flex flex-col h-[460px] w-full">
+        <div className="lg:hidden flex flex-col h-[520px] w-full pb-2">
           {activeMobileTab === 'chat' && (
             <RoomChat
               messages={roomMessages}
@@ -620,10 +619,6 @@ export const RoomPage = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-
-      <MobileBottomNav
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
-      />
 
       <SqlSchemaDialog
         isOpen={isSqlModalOpen}
