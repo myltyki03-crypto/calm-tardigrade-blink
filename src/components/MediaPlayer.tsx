@@ -47,11 +47,28 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isCaptionsOn, setIsCaptionsOn] = useState(false);
+  const isCaptionsOnRef = useRef(false);
   const [showControls, setShowControls] = useState(true);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
+
+  useEffect(() => {
+    isCaptionsOnRef.current = isCaptionsOn;
+  }, [isCaptionsOn]);
+
+  const forceDisableCaptions = () => {
+    if (!isCaptionsOnRef.current && ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.unloadModule?.('captions');
+        ytPlayerRef.current.setOption?.('captions', 'track', {});
+        ytPlayerRef.current.setOption?.('cc', 'track', {});
+      } catch (e) {
+        // Игнорируем внутренние ошибки YouTube API
+      }
+    }
+  };
 
   const getCalculatedHostTime = () => {
     let startSec = room.playback_position_seconds || 0;
@@ -103,7 +120,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           modestbranding: 1,
           rel: 0,
           iv_load_policy: 3,
-          cc_load_policy: 0, // Принудительно выключаем авто-субтитры YouTube
+          cc_load_policy: 0,
           autohide: 1,
           playsinline: 1,
           start: Math.floor(startSec),
@@ -112,11 +129,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         events: {
           onReady: (event: any) => {
             event.target.setVolume(volume);
-            
-            // Выгружаем субтитры если они случайно включились
-            try {
-              event.target.unloadModule?.('captions');
-            } catch (e) {}
+            forceDisableCaptions();
 
             if (startSec > 0) {
               event.target.seekTo(startSec, true);
@@ -135,6 +148,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             if (dur && dur > 0) setDuration(dur);
           },
           onStateChange: (event: any) => {
+            forceDisableCaptions();
             if (event.data === 1) {
               setIsPlaying(true);
               setNeedUserGesture(false);
@@ -159,6 +173,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         const cur = ytPlayerRef.current.getCurrentTime();
         const dur = ytPlayerRef.current.getDuration();
         const now = Date.now();
+
+        if (!isCaptionsOnRef.current) {
+          forceDisableCaptions();
+        }
 
         if (typeof cur === 'number') {
           setCurrentTime(cur);
@@ -230,9 +248,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       setCurrentTime(startSec);
       setDuration(0);
 
-      try {
-        ytPlayerRef.current.unloadModule?.('captions');
-      } catch (e) {}
+      forceDisableCaptions();
 
       if (!room.is_playing) {
         setTimeout(() => ytPlayerRef.current?.pauseVideo?.(), 200);
@@ -261,6 +277,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       setIsMuted(false);
       setIsPlaying(true);
       setNeedUserGesture(false);
+      forceDisableCaptions();
       showSuccess('Видео и звук запущены!');
     }
   };
@@ -302,6 +319,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const toggleCaptions = () => {
     const nextState = !isCaptionsOn;
     setIsCaptionsOn(nextState);
+    isCaptionsOnRef.current = nextState;
+
     if (ytPlayerRef.current) {
       if (nextState) {
         ytPlayerRef.current.loadModule?.('captions');
@@ -309,6 +328,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         showSuccess('Субтитры включены');
       } else {
         ytPlayerRef.current.unloadModule?.('captions');
+        ytPlayerRef.current.setOption?.('captions', 'track', {});
+        ytPlayerRef.current.setOption?.('cc', 'track', {});
         showSuccess('Субтитры выключены');
       }
     }
@@ -335,6 +356,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       ytPlayerRef.current.playVideo();
       setIsPlaying(true);
       updateRoomProgress(room.id, currentTime, true);
+      forceDisableCaptions();
       showSuccess('Воспроизведение запущенно!');
     }
   };
@@ -389,6 +411,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         ytPlayerRef.current.playVideo();
         setIsPlaying(true);
       }
+      forceDisableCaptions();
       showSuccess('Синхронизировано!');
     }
   };
