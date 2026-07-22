@@ -37,6 +37,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(room.is_playing);
   const [volume, setVolume] = useState(80);
@@ -44,6 +45,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isCaptionsOn, setIsCaptionsOn] = useState(false);
   const [currentSpeed, setCurrentSpeed] = useState(1);
+  const [showControls, setShowControls] = useState(true);
 
   // Real video playback state
   const [currentTime, setCurrentTime] = useState(0);
@@ -102,6 +104,23 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  // Автоматическое скрытие плеера через 3.5 секунды бездействия
+  const handleUserActivity = () => {
+    setShowControls(true);
+    if (controlsTimeoutRef.current) {
+      clearTimeout(controlsTimeoutRef.current);
+    }
+    controlsTimeoutRef.current = setTimeout(() => {
+      if (isPlaying) {
+        setShowControls(false);
+      }
+    }, 3500);
+  };
+
+  const handleVideoAreaClick = () => {
+    setShowControls((prev) => !prev);
+  };
+
   // Переключение субтитров
   const toggleCaptions = () => {
     const nextState = !isCaptionsOn;
@@ -155,6 +174,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return () => {
       window.removeEventListener('message', handleMessage);
       clearInterval(pingInterval);
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     };
   }, [videoId]);
 
@@ -235,12 +255,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   return (
     <div
       ref={containerRef}
-      className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all ${
-        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border border-purple-900/40 shadow-2xl'
+      onMouseMove={handleUserActivity}
+      onClick={handleUserActivity}
+      className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${
+        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border border-purple-900/40 shadow-2xl aspect-video'
       }`}
     >
       {/* Video Container Frame */}
-      <div className="relative aspect-video w-full bg-black overflow-hidden group select-none flex-1">
+      <div className="relative w-full h-full bg-black overflow-hidden flex-1">
         <iframe
           ref={iframeRef}
           src={embedUrl}
@@ -249,9 +271,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           allow="autoplay; encrypted-media; fullscreen"
         />
 
-        {/* Sync Status Floating Badge - скрывается в полноэкранном режиме */}
+        {/* Clickable Overlay to Toggle Controls */}
+        <div
+          onClick={handleVideoAreaClick}
+          className="absolute inset-0 z-10 cursor-pointer"
+        />
+
+        {/* Sync Status Floating Badge - скрывается в полноэкранном режиме и при отсутствии активности */}
         {!isFullscreen && (
-          <div className="absolute top-3 left-3 z-20 flex items-center gap-2">
+          <div
+            className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
+              showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+            }`}
+          >
             <div className="flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md px-3 py-1 text-xs text-white border border-purple-500/40">
               <Radio className="h-3.5 w-3.5 text-pink-500 animate-pulse" />
               <span className="font-semibold text-purple-200">LIVE SYNC</span>
@@ -270,7 +302,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         {/* Floating Quick Reaction Bar */}
-        <div className="absolute bottom-3 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/40">
+        <div
+          className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/40 transition-opacity duration-300 ${
+            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+          }`}
+        >
           {['🔥', '❤️', '🎉', '🎧', '😮'].map((emoji) => (
             <button
               key={emoji}
@@ -283,8 +319,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      {/* Control Bar Below Player (YouTube Style Controls) */}
-      <div className="p-3 bg-slate-900/95 border-t border-purple-950 flex flex-col gap-2 shrink-0">
+      {/* Floating Control Bar Overlay (Smooth auto-hide) */}
+      <div
+        className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent flex flex-col gap-2 transition-all duration-300 ${
+          showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
+        }`}
+      >
         {/* Seek timeline */}
         <div className="flex items-center gap-2 px-1">
           <span className="text-[10px] font-mono text-purple-300 w-10">
@@ -351,7 +391,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               size="icon"
               variant="ghost"
               className={`h-8 w-8 rounded-lg text-slate-300 hover:text-white ${
-                isCaptionsOn ? 'bg-pink-950/60 text-pink-400 border border-pink-500/50' : 'hover:bg-slate-800'
+                isCaptionsOn ? 'bg-pink-950/60 text-pink-400 border border-pink-500/50' : 'hover:bg-slate-800/80'
               }`}
               title="Subtitles / CC"
             >
@@ -364,7 +404,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 <Button
                   size="icon"
                   variant="ghost"
-                  className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800"
+                  className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/80"
                   title="Player Settings"
                 >
                   <Settings className="h-4 w-4" />
@@ -394,7 +434,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               onClick={toggleFullscreen}
               size="icon"
               variant="ghost"
-              className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800"
+              className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/80"
               title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
             >
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
