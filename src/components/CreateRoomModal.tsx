@@ -29,7 +29,6 @@ interface CreateRoomModalProps {
   onClose: () => void;
 }
 
-// Дефолтные видео под каждую категорию
 const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string; thumbnail: string }> = {
   music: {
     url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
@@ -68,6 +67,19 @@ const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string;
   }
 };
 
+const extractYouTubeDetails = (url: string) => {
+  let videoId = '4xDzrJKXOOY';
+  if (url.includes('youtube.com/watch?v=')) {
+    videoId = url.split('v=')[1]?.split('&')[0] || videoId;
+  } else if (url.includes('youtu.be/')) {
+    videoId = url.split('youtu.be/')[1]?.split('?')[0] || videoId;
+  }
+  return {
+    videoId,
+    thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+  };
+};
+
 export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   isOpen,
   onClose,
@@ -75,6 +87,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   const navigate = useNavigate();
   const { addRoom } = useRooms();
   const [title, setTitle] = useState('');
+  const [mediaUrl, setMediaUrl] = useState('');
   const [category, setCategory] = useState<CategoryType>('music');
   const [isPrivate, setIsPrivate] = useState(false);
   const [allowGuestQueue, setAllowGuestQueue] = useState(true);
@@ -85,6 +98,17 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
     const defaultMedia = DEFAULT_CATEGORY_MEDIA[category] || DEFAULT_CATEGORY_MEDIA.music;
 
+    let finalUrl = defaultMedia.url;
+    let finalTitle = defaultMedia.title;
+    let finalThumbnail = defaultMedia.thumbnail;
+
+    if (mediaUrl.trim()) {
+      finalUrl = mediaUrl.trim();
+      const ytDetails = extractYouTubeDetails(finalUrl);
+      finalTitle = `YouTube Stream (${ytDetails.videoId})`;
+      finalThumbnail = ytDetails.thumbnail;
+    }
+
     const newRoom: Room = {
       id: `room-${Date.now()}`,
       title: title.trim(),
@@ -94,9 +118,9 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       host_avatar: CURRENT_USER.avatar_url,
       is_private: isPrivate,
       member_count: 1,
-      current_media_url: defaultMedia.url,
-      current_media_title: defaultMedia.title,
-      current_media_thumbnail: defaultMedia.thumbnail,
+      current_media_url: finalUrl,
+      current_media_title: finalTitle,
+      current_media_thumbnail: finalThumbnail,
       playback_position_seconds: 0,
       is_playing: true,
       allow_guest_queue: allowGuestQueue,
@@ -107,6 +131,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     addRoom(newRoom);
     showSuccess('Party Room Created!');
     setTitle('');
+    setMediaUrl('');
     onClose();
     navigate(`/room/${newRoom.id}`);
   };
@@ -133,18 +158,31 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               placeholder="e.g. 🎧 Electronic Music Vibe Party"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100"
+              className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
               required
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label htmlFor="mediaUrl" className="text-xs font-semibold text-slate-300">
+              Video or Music Link <span className="text-slate-500 font-normal">(optional)</span>
+            </Label>
+            <Input
+              id="mediaUrl"
+              placeholder="Paste YouTube link here..."
+              value={mediaUrl}
+              onChange={(e) => setMediaUrl(e.target.value)}
+              className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
             />
           </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs font-semibold text-slate-300">Category</Label>
             <Select value={category} onValueChange={(val: CategoryType) => setCategory(val)}>
-              <SelectTrigger className="bg-slate-950 border-purple-950 text-slate-100">
+              <SelectTrigger className="bg-slate-950 border-purple-950 text-slate-100 text-xs">
                 <SelectValue placeholder="Select Category" />
               </SelectTrigger>
-              <SelectContent className="bg-slate-900 border-purple-800 text-slate-200">
+              <SelectContent className="bg-slate-900 border-purple-800 text-slate-200 text-xs">
                 <SelectItem value="music">Music & DJ</SelectItem>
                 <SelectItem value="movies">Movies & Cinema</SelectItem>
                 <SelectItem value="youtube">YouTube Videos</SelectItem>
@@ -178,13 +216,13 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               type="button"
               variant="outline"
               onClick={onClose}
-              className="border-slate-800 text-slate-300 hover:bg-slate-800"
+              className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
             >
               Cancel
             </Button>
             <Button
               type="submit"
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs"
             >
               Launch Room
             </Button>
