@@ -337,6 +337,30 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const fetchRoomMembers = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase.from('room_members').select('*');
+    if (data) {
+      const grouped: Record<string, RoomMember[]> = {};
+      data.forEach((mem: any) => {
+        if (!grouped[mem.room_id]) grouped[mem.room_id] = [];
+        // Избегаем дубликатов по user_id
+        if (!grouped[mem.room_id].some((m) => m.user_id === mem.user_id)) {
+          grouped[mem.room_id].push(mem as RoomMember);
+        }
+      });
+      setActiveMembersByRoom((prev) => ({ ...prev, ...grouped }));
+
+      // Синхронизируем счетчик зрителей для карточек комнат
+      setRooms((prev) =>
+        prev.map((r) => {
+          const count = grouped[r.id]?.length || r.member_count || 1;
+          return { ...r, member_count: count };
+        })
+      );
+    }
+  }, []);
+
   const fetchFriendData = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || !currentUser.username || currentUser.username === 'Гость') return;
     
@@ -370,16 +394,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     fetchRooms();
     fetchMessages();
+    fetchRoomMembers();
     fetchFriendData();
 
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
+      fetchRoomMembers();
       fetchFriendData();
     }, 1500);
 
     return () => clearInterval(interval);
-  }, [fetchRooms, fetchMessages, fetchFriendData]);
+  }, [fetchRooms, fetchMessages, fetchRoomMembers, fetchFriendData]);
 
   // Друзья логика
   const sendFriendRequest = async (targetUser: UserProfile) => {
