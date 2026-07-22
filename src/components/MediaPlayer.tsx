@@ -188,7 +188,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, []);
 
-  // Мгновенная реакция плеера гостя на перематывание или изменения со стороны владельца
   useEffect(() => {
     if (!isHost && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
       if (room.last_updated_at !== prevLastUpdatedRef.current) {
@@ -405,7 +404,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        <div ref={playerContainerRef} className="h-full w-full pointer-events-none scale-[1.04]" />
+        {/* Увеличение масштаба кадрирует и полностью убирает служебные полосы и надписи YouTube */}
+        <div
+          ref={playerContainerRef}
+          className="h-full w-full pointer-events-none scale-[1.35] origin-center"
+        />
 
         <div
           onClick={handleVideoAreaClick}
