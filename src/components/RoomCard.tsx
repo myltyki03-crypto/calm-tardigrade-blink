@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users, Play, Volume2, Lock, Trash2 } from 'lucide-react';
+import { Users, Play, Volume2, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Room } from '@/types/rave';
 
@@ -7,7 +7,6 @@ interface RoomCardProps {
   room: Room;
   currentUserId?: string;
   onClick?: () => void;
-  onDelete?: (roomId: string) => void;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -20,16 +19,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   livestream: 'СТРИМ',
 };
 
-export const RoomCard: React.FC<RoomCardProps> = ({ room, currentUserId, onClick, onDelete }) => {
-  const isOwner = currentUserId && room.host_id === currentUserId;
-
-  const handleDeleteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (onDelete) {
-      onDelete(room.id);
-    }
-  };
-
+export const RoomCard: React.FC<RoomCardProps> = ({ room, onClick }) => {
   return (
     <div
       onClick={onClick}
@@ -53,22 +43,10 @@ export const RoomCard: React.FC<RoomCardProps> = ({ room, currentUserId, onClick
           <span className="uppercase tracking-wider text-pink-400 text-[10px]">ЭФИР</span>
         </div>
 
-        {/* Правый блок: Количество зрителей + кнопка удаления владельца */}
-        <div className="absolute top-3 right-3 flex items-center gap-1.5">
-          {isOwner && onDelete && (
-            <button
-              onClick={handleDeleteClick}
-              className="flex h-7 w-7 items-center justify-center rounded-full bg-red-950/90 border border-red-500/60 text-red-400 hover:text-white hover:bg-red-600 transition-colors shadow-lg"
-              title="Удалить комнату"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-
-          <div className="flex items-center gap-1 rounded-full bg-purple-950/80 backdrop-blur-md px-2.5 py-1 text-xs font-medium text-purple-200 border border-purple-700/40">
-            <Users className="h-3.5 w-3.5 text-cyan-400" />
-            <span>{room.member_count}</span>
-          </div>
+        {/* Правый блок: Количество зрителей */}
+        <div className="absolute top-3 right-3 flex items-center gap-1 rounded-full bg-purple-950/80 backdrop-blur-md px-2.5 py-1 text-xs font-medium text-purple-200 border border-purple-700/40">
+          <Users className="h-3.5 w-3.5 text-cyan-400" />
+          <span>{room.member_count}</span>
         </div>
 
         {/* Кнопка Play при наведении */}
