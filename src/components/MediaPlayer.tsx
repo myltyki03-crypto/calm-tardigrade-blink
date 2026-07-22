@@ -202,7 +202,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         const diff = Math.abs(localTime - targetHostTime);
 
-        // Перематываем только при КРУПНОМ рассинхроне (> 10 секунд), чтобы исключить прерывания буфера
         if (diff > 10.0) {
           ytPlayerRef.current.seekTo(targetHostTime, true);
         }
@@ -418,10 +417,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border border-purple-900/40 shadow-2xl aspect-video'
       }`}
     >
-      <div className="relative w-full h-full bg-black overflow-hidden flex-1">
+      <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         <div
           ref={playerContainerRef}
-          className="h-full w-full pointer-events-none scale-[1.35] origin-center"
+          className="absolute inset-0 h-full w-full pointer-events-none scale-[1.5] sm:scale-[1.38] origin-center [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none"
         />
 
         <div
