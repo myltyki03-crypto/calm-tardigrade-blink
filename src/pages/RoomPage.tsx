@@ -10,7 +10,6 @@ import { MediaPlayer } from '@/components/MediaPlayer';
 import { RoomChat } from '@/components/RoomChat';
 import { RoomQueue } from '@/components/RoomQueue';
 import { RoomMembersList } from '@/components/RoomMembersList';
-import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
@@ -99,13 +98,13 @@ export const RoomPage = () => {
     }
   }, [room, isHost, isNavUnlocked]);
 
-  // Непрерывный Heartbeat присутствия пользователя в комнате каждые 8 секунд
+  // Непрерывный Heartbeat присутствия пользователя в комнате каждые 5 секунд
   useEffect(() => {
     if (room?.id && isUnlocked) {
       joinRoomPresence(room.id);
       const heartbeatTimer = setInterval(() => {
         joinRoomPresence(room.id);
-      }, 8000);
+      }, 5000);
 
       return () => {
         clearInterval(heartbeatTimer);
@@ -115,7 +114,6 @@ export const RoomPage = () => {
   }, [room?.id, isUnlocked]);
 
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
-  const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -332,7 +330,6 @@ export const RoomPage = () => {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-20 md:pb-0 w-full overflow-x-hidden">
       <Navbar
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
-        onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
 
@@ -611,13 +608,8 @@ export const RoomPage = () => {
 
       <MobileBottomNav
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
-        onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
       />
 
-      <FriendsDrawer
-        isOpen={isFriendsDrawerOpen}
-        onClose={() => setIsFriendsDrawerOpen(false)}
-      />
       <SqlSchemaDialog
         isOpen={isSqlModalOpen}
         onClose={() => setIsSqlModalOpen(false)}

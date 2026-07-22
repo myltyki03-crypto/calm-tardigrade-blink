@@ -1,9 +1,8 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { Room, ChatMessage, QueueItem, UserProfile, RoomMember, RegisteredAccount, FriendRequest, DirectMessage } from '@/types/rave';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { Room, ChatMessage, QueueItem, UserProfile, RoomMember, RegisteredAccount } from '@/types/rave';
 import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE } from '@/data/mockRaveData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { showSuccess, showError } from '@/utils/toast';
-import { parseMediaUrl } from '@/utils/mediaUtils';
 
 interface RoomContextType {
   currentUser: UserProfile;
@@ -35,18 +34,6 @@ interface RoomContextType {
   markRoomUnlocked: (roomId: string) => void;
   voteToSkip: (roomId: string) => void;
   transferHostRole: (roomId: string, newHostId: string, newHostName: string, newHostAvatar?: string) => void;
-  // Система друзей
-  friendRequests: FriendRequest[];
-  friendsList: UserProfile[];
-  sendFriendRequest: (targetUsername: string) => Promise<boolean>;
-  acceptFriendRequest: (requestId: string) => Promise<void>;
-  rejectFriendRequest: (requestId: string) => Promise<void>;
-  removeFriend: (friendId: string) => Promise<void>;
-  // Личные сообщения
-  directMessages: DirectMessage[];
-  sendDirectMessage: (receiverId: string, receiverName: string, text: string) => Promise<boolean>;
-  markDirectMessagesAsRead: (friendId: string, friendName: string) => Promise<void>;
-  unreadDirectCount: number;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
@@ -97,22 +84,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeMembersByRoom, setActiveMembersByRoom] = useState<Record<string, RoomMember[]>>({});
   const [unlockedRoomIds, setUnlockedRoomIds] = useState<string[]>([]);
 
-  // Состояния для друзей и заявок
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>(() => {
-    const saved = localStorage.getItem('pulserave_friend_requests');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Состояние личных сообщений
-  const [directMessages, setDirectMessages] = useState<DirectMessage[]>(() => {
-    const saved = localStorage.getItem('pulserave_direct_messages');
-    return saved ? JSON.parse(saved) : [];
-  });
-
-  // Трекеры для уведомительных всплывашек
-  const prevDirectMsgIdsRef = useRef<Set<string>>(new Set());
-  const prevFriendReqIdsRef = useRef<Set<string>>(new Set());
-
   const markRoomUnlocked = (roomId: string) => {
     setUnlockedRoomIds((prev) => (prev.includes(roomId) ? prev : [...prev, roomId]));
   };
@@ -128,14 +99,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     localStorage.setItem('pulserave_queue', JSON.stringify(queueByRoom));
   }, [queueByRoom]);
-
-  useEffect(() => {
-    localStorage.setItem('pulserave_friend_requests', JSON.stringify(friendRequests));
-  }, [friendRequests]);
-
-  useEffect(() => {
-    localStorage.setItem('pulserave_direct_messages', JSON.stringify(directMessages));
-  }, [directMessages]);
 
   useEffect(() => {
     if (isLoggedIn && currentUser.username && currentUser.username !== 'Гость') {
@@ -158,8 +121,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const clearAllAccountsAndData = async () => {
     setAccounts([]);
-    setFriendRequests([]);
-    setDirectMessages([]);
     setIsLoggedIn(false);
     setCurrentUser({
       id: '',
@@ -169,20 +130,16 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     localStorage.removeItem('pulserave_accounts');
     localStorage.removeItem('pulserave_logged_user');
-    localStorage.removeItem('pulserave_friend_requests');
-    localStorage.removeItem('pulserave_direct_messages');
 
     if (isSupabaseConfigured && supabase) {
       try {
-        await supabase.from('friend_requests').delete().neq('id', 'keep_none');
-        await supabase.from('direct_messages').delete().neq('id', 'keep_none');
         await supabase.from('profiles').delete().neq('id', 'keep_none');
       } catch (e) {
         console.error('Supabase cleanup error:', e);
       }
     }
 
-    showSuccess('Все аккаунты и история сообщений сброшены!');
+    showSuccess('Все аккаунты сброшены!');
   };
 
   const registerUser = async (username: string, password_hash: string, avatar_url?: string): Promise<boolean> => {
@@ -352,7 +309,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Получение присутствующих зрителей с таймаутом 40 секунд (вместо 15 сек)
+  // Получение присутствующих зрителей с интервалом активности 60 секунд
   const fetchMembers = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
     const { data } = await supabase.from('room_members').select('*');
@@ -362,7 +319,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       data.forEach((m: any) => {
         const lastActive = m.joined_at ? new Date(m.joined_at).getTime() : 0;
-        const isRecent = now - lastActive < 40000; // 40 секунд таймаута активности
+        const isRecent = now - lastActive < 60000;
 
         if (isRecent) {
           if (!grouped[m.room_id]) grouped[m.room_id] = [];
@@ -376,61 +333,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  const fetchFriendRequests = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase) return;
-    const { data } = await supabase.from('friend_requests').select('*');
-    if (data) {
-      const newRequests = data as FriendRequest[];
-      
-      if (currentUser.username && currentUser.username !== 'Гость') {
-        const myName = currentUser.username.toLowerCase();
-        const myId = currentUser.id;
-
-        newRequests.forEach((req) => {
-          const isForMe = (myId && req.receiver_id === myId) || (req.receiver_name && req.receiver_name.toLowerCase() === myName);
-          const isPending = req.status === 'pending';
-          const isNotFromMe = req.sender_id !== myId && req.sender_name.toLowerCase() !== myName;
-
-          if (isForMe && isPending && isNotFromMe && !prevFriendReqIdsRef.current.has(req.id)) {
-            prevFriendReqIdsRef.current.add(req.id);
-            showSuccess(`👋 Новая заявка в друзья от ${req.sender_name}!`);
-          }
-        });
-      }
-
-      setFriendRequests(newRequests);
-    }
-  }, [currentUser.username, currentUser.id]);
-
-  const fetchDirectMessages = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase) return;
-    const { data } = await supabase
-      .from('direct_messages')
-      .select('*')
-      .order('created_at', { ascending: true });
-    
-    if (data) {
-      const newDms = data as DirectMessage[];
-
-      if (currentUser.username && currentUser.username !== 'Гость') {
-        const myName = currentUser.username.toLowerCase();
-        const myId = currentUser.id;
-
-        newDms.forEach((dm) => {
-          const isForMe = (myId && dm.receiver_id === myId) || (dm.receiver_name && dm.receiver_name.toLowerCase() === myName);
-          const isNotFromMe = dm.sender_id !== myId && dm.sender_name.toLowerCase() !== myName;
-
-          if (isForMe && isNotFromMe && !prevDirectMsgIdsRef.current.has(dm.id)) {
-            prevDirectMsgIdsRef.current.add(dm.id);
-            showSuccess(`💬 Сообщение от ${dm.sender_name}: "${dm.message.substring(0, 25)}${dm.message.length > 25 ? '...' : ''}"`);
-          }
-        });
-      }
-
-      setDirectMessages(newDms);
-    }
-  }, [currentUser.username, currentUser.id]);
-
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsRoomsLoaded(true);
@@ -441,33 +343,24 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchMessages();
     fetchQueue();
     fetchMembers();
-    fetchFriendRequests();
-    fetchDirectMessages();
 
-    // Быстрый опрос для идеальной синхронизации между телефоном и ПК
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
       fetchQueue();
       fetchMembers();
-      fetchFriendRequests();
-      fetchDirectMessages();
-    }, 1200);
+    }, 1000);
 
-    // Подписка Realtime Supabase
     const channel = supabase
       .channel('pulserave_realtime_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => {
-        fetchFriendRequests();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'direct_messages' }, () => {
-        fetchDirectMessages();
-      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, () => {
         fetchMessages();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members' }, () => {
         fetchMembers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, () => {
+        fetchRooms();
       })
       .subscribe();
 
@@ -475,266 +368,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       clearInterval(interval);
       if (supabase) supabase.removeChannel(channel);
     };
-  }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers, fetchFriendRequests, fetchDirectMessages]);
+  }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers]);
 
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
-
-  // Метод отправки ЛС
-  const sendDirectMessage = async (receiverId: string, receiverName: string, text: string): Promise<boolean> => {
-    if (!text.trim()) return false;
-    if (!currentUser.id) {
-      showError('Войдите в аккаунт для отправки сообщений');
-      return false;
-    }
-
-    const newDm: DirectMessage = {
-      id: `dm-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      sender_id: currentUser.id,
-      sender_name: currentUser.username,
-      sender_avatar: currentUser.avatar_url,
-      receiver_id: receiverId,
-      receiver_name: receiverName,
-      message: text.trim(),
-      created_at: new Date().toISOString(),
-      is_read: false,
-    };
-
-    setDirectMessages((prev) => [...prev, newDm]);
-    prevDirectMsgIdsRef.current.add(newDm.id);
-
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from('direct_messages').insert([newDm]);
-      fetchDirectMessages();
-    }
-
-    return true;
-  };
-
-  // Метод отметки сообщений как прочитанных
-  const markDirectMessagesAsRead = async (friendId: string, friendName: string) => {
-    if (!currentUser.id) return;
-    const myId = currentUser.id;
-    const myName = (currentUser.username || '').toLowerCase();
-    const friendNameLower = (friendName || '').toLowerCase();
-
-    setDirectMessages((prev) =>
-      prev.map((m) => {
-        const isForMe = m.receiver_id === myId || (m.receiver_name && m.receiver_name.toLowerCase() === myName);
-        const isFromFriend = m.sender_id === friendId || (m.sender_name && m.sender_name.toLowerCase() === friendNameLower);
-        if (isForMe && isFromFriend && !m.is_read) {
-          return { ...m, is_read: true };
-        }
-        return m;
-      })
-    );
-
-    if (isSupabaseConfigured && supabase) {
-      await supabase
-        .from('direct_messages')
-        .update({ is_read: true })
-        .or(`and(receiver_id.eq.${myId},sender_id.eq.${friendId}),and(receiver_name.ilike.${myName},sender_name.ilike.${friendNameLower})`);
-    }
-  };
-
-  // Улучшенный метод отправки заявки в друзья (с автоматическим принятием взаимных заявок)
-  const sendFriendRequest = async (targetUsername: string): Promise<boolean> => {
-    const cleanTarget = targetUsername.trim();
-    if (!cleanTarget) {
-      showError('Введите никнейм пользователя');
-      return false;
-    }
-
-    if (!currentUser.id) {
-      showError('Войдите в аккаунт, чтобы добавлять друзей');
-      return false;
-    }
-
-    if (cleanTarget.toLowerCase() === currentUser.username.toLowerCase()) {
-      showError('Нельзя отправить заявку самому себе');
-      return false;
-    }
-
-    let targetUser: { id: string; username: string; avatar_url?: string } | null = null;
-
-    if (isSupabaseConfigured && supabase) {
-      const { data } = await supabase
-        .from('profiles')
-        .select('*')
-        .ilike('username', cleanTarget)
-        .maybeSingle();
-
-      if (data) {
-        targetUser = data;
-      }
-    }
-
-    if (!targetUser) {
-      targetUser = accounts.find((a) => a.username.toLowerCase() === cleanTarget.toLowerCase()) || null;
-    }
-
-    const targetId = targetUser?.id || `usr_${cleanTarget}`;
-    const targetName = targetUser?.username || cleanTarget;
-
-    const myNameLower = currentUser.username.toLowerCase();
-    const targetNameLower = targetName.toLowerCase();
-
-    // Проверяем, нет ли ВХОДЯЩЕЙ заявки от адресата к нам
-    const incomingPendingFromTarget = friendRequests.find((r) => {
-      if (!r || r.status !== 'pending') return false;
-      const sId = r.sender_id || '';
-      const sName = (r.sender_name || '').toLowerCase();
-      const isFromTarget = (sId === targetId) || (sName === targetNameLower);
-      return isFromTarget;
-    });
-
-    // Если адрес уже прислал нам заявку, просто АВТО-ПРИНИМАЕМ ЕЁ!
-    if (incomingPendingFromTarget) {
-      await acceptFriendRequest(incomingPendingFromTarget.id);
-      showSuccess(`🎉 Вы и ${targetName} теперь друзья!`);
-      return true;
-    }
-
-    // Проверяем, не отправляли ли мы уже эту заявку ранее
-    const existingReq = friendRequests.find(
-      (r) =>
-        r &&
-        (((r.sender_id === currentUser.id || (r.sender_name && r.sender_name.toLowerCase() === myNameLower)) &&
-          (r.receiver_id === targetId || (r.receiver_name && r.receiver_name.toLowerCase() === targetNameLower))) ||
-         ((r.sender_id === targetId || (r.sender_name && r.sender_name.toLowerCase() === targetNameLower)) &&
-          (r.receiver_id === currentUser.id || (r.receiver_name && r.receiver_name.toLowerCase() === myNameLower))))
-    );
-
-    if (existingReq && existingReq.status !== 'rejected') {
-      if (existingReq.status === 'accepted') {
-        showError(`Вы уже дружите с ${targetName}`);
-      } else {
-        showError(`Заявка пользователю ${targetName} уже отправлена`);
-      }
-      return false;
-    }
-
-    const targetAvatar = targetUser?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(targetName)}`;
-
-    const newReq: FriendRequest = {
-      id: `freq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      sender_id: currentUser.id,
-      sender_name: currentUser.username,
-      sender_avatar: currentUser.avatar_url,
-      receiver_id: targetId,
-      receiver_name: targetName,
-      receiver_avatar: targetAvatar,
-      status: 'pending',
-      created_at: new Date().toISOString(),
-    };
-
-    setFriendRequests((prev) => [...prev, newReq]);
-    prevFriendReqIdsRef.current.add(newReq.id);
-
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from('friend_requests').insert([newReq]);
-      fetchFriendRequests();
-    }
-
-    showSuccess(`Заявка в друзья отправлена пользователю ${targetName}!`);
-    return true;
-  };
-
-  const acceptFriendRequest = async (requestId: string) => {
-    setFriendRequests((prev) =>
-      prev.map((r) => (r.id === requestId ? { ...r, status: 'accepted' } : r))
-    );
-
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from('friend_requests').update({ status: 'accepted' }).eq('id', requestId);
-      fetchFriendRequests();
-    }
-
-    showSuccess('Заявка в друзья принята!');
-  };
-
-  const rejectFriendRequest = async (requestId: string) => {
-    setFriendRequests((prev) => prev.filter((r) => r.id !== requestId));
-
-    if (isSupabaseConfigured && supabase) {
-      await supabase.from('friend_requests').delete().eq('id', requestId);
-      fetchFriendRequests();
-    }
-
-    showSuccess('Заявка отклонена');
-  };
-
-  const removeFriend = async (friendId: string) => {
-    const myNameLower = (currentUser?.username || '').toLowerCase();
-
-    setFriendRequests((prev) =>
-      prev.filter((r) => {
-        const sName = (r.sender_name || '').toLowerCase();
-        const rName = (r.receiver_name || '').toLowerCase();
-        const isMatch =
-          (r.sender_id === currentUser.id || sName === myNameLower || r.sender_id === friendId) &&
-          (r.receiver_id === currentUser.id || rName === myNameLower || r.receiver_id === friendId);
-        return !isMatch;
-      })
-    );
-
-    if (isSupabaseConfigured && supabase) {
-      await supabase
-        .from('friend_requests')
-        .delete()
-        .or(`and(sender_id.eq.${currentUser.id},receiver_id.eq.${friendId}),and(sender_id.eq.${friendId},receiver_id.eq.${currentUser.id})`);
-      fetchFriendRequests();
-    }
-
-    showSuccess('Пользователь удален из друзей');
-  };
-
-  // Расчет списка принятых друзей
-  const myId = currentUser?.id || '';
-  const myName = (currentUser?.username || '').toLowerCase();
-
-  const friendsList: UserProfile[] = friendRequests
-    .filter((r) => {
-      if (!r || r.status !== 'accepted') return false;
-      if (!myId && !myName) return false;
-
-      const sId = r.sender_id || '';
-      const rId = r.receiver_id || '';
-      const sName = (r.sender_name || '').toLowerCase();
-      const rName = (r.receiver_name || '').toLowerCase();
-
-      const isSender = (myId && sId === myId) || (myName && sName === myName);
-      const isReceiver = (myId && rId === myId) || (myName && rName === myName);
-      return isSender || isReceiver;
-    })
-    .map((r) => {
-      const sId = r.sender_id || '';
-      const sName = (r.sender_name || '').toLowerCase();
-      const isSender = (myId && sId === myId) || (myName && sName === myName);
-
-      const friendId = isSender ? r.receiver_id : r.sender_id;
-      const friendName = isSender ? r.receiver_name : r.sender_name;
-      const friendAvatar = isSender
-        ? (r.receiver_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`)
-        : (r.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`);
-
-      return {
-        id: friendId,
-        username: friendName,
-        avatar_url: friendAvatar,
-        is_online: true,
-        status_message: 'В сети',
-      };
-    });
-
-  // Подсчет непрочитанных личных сообщений
-  const unreadDirectCount = directMessages.filter((m) => {
-    if (!m || m.is_read) return false;
-    const isForMe = (myId && m.receiver_id === myId) || (myName && m.receiver_name && m.receiver_name.toLowerCase() === myName);
-    const isNotFromMe = m.sender_id !== myId && (!m.sender_name || m.sender_name.toLowerCase() !== myName);
-    return isForMe && isNotFromMe;
-  }).length;
 
   const joinRoomPresence = async (roomId: string) => {
     if (!currentUser.id) return;
@@ -969,8 +607,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (nextItem) {
         showSuccess(`⏭️ Пропущено большинство! Запуск: ${nextItem.title}`);
-        const info = parseMediaUrl(nextItem.url);
-        changeRoomMedia(roomId, nextItem.url, nextItem.title, info.thumbnail);
+        changeRoomMedia(roomId, nextItem.url, nextItem.title, nextItem.thumbnail_url);
         removeQueueItem(roomId, nextItem.id);
       } else {
         showSuccess('⏭️ Видео пропущено!');
@@ -1036,16 +673,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         markRoomUnlocked,
         voteToSkip,
         transferHostRole,
-        friendRequests,
-        friendsList,
-        sendFriendRequest,
-        acceptFriendRequest,
-        rejectFriendRequest,
-        removeFriend,
-        directMessages,
-        sendDirectMessage,
-        markDirectMessagesAsRead,
-        unreadDirectCount,
       }}
     >
       {children}

@@ -5,7 +5,6 @@ import { Input } from '@/components/ui/input';
 import { ChatMessage, UserProfile } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { UserProfileModal } from '@/components/UserProfileModal';
-import { DirectChatModal } from '@/components/DirectChatModal';
 
 interface RoomChatProps {
   messages: ChatMessage[];
@@ -38,10 +37,6 @@ export const RoomChat: React.FC<RoomChatProps> = ({
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
 
-  const [chatFriend, setChatFriend] = useState<UserProfile | null>(null);
-  const [isDirectChatOpen, setIsDirectChatOpen] = useState(false);
-
-  // Фильтруем сообщения: исключаем пустые, системные реакции и одиночные смайлики-реакции
   const validMessages = messages.filter((m) => {
     if (!m || !m.message || m.message.trim().length === 0) return false;
     if (m.type === 'reaction') return false;
@@ -73,11 +68,6 @@ export const RoomChat: React.FC<RoomChatProps> = ({
     };
     setSelectedUser(userProfile);
     setIsProfileModalOpen(true);
-  };
-
-  const handleOpenDirectChat = (user: UserProfile) => {
-    setChatFriend(user);
-    setIsDirectChatOpen(true);
   };
 
   return (
@@ -180,13 +170,6 @@ export const RoomChat: React.FC<RoomChatProps> = ({
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         targetUser={selectedUser}
-        onOpenDirectChat={handleOpenDirectChat}
-      />
-
-      <DirectChatModal
-        isOpen={isDirectChatOpen}
-        onClose={() => setIsDirectChatOpen(false)}
-        selectedFriend={chatFriend}
       />
     </>
   );

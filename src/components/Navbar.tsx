@@ -1,38 +1,22 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Plus, Users, LogIn, MessageSquare } from 'lucide-react';
+import { Play, Plus, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRooms } from '@/context/RoomContext';
 import { AuthModal } from '@/components/AuthModal';
-import { DirectChatModal } from '@/components/DirectChatModal';
 
 interface NavbarProps {
   onOpenCreateModal: () => void;
-  onOpenFriendsDrawer: () => void;
   onOpenSqlModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateModal,
-  onOpenFriendsDrawer,
 }) => {
   const navigate = useNavigate();
-  const { currentUser, isLoggedIn, friendRequests, unreadDirectCount } = useRooms();
+  const { currentUser, isLoggedIn } = useRooms();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [isDirectChatOpen, setIsDirectChatOpen] = useState(false);
-
-  const myId = currentUser.id;
-  const myName = currentUser.username.toLowerCase();
-
-  const pendingCount = friendRequests.filter(
-    (r) =>
-      r.status === 'pending' &&
-      ((r.receiver_id && r.receiver_id === myId) ||
-       (r.receiver_name && r.receiver_name.toLowerCase() === myName)) &&
-      r.sender_id !== myId &&
-      r.sender_name.toLowerCase() !== myName
-  ).length;
 
   return (
     <>
@@ -59,37 +43,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Кнопки действий */}
           <div className="flex items-center gap-1.5 md:gap-3">
-            <Button
-              onClick={onOpenFriendsDrawer}
-              variant="ghost"
-              size="sm"
-              className="hidden md:flex text-slate-300 hover:text-white relative text-xs h-8 gap-1.5"
-            >
-              <Users className="h-4 w-4 text-purple-400" />
-              <span>Друзья</span>
-              {pendingCount > 0 && (
-                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-white bg-pink-600 rounded-full animate-bounce shadow-md shadow-pink-600/40">
-                  {pendingCount}
-                </span>
-              )}
-            </Button>
-
-            {/* Кнопка Личных Сообщений (ЛС) */}
-            <Button
-              onClick={() => setIsDirectChatOpen(true)}
-              variant="ghost"
-              size="sm"
-              className="hidden md:flex text-slate-300 hover:text-white relative text-xs h-8 gap-1.5"
-            >
-              <MessageSquare className="h-4 w-4 text-pink-400" />
-              <span>ЛС</span>
-              {unreadDirectCount > 0 && (
-                <span className="inline-flex items-center justify-center px-1.5 py-0.5 text-[10px] font-extrabold leading-none text-white bg-pink-600 rounded-full animate-pulse shadow-md">
-                  {unreadDirectCount}
-                </span>
-              )}
-            </Button>
-
             <Button
               onClick={onOpenCreateModal}
               size="sm"
@@ -127,7 +80,6 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
-      <DirectChatModal isOpen={isDirectChatOpen} onClose={() => setIsDirectChatOpen(false)} />
     </>
   );
 };

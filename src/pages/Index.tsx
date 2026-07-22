@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import { RoomCard } from '@/components/RoomCard';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
-import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { AuthModal } from '@/components/AuthModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
@@ -25,7 +24,6 @@ const Index = () => {
   
   // Модальные окна
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
@@ -107,7 +105,6 @@ const Index = () => {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-16 md:pb-0">
       <Navbar
         onOpenCreateModal={handleOpenCreateModal}
-        onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
 
@@ -266,16 +263,11 @@ const Index = () => {
 
       <MobileBottomNav
         onOpenCreateModal={handleOpenCreateModal}
-        onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
       />
 
       <CreateRoomModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
-      />
-      <FriendsDrawer
-        isOpen={isFriendsDrawerOpen}
-        onClose={() => setIsFriendsDrawerOpen(false)}
       />
       <SqlSchemaDialog
         isOpen={isSqlModalOpen}
