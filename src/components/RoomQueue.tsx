@@ -44,10 +44,13 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
       </div>
 
       {/* Форма добавления */}
-      <form onSubmit={handleAdd} className="p-2 border-b border-purple-900/30 bg-slate-950/40 flex items-center gap-1.5 w-full">
+      <form onSubmit={handleAdd} className="p-2 border-b border-purple-900/30 bg-slate-950/40 flex items-center gap-1.5 w-full" autoComplete="off">
         <div className="relative flex-1">
           <LinkIcon className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
           <Input
+            name="queue_youtube_link_no_autofill"
+            autoComplete="off"
+            aria-autocomplete="none"
             placeholder="Вставьте ссылку на YouTube..."
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}

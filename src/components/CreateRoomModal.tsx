@@ -158,12 +158,19 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2" autoComplete="off">
+          {/* Скрытые фейковые поля для блокировки встроенного автозаполнения логинов и паролей браузером */}
+          <input type="text" style={{ display: 'none' }} tabIndex={-1} />
+          <input type="password" style={{ display: 'none' }} tabIndex={-1} />
+
           <div className="space-y-1.5">
-            <Label htmlFor="title" className="text-xs font-semibold text-slate-300">
+            <Label htmlFor="room_title_field" className="text-xs font-semibold text-slate-300">
               Название комнаты
             </Label>
             <Input
-              id="title"
+              id="room_title_field"
+              name="no_autofill_title"
+              autoComplete="off"
+              aria-autocomplete="none"
               placeholder="Например: 🎧 Вечеринка с электронной музыкой"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
@@ -173,11 +180,14 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="mediaUrl" className="text-xs font-semibold text-slate-300">
+            <Label htmlFor="room_media_url_field" className="text-xs font-semibold text-slate-300">
               Ссылка на YouTube <span className="text-slate-500 font-normal">(необязательно)</span>
             </Label>
             <Input
-              id="mediaUrl"
+              id="room_media_url_field"
+              name="no_autofill_media_url"
+              autoComplete="off"
+              aria-autocomplete="none"
               placeholder="Вставьте ссылку на видео..."
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
@@ -215,16 +225,16 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
             {isPrivate && (
               <div className="space-y-1.5 bg-amber-950/30 p-3 rounded-xl border border-amber-500/30 animate-in fade-in">
-                <Label htmlFor="accessCode" className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                <Label htmlFor="room_access_code_field" className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
                   <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Установите пароль для входа <span className="text-pink-400">*</span>
                 </Label>
                 <Input
-                  id="accessCode"
+                  id="room_access_code_field"
                   type="text"
                   name="room_access_pass_code"
-                  autoComplete="off"
+                  autoComplete="new-password"
+                  aria-autocomplete="none"
                   data-lpignore="true"
-                  data-form-type="other"
                   placeholder="Придумайте пароль..."
                   value={accessCode}
                   onChange={(e) => setAccessCode(e.target.value)}
