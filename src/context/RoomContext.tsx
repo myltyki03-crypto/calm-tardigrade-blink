@@ -120,6 +120,19 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     if (isLoggedIn && currentUser.id) {
       localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
+      // Авто-синхронизация профиля с Supabase
+      if (isSupabaseConfigured && supabase) {
+        supabase.from('profiles').upsert([
+          {
+            id: currentUser.id,
+            username: currentUser.username,
+            avatar_url: currentUser.avatar_url,
+            status_message: currentUser.status_message,
+          },
+        ]).then(({ error }) => {
+          if (error) console.error('Failed to sync profile to Supabase:', error);
+        });
+      }
     } else {
       localStorage.removeItem('pulserave_logged_user');
     }
@@ -227,6 +240,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setCurrentUser(found);
     setIsLoggedIn(true);
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('profiles').upsert([
+        {
+          id: found.id,
+          username: found.username,
+          avatar_url: found.avatar_url,
+          status_message: found.status_message,
+        },
+      ]);
+    }
+
     showSuccess(`Добро пожаловать, ${found.username}!`);
     return true;
   };
@@ -356,15 +381,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
 
-    // Ищем профиль получателя
+    // Ищем профиль получателя: сначала в Supabase, чтобы взять точный облачный ID!
     let targetUser: { id: string; username: string; avatar_url?: string } | null = null;
 
-    const localFound = accounts.find((a) => a.username.toLowerCase() === cleanTarget.toLowerCase());
-    if (localFound) {
-      targetUser = localFound;
-    }
-
-    if (!targetUser && isSupabaseConfigured && supabase) {
+    if (isSupabaseConfigured && supabase) {
       const { data } = await supabase
         .from('profiles')
         .select('*')
@@ -377,23 +397,34 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     if (!targetUser) {
+      targetUser = accounts.find((a) => a.username.toLowerCase() === cleanTarget.toLowerCase()) || null;
+    }
+
+    if (!targetUser) {
       showError(`Пользователь "${cleanTarget}" не найден`);
       return false;
     }
 
+    const targetId = targetUser.id;
+    const targetName = targetUser.username;
+
     // Проверяем, есть ли уже принятая связь или активная заявка
+    const myNameLower = currentUser.username.toLowerCase();
+    const targetNameLower = targetName.toLowerCase();
+
     const existingReq = friendRequests.find(
       (r) =>
-        ((r.sender_id === currentUser.id && r.receiver_id === targetUser!.id) ||
-         (r.sender_id === targetUser!.id && r.receiver_id === currentUser.id)) &&
-        r.status !== 'rejected'
+        ((r.sender_id === currentUser.id || r.sender_name.toLowerCase() === myNameLower) &&
+         (r.receiver_id === targetId || r.receiver_name.toLowerCase() === targetNameLower)) ||
+        ((r.sender_id === targetId || r.sender_name.toLowerCase() === targetNameLower) &&
+         (r.receiver_id === currentUser.id || r.receiver_name.toLowerCase() === myNameLower))
     );
 
-    if (existingReq) {
+    if (existingReq && existingReq.status !== 'rejected') {
       if (existingReq.status === 'accepted') {
-        showError(`Вы уже дружите с ${targetUser.username}`);
+        showError(`Вы уже дружите с ${targetName}`);
       } else {
-        showError(`Заявка пользователю ${targetUser.username} уже отправлена`);
+        showError(`Заявка пользователю ${targetName} уже отправлена`);
       }
       return false;
     }
@@ -403,8 +434,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       sender_id: currentUser.id,
       sender_name: currentUser.username,
       sender_avatar: currentUser.avatar_url,
-      receiver_id: targetUser.id,
-      receiver_name: targetUser.username,
+      receiver_id: targetId,
+      receiver_name: targetName,
       status: 'pending',
       created_at: new Date().toISOString(),
     };
@@ -415,7 +446,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       await supabase.from('friend_requests').insert([newReq]);
     }
 
-    showSuccess(`Заявка в друзья отправлена пользователю ${targetUser.username}!`);
+    showSuccess(`Заявка в друзья отправлена пользователю ${targetName}!`);
     return true;
   };
 
@@ -462,14 +493,23 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     showSuccess('Пользователь удален из друзей');
   };
 
-  // Вычисление списка активных друзей пользователя
+  // Вычисление списка активных друзей пользователя (сопоставление по ID и логину)
+  const myId = currentUser.id;
+  const myName = currentUser.username.toLowerCase();
+
   const friendsList: UserProfile[] = friendRequests
-    .filter((r) => r.status === 'accepted' && (r.sender_id === currentUser.id || r.receiver_id === currentUser.id))
+    .filter((r) => {
+      if (r.status !== 'accepted') return false;
+      const isSender = r.sender_id === myId || r.sender_name.toLowerCase() === myName;
+      const isReceiver = r.receiver_id === myId || r.receiver_name.toLowerCase() === myName;
+      return isSender || isReceiver;
+    })
     .map((r) => {
-      const friendId = r.sender_id === currentUser.id ? r.receiver_id : r.sender_id;
-      const friendName = r.sender_id === currentUser.id ? r.receiver_name : r.sender_name;
+      const isSender = r.sender_id === myId || r.sender_name.toLowerCase() === myName;
+      const friendId = isSender ? r.receiver_id : r.sender_id;
+      const friendName = isSender ? r.receiver_name : r.sender_name;
       const friendAvatar =
-        (r.sender_id === currentUser.id ? undefined : r.sender_avatar) ||
+        (isSender ? undefined : r.sender_avatar) ||
         `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`;
 
       return {

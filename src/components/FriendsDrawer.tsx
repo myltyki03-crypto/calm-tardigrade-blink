@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, UserPlus, Send, Check, X, Trash2, Clock } from 'lucide-react';
+import { Users, UserPlus, Send, Check, X, Trash2, Clock, WifiOff } from 'lucide-react';
 import {
   Sheet,
   SheetContent,
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRooms } from '@/context/RoomContext';
+import { isSupabaseConfigured } from '@/lib/supabase';
 import { showSuccess } from '@/utils/toast';
 
 interface FriendsDrawerProps {
@@ -32,14 +33,24 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
   const [targetUsername, setTargetUsername] = useState('');
   const [isSending, setIsSending] = useState(false);
 
-  // Фильтруем входящие заявки текущему пользователю
+  const myId = currentUser.id;
+  const myName = currentUser.username.toLowerCase();
+
+  // Фильтруем входящие заявки текущему пользователю (проверка по ID и по логину)
   const incomingRequests = friendRequests.filter(
-    (r) => r.receiver_id === currentUser.id && r.status === 'pending'
+    (r) =>
+      r.status === 'pending' &&
+      ((r.receiver_id && r.receiver_id === myId) ||
+       (r.receiver_name && r.receiver_name.toLowerCase() === myName)) &&
+      r.sender_id !== myId &&
+      r.sender_name.toLowerCase() !== myName
   );
 
-  // Фильтруем исходящие оставшиеся заявки
+  // Фильтруем исходящие заявки
   const outgoingRequests = friendRequests.filter(
-    (r) => r.sender_id === currentUser.id && r.status === 'pending'
+    (r) =>
+      r.status === 'pending' &&
+      (r.sender_id === myId || r.sender_name.toLowerCase() === myName)
   );
 
   const handleAddSubmit = async (e: React.FormEvent) => {
@@ -77,6 +88,13 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
           </SheetDescription>
         </SheetHeader>
 
+        {!isSupabaseConfigured && (
+          <div className="bg-amber-950/60 border border-amber-500/40 p-2 rounded-xl text-[11px] text-amber-200 mt-2 flex items-center gap-2">
+            <WifiOff className="h-4 w-4 text-amber-400 shrink-0" />
+            <span>Для связи разных устройств (ПК и телефон) подключите базу Supabase.</span>
+          </div>
+        )}
+
         {/* Форма отправки заявки по нику */}
         <form onSubmit={handleAddSubmit} className="pt-3 pb-2 border-b border-purple-900/30 flex gap-2 shrink-0">
           <Input
@@ -107,7 +125,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
                   {incomingRequests.map((req) => (
                     <div
                       key={req.id}
-                      className="p-2.5 rounded-xl bg-purple-950/60 border border-pink-500/40 flex items-center justify-between gap-2"
+                      className="p-2.5 rounded-xl bg-purple-950/60 border border-pink-500/40 flex items-center justify-between gap-2 shadow-lg"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <img
@@ -158,7 +176,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
                     className="p-2 rounded-lg bg-slate-950/40 border border-purple-950 flex items-center justify-between text-xs text-slate-400"
                   >
                     <span>Заявка для <strong className="text-slate-200">{req.receiver_name}</strong></span>
-                    <span className="text-[10px] text-amber-400">Ожидает ответа</span>
+                    <span className="text-[10px] text-amber-400 font-medium">Ожидает ответа</span>
                   </div>
                 ))}
               </div>
