@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { KeyRound, Lock } from 'lucide-react';
+import { KeyRound, Lock, Tv } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -22,6 +22,7 @@ import {
 } from '@/components/ui/select';
 import { CategoryType, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
+import { parseMediaUrl } from '@/utils/mediaUtils';
 import { showSuccess, showError } from '@/utils/toast';
 
 interface CreateRoomModalProps {
@@ -46,8 +47,8 @@ const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string;
     thumbnail: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop&q=80',
   },
   gaming: {
-    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    title: 'Лучшие игровые хайлайты',
+    url: 'https://www.twitch.tv/shroud',
+    title: 'Twitch Стрим Games',
     thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
   },
   anime: {
@@ -56,8 +57,8 @@ const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string;
     thumbnail: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop&q=80',
   },
   livestream: {
-    url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
-    title: 'Прямой DJ Стрим',
+    url: 'https://www.twitch.tv/shroud',
+    title: 'Прямой Twitch Стрим',
     thumbnail: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
   },
   all: {
@@ -65,19 +66,6 @@ const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string;
     title: 'Популярная трансляция',
     thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
   },
-};
-
-const extractYouTubeDetails = (url: string) => {
-  let videoId = '4xDzrJKXOOY';
-  if (url.includes('youtube.com/watch?v=')) {
-    videoId = url.split('v=')[1]?.split('&')[0] || videoId;
-  } else if (url.includes('youtu.be/')) {
-    videoId = url.split('youtu.be/')[1]?.split('?')[0] || videoId;
-  }
-  return {
-    videoId,
-    thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-  };
 };
 
 export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
@@ -110,9 +98,9 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
     if (mediaUrl.trim()) {
       finalUrl = mediaUrl.trim();
-      const ytDetails = extractYouTubeDetails(finalUrl);
-      finalTitle = `YouTube Видео (${ytDetails.videoId})`;
-      finalThumbnail = ytDetails.thumbnail;
+      const info = parseMediaUrl(finalUrl);
+      finalTitle = info.title;
+      finalThumbnail = info.thumbnail;
     }
 
     const newRoom: Room = {
@@ -136,7 +124,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     };
 
     addRoom(newRoom);
-    showSuccess('Комната создана! Нажмите Play, чтобы запустить видео.');
+    showSuccess('Комната создана!');
     setTitle('');
     setMediaUrl('');
     setAccessCode('');
@@ -153,12 +141,11 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             Создать комнату просмотра
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Запустите совместный эфир и пригласите друзей для просмотра в реальном времени.
+            Поддерживаются трансляции YouTube, Twitch и ссылки на файлы MP4.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2" autoComplete="off">
-          {/* Скрытые фейковые поля для блокировки встроенного автозаполнения логинов и паролей браузером */}
           <input type="text" style={{ display: 'none' }} tabIndex={-1} />
           <input type="password" style={{ display: 'none' }} tabIndex={-1} />
 
@@ -170,8 +157,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               id="room_title_field"
               name="no_autofill_title"
               autoComplete="off"
-              aria-autocomplete="none"
-              placeholder="Например: 🎧 Вечеринка с электронной музыкой"
+              placeholder="Например: 🎧 Вечеринка со стримом или муз. клипами"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
@@ -180,15 +166,17 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="room_media_url_field" className="text-xs font-semibold text-slate-300">
-              Ссылка на YouTube <span className="text-slate-500 font-normal">(необязательно)</span>
+            <Label htmlFor="room_media_url_field" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
+              <span>Ссылка на медиа</span>
+              <span className="text-[10px] text-purple-400 font-normal flex items-center gap-1">
+                <Tv className="h-3 w-3" /> YouTube, Twitch, MP4
+              </span>
             </Label>
             <Input
               id="room_media_url_field"
               name="no_autofill_media_url"
               autoComplete="off"
-              aria-autocomplete="none"
-              placeholder="Вставьте ссылку на видео..."
+              placeholder="https://twitch.tv/имя или YouTube / MP4..."
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
@@ -205,7 +193,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                 <SelectItem value="music">Музыка и DJ</SelectItem>
                 <SelectItem value="movies">Фильмы и кино</SelectItem>
                 <SelectItem value="youtube">YouTube Видео</SelectItem>
-                <SelectItem value="gaming">Игры и киберспорт</SelectItem>
+                <SelectItem value="gaming">Twitch / Игры</SelectItem>
                 <SelectItem value="anime">Аниме и мультфильмы</SelectItem>
                 <SelectItem value="livestream">Прямые стримы</SelectItem>
               </SelectContent>
@@ -218,23 +206,20 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                 <Label className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
                   <Lock className="h-3.5 w-3.5 text-amber-400" /> Приватная комната (по паролю)
                 </Label>
-                <p className="text-[11px] text-slate-400">Вход только по вводу пароля</p>
+                <p className="text-[11px] text-slate-400">Вход только по паролю</p>
               </div>
               <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
             </div>
 
             {isPrivate && (
-              <div className="space-y-1.5 bg-amber-950/30 p-3 rounded-xl border border-amber-500/30 animate-in fade-in">
+              <div className="space-y-1.5 bg-amber-950/30 p-3 rounded-xl border border-amber-500/30">
                 <Label htmlFor="room_access_code_field" className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
-                  <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Установите пароль для входа <span className="text-pink-400">*</span>
+                  <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Установите пароль
                 </Label>
                 <Input
                   id="room_access_code_field"
                   type="text"
                   name="room_access_pass_code"
-                  autoComplete="new-password"
-                  aria-autocomplete="none"
-                  data-lpignore="true"
                   placeholder="Придумайте пароль..."
                   value={accessCode}
                   onChange={(e) => setAccessCode(e.target.value)}
@@ -264,7 +249,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             </Button>
             <Button
               type="submit"
-              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-semibold text-xs"
             >
               Запустить комнату
             </Button>

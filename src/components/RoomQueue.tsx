@@ -39,7 +39,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
       {/* Шапка очереди */}
       <div className="p-3 border-b border-purple-900/40 flex items-center justify-between bg-slate-950/60">
         <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
-          <ListMusic className="h-4 w-4 text-cyan-400" /> Очередь треков ({queue.length})
+          <ListMusic className="h-4 w-4 text-cyan-400" /> Очередь ({queue.length})
         </h4>
       </div>
 
@@ -48,10 +48,10 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
         <div className="relative flex-1">
           <LinkIcon className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
           <Input
-            name="queue_youtube_link_no_autofill"
+            name="queue_link_no_autofill"
             autoComplete="off"
             aria-autocomplete="none"
-            placeholder="Вставьте ссылку на YouTube..."
+            placeholder="Ссылка на YouTube, Twitch, MP4..."
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-8 w-full"
@@ -71,7 +71,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
         <div className="space-y-2">
           {queue.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-500">
-              Очередь пуста. Вы можете добавить ссылку на YouTube выше!
+              Очередь пуста. Вставьте ссылку на YouTube или Twitch выше!
             </div>
           ) : (
             queue.map((item, idx) => {
