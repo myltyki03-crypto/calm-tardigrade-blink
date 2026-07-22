@@ -10,7 +10,7 @@ import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { CategoryType, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Sparkles, Radio, Music, Film, Gamepad2, PlayCircle, Search, WifiOff, RefreshCw, Lock, KeyRound } from 'lucide-react';
+import { Sparkles, Radio, Music, Film, Gamepad2, PlayCircle, Search, WifiOff, RefreshCw, Lock, KeyRound, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
@@ -18,7 +18,7 @@ import { showSuccess, showError } from '@/utils/toast';
 
 const Index = () => {
   const navigate = useNavigate();
-  const { rooms, refreshRooms, currentUser, isLoggedIn, unlockedRoomIds, markRoomUnlocked } = useRooms();
+  const { rooms, refreshRooms, deleteRoom, currentUser, isLoggedIn, unlockedRoomIds, markRoomUnlocked } = useRooms();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -28,6 +28,9 @@ const Index = () => {
   const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Подтверждение удаления
+  const [deletingRoomId, setDeletingRoomId] = useState<string | null>(null);
 
   // Окно ввода пароля для приватной комнаты
   const [selectedPrivateRoom, setSelectedPrivateRoom] = useState<Room | null>(null);
@@ -92,6 +95,14 @@ const Index = () => {
       navigate(`/room/${targetId}`, { state: { unlocked: true } });
     } else {
       showError('Неверный пароль!');
+    }
+  };
+
+  const handleConfirmDelete = () => {
+    if (deletingRoomId) {
+      deleteRoom(deletingRoomId);
+      showSuccess('Комната удалена');
+      setDeletingRoomId(null);
     }
   };
 
@@ -203,12 +214,46 @@ const Index = () => {
               <RoomCard
                 key={room.id}
                 room={room}
+                currentUserId={currentUser.id}
                 onClick={() => handleRoomClick(room)}
+                onDelete={(id) => setDeletingRoomId(id)}
               />
             ))
           )}
         </div>
       </main>
+
+      {/* Модальное окно подтверждения удаления комнаты */}
+      <Dialog open={Boolean(deletingRoomId)} onOpenChange={(open) => !open && setDeletingRoomId(null)}>
+        <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-red-400 flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Удалить комнату?
+            </DialogTitle>
+            <DialogDescription className="text-slate-400 text-xs mt-1">
+              Вы действительно хотите удалить эту комнату? Это действие нельзя отменить.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-4 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setDeletingRoomId(null)}
+              className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
+            >
+              Отмена
+            </Button>
+            <Button
+              type="button"
+              onClick={handleConfirmDelete}
+              className="bg-red-600 hover:bg-red-500 text-white font-semibold text-xs"
+            >
+              Удалить
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Диалог ввода пароля для приватной комнаты */}
       <Dialog open={Boolean(selectedPrivateRoom)} onOpenChange={(open) => !open && setSelectedPrivateRoom(null)}>
