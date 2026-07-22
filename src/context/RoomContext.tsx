@@ -43,25 +43,25 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : { 'room-1': INITIAL_QUEUE };
   });
 
-  // 1. Загрузка данных из Supabase и подписка на Realtime изменения
+  // Загрузка данных из Supabase и подписка на Realtime изменения
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
-      console.log('Supabase не настроен, используется локальное хранилище.');
+      console.warn('Supabase не настроен в VITE_SUPABASE_URL!');
       return;
     }
 
-    // Загрузка комнат из базы
     const fetchRooms = async () => {
       const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
-      if (!error && data && data.length > 0) {
+      if (error) {
+        console.error('Error fetching rooms:', error);
+      } else if (data && data.length > 0) {
         setRooms(data as Room[]);
       }
     };
 
-    // Загрузка сообщений из базы
     const fetchMessages = async () => {
-      const { data, error } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
-      if (!error && data) {
+      const { data } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
+      if (data) {
         const grouped: Record<string, ChatMessage[]> = {};
         data.forEach((msg: any) => {
           if (!grouped[msg.room_id]) grouped[msg.room_id] = [];
@@ -71,10 +71,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     };
 
-    // Загрузка очереди треков
     const fetchQueue = async () => {
-      const { data, error } = await supabase.from('queue_items').select('*').order('votes', { ascending: false });
-      if (!error && data) {
+      const { data } = await supabase.from('queue_items').select('*').order('votes', { ascending: false });
+      if (data) {
         const grouped: Record<string, QueueItem[]> = {};
         data.forEach((item: any) => {
           if (!grouped[item.room_id]) grouped[item.room_id] = [];
@@ -88,23 +87,25 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchMessages();
     fetchQueue();
 
-    // Настройка Realtime канала для комнат
-    const roomsSubscription = supabase
-      .channel('public:rooms')
+    // Realtime подписки
+    const roomsChannel = supabase
+      .channel('realtime:rooms')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {
         if (payload.eventType === 'INSERT') {
-          setRooms((prev) => [payload.new as Room, ...prev.filter((r) => r.id !== payload.new.id)]);
+          const inserted = payload.new as Room;
+          setRooms((prev) => [inserted, ...prev.filter((r) => r.id !== inserted.id)]);
         } else if (payload.eventType === 'UPDATE') {
-          setRooms((prev) => prev.map((r) => (r.id === payload.new.id ? { ...r, ...payload.new } : r)));
+          const updated = payload.new as Room;
+          setRooms((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
         } else if (payload.eventType === 'DELETE') {
-          setRooms((prev) => prev.filter((r) => r.id !== payload.old.id));
+          const deleted = payload.old as Room;
+          setRooms((prev) => prev.filter((r) => r.id !== deleted.id));
         }
       })
       .subscribe();
 
-    // Настройка Realtime канала для сообщений чата
-    const chatSubscription = supabase
-      .channel('public:chat_messages')
+    const chatChannel = supabase
+      .channel('realtime:chat_messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
         const newMsg = payload.new as ChatMessage;
         setMessagesByRoom((prev) => ({
@@ -114,9 +115,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       .subscribe();
 
-    // Настройка Realtime канала для очереди
-    const queueSubscription = supabase
-      .channel('public:queue_items')
+    const queueChannel = supabase
+      .channel('realtime:queue_items')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_items' }, (payload) => {
         if (payload.eventType === 'INSERT') {
           const newItem = payload.new as QueueItem;
@@ -143,18 +143,16 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .subscribe();
 
     return () => {
-      supabase.removeChannel(roomsSubscription);
-      supabase.removeChannel(chatSubscription);
-      supabase.removeChannel(queueSubscription);
+      supabase.removeChannel(roomsChannel);
+      supabase.removeChannel(chatChannel);
+      supabase.removeChannel(queueChannel);
     };
   }, []);
 
-  // Сохранение пользователя локально
   useEffect(() => {
     localStorage.setItem('pulserave_user', JSON.stringify(currentUser));
   }, [currentUser]);
 
-  // Сохранение комнат локально (резервный вариант)
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
@@ -168,7 +166,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('rooms').insert([newRoom]);
-      if (error) console.error('Ошибка создания комнаты в Supabase:', error);
+      if (error) {
+        console.error('Ошибка добавления комнаты в Supabase:', error);
+        showError(`Ошибка базы данных: ${error.message}`);
+      } else {
+        showSuccess('Комната синхронизирована с сервером!');
+      }
     }
   };
 
@@ -177,7 +180,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('rooms').delete().eq('id', roomId);
-      if (error) console.error('Ошибка удаления комнаты из Supabase:', error);
+      if (error) console.error('Ошибка удаления из Supabase:', error);
     }
   };
 
@@ -205,7 +208,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('queue_items').insert([item]);
-      if (error) console.error('Ошибка добавления в очередь Supabase:', error);
+      if (error) console.error('Ошибка очереди в Supabase:', error);
     }
   };
 

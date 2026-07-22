@@ -17,13 +17,20 @@ interface SqlSchemaDialogProps {
 }
 
 const FULL_SQL_SCHEMA = `-- ==========================================
--- PULSERAVE COMPLETE SUPABASE DATABASE SETUP
--- Скопируйте этот код и вставьте в Supabase -> SQL Editor -> New Query -> Run
+-- PULSERAVE COMPLETE SUPABASE DATABASE SETUP (V2 FIXED)
+-- Скопируйте этот код и запустите в Supabase -> SQL Editor -> Run
 -- ==========================================
 
+-- Удаление старых таблиц при пересоздании (если были созданы ранее)
+drop table if exists public.room_members cascade;
+drop table if exists public.chat_messages cascade;
+drop table if exists public.queue_items cascade;
+drop table if exists public.rooms cascade;
+drop table if exists public.profiles cascade;
+
 -- 1. Таблица профилей пользователей
-create table if not exists public.profiles (
-  id uuid references auth.users on delete cascade primary key,
+create table public.profiles (
+  id text primary key,
   username text not null,
   avatar_url text,
   status_message text default 'Enjoying watch party 🎧',
@@ -34,12 +41,12 @@ create table if not exists public.profiles (
 );
 
 -- 2. Таблица комнат (Watch Party Rooms)
-create table if not exists public.rooms (
-  id uuid default gen_random_uuid() primary key,
+create table public.rooms (
+  id text primary key,
   title text not null,
   description text,
   category text default 'music',
-  host_id uuid references public.profiles(id) on delete cascade,
+  host_id text,
   host_name text not null,
   host_avatar text,
   is_private boolean default false,
@@ -57,9 +64,9 @@ create table if not exists public.rooms (
 );
 
 -- 3. Очередь треков/видео (Queue Items)
-create table if not exists public.queue_items (
-  id uuid default gen_random_uuid() primary key,
-  room_id uuid references public.rooms(id) on delete cascade not null,
+create table public.queue_items (
+  id text primary key,
+  room_id text references public.rooms(id) on delete cascade not null,
   title text not null,
   url text not null,
   thumbnail_url text,
@@ -70,9 +77,9 @@ create table if not exists public.queue_items (
 );
 
 -- 4. Чат комнаты (Chat Messages)
-create table if not exists public.chat_messages (
-  id uuid default gen_random_uuid() primary key,
-  room_id uuid references public.rooms(id) on delete cascade not null,
+create table public.chat_messages (
+  id text primary key,
+  room_id text references public.rooms(id) on delete cascade not null,
   user_id text not null,
   user_name text not null,
   user_avatar text,
@@ -82,17 +89,17 @@ create table if not exists public.chat_messages (
 );
 
 -- 5. Участники комнаты (Room Members)
-create table if not exists public.room_members (
-  id uuid default gen_random_uuid() primary key,
-  room_id uuid references public.rooms(id) on delete cascade not null,
-  user_id uuid references public.profiles(id) on delete cascade,
+create table public.room_members (
+  id text primary key,
+  room_id text references public.rooms(id) on delete cascade not null,
+  user_id text,
   user_name text not null,
   user_avatar text,
   role text default 'listener',
   joined_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- 6. Включение публичного доступа (Row Level Security - Read & Write for all)
+-- 6. Публичный доступ к операциям (Row Level Security)
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.queue_items enable row level security;
@@ -105,7 +112,7 @@ create policy "Public Queue Policy" on public.queue_items for all using (true) w
 create policy "Public Chat Policy" on public.chat_messages for all using (true) with check (true);
 create policy "Public Members Policy" on public.room_members for all using (true) with check (true);
 
--- 7. Включение синхронизации в реальном времени (Realtime Publications)
+-- 7. Подключение таблиц к Realtime публикации
 alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.chat_messages;
 alter publication supabase_realtime add table public.queue_items;
@@ -118,7 +125,7 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
   const handleCopy = () => {
     navigator.clipboard.writeText(FULL_SQL_SCHEMA);
     setCopied(true);
-    showSuccess('SQL-скрипт скопирован в буфер обмена!');
+    showSuccess('SQL-скрипт скопирован!');
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -130,19 +137,18 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
             <Database className="h-5 w-5 text-cyan-400" /> Настройка базы данных Supabase
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Запустите этот готовый SQL-скрипт в вашей базе данных Supabase, чтобы автоматически создать все таблицы и настроить синхронизацию реального времени.
+            Запустите этот обновленный SQL-скрипт в вашей базе данных Supabase, чтобы включить мгновенную синхронизацию между всеми компьютерами и телефонами.
           </DialogDescription>
         </DialogHeader>
 
-        {/* Инструкция по шагам */}
         <div className="bg-slate-950 p-3 rounded-xl border border-purple-950/80 space-y-2 text-xs">
           <div className="font-semibold text-pink-400 flex items-center gap-1.5">
-            <Terminal className="h-4 w-4" /> Как подключить за 3 шага:
+            <Terminal className="h-4 w-4" /> Как обновить базу в 3 клика:
           </div>
           <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed">
-            <li>Зайдите в панель вашего проекта на сайте <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="h-2.5 w-2.5" /></a></li>
-            <li>Откройте вкладку <strong className="text-purple-300">SQL Editor</strong> в левом меню и нажмите <strong className="text-purple-300">New Query</strong></li>
-            <li>Вставьте скопированный ниже SQL-код и нажмите синюю кнопку <strong className="text-emerald-400">Run</strong></li>
+            <li>Перейдите в <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="h-2.5 w-2.5" /></a> в ваш проект</li>
+            <li>Откройте <strong className="text-purple-300">SQL Editor</strong> -> <strong className="text-purple-300">New Query</strong></li>
+            <li>Вставьте этот SQL-код и нажмите <strong className="text-emerald-400">Run</strong></li>
           </ol>
         </div>
 
@@ -153,7 +159,7 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
             className="absolute top-3 right-3 bg-pink-600 hover:bg-pink-500 text-white text-xs z-10 font-bold shadow-lg shadow-pink-600/30"
           >
             {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
-            {copied ? 'Скопировано!' : 'Скопировать весь SQL'}
+            {copied ? 'Скопировано!' : 'Скопировать обновленный SQL'}
           </Button>
 
           <ScrollArea className="h-72 w-full rounded-xl border border-purple-950 bg-slate-950 p-4 font-mono text-xs text-cyan-300 leading-relaxed">

@@ -1,9 +1,10 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Plus, Users, Database } from 'lucide-react';
+import { Play, Plus, Users, Database, Wifi, WifiOff } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRooms } from '@/context/RoomContext';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
 interface NavbarProps {
   onOpenCreateModal: () => void;
@@ -41,6 +42,19 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </Link>
 
+        {/* Connection status indicator */}
+        <div className="hidden lg:flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full border bg-slate-900/80">
+          {isSupabaseConfigured ? (
+            <span className="flex items-center gap-1 text-emerald-400">
+              <Wifi className="h-3 w-3 animate-pulse" /> Supabase Sync Active
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 text-amber-400" title="Подключите базу данных Supabase для работы межустройствами">
+              <WifiOff className="h-3 w-3" /> Offline (Local Mode)
+            </span>
+          )}
+        </div>
+
         {/* Action Controls */}
         <div className="flex items-center gap-1.5 md:gap-3">
           <Button
@@ -72,7 +86,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <span>Create Party</span>
           </Button>
 
-          {/* User profile dropdown button */}
+          {/* User profile button */}
           <Button
             onClick={() => navigate('/profile')}
             variant="ghost"
