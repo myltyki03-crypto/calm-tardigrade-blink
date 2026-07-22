@@ -120,22 +120,38 @@ create table if not exists public.direct_messages (
 );
 
 -- ОТКЛЮЧЕНИЕ RLS ДЛЯ ВСЕХ ТАБЛИЦ
-alter table public.profiles disable row level security;
-alter table public.rooms disable row level security;
-alter table public.queue_items disable row level security;
-alter table public.chat_messages disable row level security;
-alter table public.room_members disable row level security;
-alter table public.friend_requests disable row level security;
-alter table public.direct_messages disable row level security;
+alter table if exists public.profiles disable row level security;
+alter table if exists public.rooms disable row level security;
+alter table if exists public.queue_items disable row level security;
+alter table if exists public.chat_messages disable row level security;
+alter table if exists public.room_members disable row level security;
+alter table if exists public.friend_requests disable row level security;
+alter table if exists public.direct_messages disable row level security;
+
+-- СОЗДАНИЕ ВСЕРАЗРЕШАЮЩИХ ПОЛИТИК
+drop policy if exists "Allow public all direct_messages" on public.direct_messages;
+create policy "Allow public all direct_messages" on public.direct_messages for all using (true) with check (true);
+
+drop policy if exists "Allow public all friend_requests" on public.friend_requests;
+create policy "Allow public all friend_requests" on public.friend_requests for all using (true) with check (true);
+
+drop policy if exists "Allow public all profiles" on public.profiles;
+create policy "Allow public all profiles" on public.profiles for all using (true) with check (true);
+
+drop policy if exists "Allow public all rooms" on public.rooms;
+create policy "Allow public all rooms" on public.rooms for all using (true) with check (true);
+
+drop policy if exists "Allow public all chat_messages" on public.chat_messages;
+create policy "Allow public all chat_messages" on public.chat_messages for all using (true) with check (true);
+
+drop policy if exists "Allow public all queue_items" on public.queue_items;
+create policy "Allow public all queue_items" on public.queue_items for all using (true) with check (true);
+
+drop policy if exists "Allow public all room_members" on public.room_members;
+create policy "Allow public all room_members" on public.room_members for all using (true) with check (true);
 
 -- ВЫДАЧА ПРАВ
-grant all on table public.profiles to anon, authenticated, service_role;
-grant all on table public.rooms to anon, authenticated, service_role;
-grant all on table public.queue_items to anon, authenticated, service_role;
-grant all on table public.chat_messages to anon, authenticated, service_role;
-grant all on table public.room_members to anon, authenticated, service_role;
-grant all on table public.friend_requests to anon, authenticated, service_role;
-grant all on table public.direct_messages to anon, authenticated, service_role;
+grant all on all tables in schema public to anon, authenticated, service_role;
 `;
 
 export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClose }) => {
