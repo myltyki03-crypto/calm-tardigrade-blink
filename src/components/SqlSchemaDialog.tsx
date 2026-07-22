@@ -1,5 +1,5 @@
-import React from 'react';
-import { Database, Copy, Check, Terminal, ExternalLink } from 'lucide-react';
+import React, { useState } from 'react';
+import { Database, Copy, Check, Terminal, ExternalLink, Wifi, WifiOff, Key, Save, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -8,8 +8,16 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { showSuccess } from '@/utils/toast';
+import { showSuccess, showError } from '@/utils/toast';
+import {
+  isSupabaseConfigured,
+  getActiveSupabaseConfig,
+  saveCustomSupabaseConfig,
+  clearCustomSupabaseConfig,
+} from '@/lib/supabase';
 
 interface SqlSchemaDialogProps {
   isOpen: boolean;
@@ -120,7 +128,11 @@ alter publication supabase_realtime add table public.room_members;
 `;
 
 export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClose }) => {
-  const [copied, setCopied] = React.useState(false);
+  const [copied, setCopied] = useState(false);
+  const activeConfig = getActiveSupabaseConfig();
+
+  const [supabaseUrl, setSupabaseUrl] = useState(activeConfig.url);
+  const [supabaseKey, setSupabaseKey] = useState(activeConfig.key);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(FULL_SQL_SCHEMA);
@@ -129,40 +141,119 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleSaveKeys = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!supabaseUrl.trim() || !supabaseKey.trim()) {
+      showError('Заполните URL и Анон-Ключ');
+      return;
+    }
+    saveCustomSupabaseConfig(supabaseUrl, supabaseKey);
+  };
+
+  const handleClearKeys = () => {
+    clearCustomSupabaseConfig();
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-2xl">
+      <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 flex items-center gap-2">
-            <Database className="h-5 w-5 text-cyan-400" /> Настройка базы данных Supabase
+          <DialogTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 flex items-center justify-between">
+            <span className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-cyan-400" /> Подключение базы данных Supabase
+            </span>
+            <span className="text-xs px-2.5 py-1 rounded-full font-sans border flex items-center gap-1.5">
+              {isSupabaseConfigured ? (
+                <span className="text-emerald-400 bg-emerald-950/80 border-emerald-500/40 flex items-center gap-1 px-2 py-0.5 rounded-full">
+                  <Wifi className="h-3 w-3 animate-pulse" /> Активна
+                </span>
+              ) : (
+                <span className="text-amber-400 bg-amber-950/80 border-amber-500/40 flex items-center gap-1 px-2 py-0.5 rounded-full">
+                  <WifiOff className="h-3 w-3" /> Локальный режим
+                </span>
+              )}
+            </span>
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Запустите этот обновленный SQL-скрипт в вашей базе данных Supabase, чтобы включить мгновенную синхронизацию между всеми компьютерами и телефонами.
+            Настройте ключи Supabase и выполните SQL-код для мгновенной синхронизации между компьютерами и телефонами.
           </DialogDescription>
         </DialogHeader>
 
+        {/* Ручной ввод ключей Supabase */}
+        <form onSubmit={handleSaveKeys} className="bg-slate-950 p-3 rounded-xl border border-purple-900/60 space-y-3 text-xs">
+          <div className="font-semibold text-pink-400 flex items-center gap-1.5">
+            <Key className="h-4 w-4" /> Введите ключи Supabase (Project API Settings):
+          </div>
+
+          <div className="space-y-2">
+            <div>
+              <Label className="text-[11px] text-slate-300">Supabase Project URL</Label>
+              <Input
+                placeholder="https://xxxx.supabase.co"
+                value={supabaseUrl}
+                onChange={(e) => setSupabaseUrl(e.target.value)}
+                className="bg-slate-900 border-purple-950 text-xs h-8 text-cyan-300 mt-1"
+              />
+            </div>
+
+            <div>
+              <Label className="text-[11px] text-slate-300">Supabase Anon Public Key</Label>
+              <Input
+                type="password"
+                placeholder="eyJhbGciOiJIUzI1NiIsInR..."
+                value={supabaseKey}
+                onChange={(e) => setSupabaseKey(e.target.value)}
+                className="bg-slate-900 border-purple-950 text-xs h-8 text-cyan-300 mt-1"
+              />
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <Button
+              type="submit"
+              size="sm"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-xs h-7 gap-1"
+            >
+              <Save className="h-3.5 w-3.5" /> Сохранить ключи и перезагрузить
+            </Button>
+
+            {localStorage.getItem('custom_supabase_url') && (
+              <Button
+                type="button"
+                onClick={handleClearKeys}
+                variant="ghost"
+                size="sm"
+                className="text-red-400 hover:text-red-300 text-[11px] h-7 gap-1"
+              >
+                <Trash2 className="h-3.5 w-3.5" /> Сбросить сохраненные ключи
+              </Button>
+            )}
+          </div>
+        </form>
+
+        {/* Инструкция по выполнению SQL */}
         <div className="bg-slate-950 p-3 rounded-xl border border-purple-950/80 space-y-2 text-xs">
           <div className="font-semibold text-pink-400 flex items-center gap-1.5">
-            <Terminal className="h-4 w-4" /> Как обновить базу в 3 клика:
+            <Terminal className="h-4 w-4" /> Как настроить таблицы в Supabase:
           </div>
           <ol className="list-decimal list-inside text-slate-300 space-y-1 text-[11px] leading-relaxed">
-            <li>Перейдите в <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="h-2.5 w-2.5" /></a> в ваш проект</li>
-            <li>Откройте <strong className="text-purple-300">SQL Editor</strong> &rarr; <strong className="text-purple-300">New Query</strong></li>
-            <li>Вставьте этот SQL-код и нажмите <strong className="text-emerald-400">Run</strong></li>
+            <li>Откройте проект на <a href="https://supabase.com" target="_blank" rel="noreferrer" className="text-cyan-400 underline inline-flex items-center gap-0.5">supabase.com <ExternalLink className="h-2.5 w-2.5" /></a></li>
+            <li>Зайдите в раздел <strong className="text-purple-300">SQL Editor</strong> &rarr; <strong className="text-purple-300">New Query</strong></li>
+            <li>Вставьте SQL-код ниже и нажмите <strong className="text-emerald-400">Run</strong></li>
           </ol>
         </div>
 
-        <div className="relative mt-2">
+        <div className="relative mt-1">
           <Button
             onClick={handleCopy}
             size="sm"
             className="absolute top-3 right-3 bg-pink-600 hover:bg-pink-500 text-white text-xs z-10 font-bold shadow-lg shadow-pink-600/30"
           >
             {copied ? <Check className="h-3.5 w-3.5 mr-1" /> : <Copy className="h-3.5 w-3.5 mr-1" />}
-            {copied ? 'Скопировано!' : 'Скопировать обновленный SQL'}
+            {copied ? 'Скопировано!' : 'Скопировать SQL'}
           </Button>
 
-          <ScrollArea className="h-72 w-full rounded-xl border border-purple-950 bg-slate-950 p-4 font-mono text-xs text-cyan-300 leading-relaxed">
+          <ScrollArea className="h-60 w-full rounded-xl border border-purple-950 bg-slate-950 p-4 font-mono text-xs text-cyan-300 leading-relaxed">
             <pre>{FULL_SQL_SCHEMA}</pre>
           </ScrollArea>
         </div>
