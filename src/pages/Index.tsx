@@ -38,7 +38,11 @@ const Index = () => {
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
+  // ФИЛЬТРАЦИЯ: Приватные комнаты НЕ отображаются в общем списке
   const filteredRooms = rooms.filter((r) => {
+    if (r.is_private && !searchQuery.trim()) {
+      return false; // Скрывать приватные комнаты из обычной ленты
+    }
     const matchesCategory = activeCategory === 'all' || r.category === activeCategory;
     const matchesSearch =
       r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -54,12 +58,12 @@ const Index = () => {
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
 
-      {/* Уведомление об офлайн-режиме, если Supabase не подключен */}
+      {/* Уведомление об офлайн-режиме */}
       {!isSupabaseConfigured && (
         <div className="bg-amber-950/80 border-b border-amber-500/40 px-4 py-2 text-center text-xs text-amber-200 flex items-center justify-center gap-2">
           <WifiOff className="h-4 w-4 text-amber-400 shrink-0" />
           <span>
-            <strong>Локальный режим:</strong> Подключите базу данных Supabase, чтобы комнаты синхронизировались между вашим ПК и телефоном.
+            <strong>Локальный режим:</strong> Подключите базу данных Supabase, чтобы комнаты синхронизировались между ПК и телефоном.
           </span>
           <Button
             onClick={() => setIsSqlModalOpen(true)}
@@ -72,7 +76,7 @@ const Index = () => {
         </div>
       )}
 
-      {/* Баннер баннера */}
+      {/* Баннер */}
       <section className="relative overflow-hidden border-b border-purple-900/30 bg-gradient-to-b from-purple-950/40 via-slate-950 to-slate-950 py-6 md:py-10 px-4">
         <div className="container mx-auto text-center max-w-3xl relative z-10">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-pink-500/30 bg-pink-950/40 px-3 py-1 text-[11px] text-pink-300 mb-3 backdrop-blur-md">
@@ -117,7 +121,6 @@ const Index = () => {
 
       {/* Каталог комнат */}
       <main className="container mx-auto flex-1 px-3 md:px-4 py-4 md:py-8">
-        {/* Фильтры категорий */}
         <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
           {categories.map((cat) => {
             const Icon = cat.icon;
@@ -139,11 +142,16 @@ const Index = () => {
           })}
         </div>
 
-        {/* Сетка комнат */}
         <div className="mt-4 md:mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
-          {filteredRooms.map((room) => (
-            <RoomCard key={room.id} room={room} />
-          ))}
+          {filteredRooms.length === 0 ? (
+            <div className="col-span-full text-center py-12 text-slate-400 text-xs">
+              Публичных комнат пока нет. Создайте новую или перейдите по прямой ссылке на приватную комнату!
+            </div>
+          ) : (
+            filteredRooms.map((room) => (
+              <RoomCard key={room.id} room={room} />
+            ))
+          )}
         </div>
       </main>
 
@@ -152,7 +160,6 @@ const Index = () => {
         onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
       />
 
-      {/* Диалоги */}
       <CreateRoomModal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}

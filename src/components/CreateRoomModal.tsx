@@ -121,14 +121,14 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       current_media_title: finalTitle,
       current_media_thumbnail: finalThumbnail,
       playback_position_seconds: 0,
-      is_playing: true,
+      is_playing: false, // ВИДЕО НА ПАУЗЕ ПО УМОЛЧАНИЮ
       allow_guest_queue: allowGuestQueue,
       allow_guest_control: false,
       created_at: new Date().toISOString(),
     };
 
     addRoom(newRoom);
-    showSuccess('Комната успешно создана!');
+    showSuccess('Комната создана! Нажмите Play, чтобы запустить видео.');
     setTitle('');
     setMediaUrl('');
     onClose();
@@ -196,7 +196,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-xs font-medium text-slate-200">Приватная комната</Label>
-                <p className="text-[11px] text-slate-400">Вход только по прямой ссылке</p>
+                <p className="text-[11px] text-slate-400">Не видна в ленте, вход только по ссылке</p>
               </div>
               <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
             </div>

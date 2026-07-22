@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2 } from 'lucide-react';
+import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Navbar } from '@/components/Navbar';
 import { MediaPlayer } from '@/components/MediaPlayer';
 import { RoomChat } from '@/components/RoomChat';
 import { RoomQueue } from '@/components/RoomQueue';
+import { RoomMembersList } from '@/components/RoomMembersList';
 import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
@@ -15,7 +16,7 @@ import { ChatMessage, QueueItem, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess, showError } from '@/utils/toast';
 
-type MobileTab = 'chat' | 'queue' | 'info';
+type MobileTab = 'chat' | 'queue' | 'members' | 'info';
 
 const extractYouTubeDetails = (url: string) => {
   let videoId = '4xDzrJKXOOY';
@@ -45,6 +46,9 @@ export const RoomPage = () => {
     voteQueueItem,
     changeRoomMedia,
     deleteRoom,
+    activeMembersByRoom,
+    joinRoomPresence,
+    leaveRoomPresence,
   } = useRooms();
 
   const [directRoom, setDirectRoom] = useState<Room | null>(null);
@@ -70,6 +74,16 @@ export const RoomPage = () => {
     };
   }, [id, isRoomsLoaded]);
 
+  // Фиксация присутствия пользователя в комнате
+  useEffect(() => {
+    if (room?.id) {
+      joinRoomPresence(room.id);
+      return () => {
+        leaveRoomPresence(room.id);
+      };
+    }
+  }, [room?.id]);
+
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('chat');
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
   const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
@@ -88,11 +102,14 @@ export const RoomPage = () => {
 
   if (!room) {
     return (
-      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
-        <h2 className="text-xl font-bold mb-2">Комната не найдена</h2>
-        <p className="text-slate-400 text-xs mb-4">Запрошенная комната не существует или была закрыта ведущим.</p>
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 text-center">
+        <Lock className="h-10 w-10 text-amber-400 mb-2" />
+        <h2 className="text-xl font-bold mb-1">Комната не найдена или приватна</h2>
+        <p className="text-slate-400 text-xs mb-4 max-w-sm">
+          Запрошенная комната не существует или вы пытаетесь перейти в приватную комнату без правильной ссылки.
+        </p>
         <Button onClick={() => navigate('/')} className="bg-purple-600 hover:bg-purple-500 text-xs">
-          Вернуться к списку комнат
+          Вернуться на главную
         </Button>
       </div>
     );
@@ -101,8 +118,23 @@ export const RoomPage = () => {
   const isHost = room.host_id === currentUser.id;
   const roomMessages = messagesByRoom[room.id] || [];
   const roomQueue = queueByRoom[room.id] || [];
+  const roomMembers = activeMembersByRoom[room.id] || [
+    {
+      id: `mem-${currentUser.id}`,
+      room_id: room.id,
+      user_id: currentUser.id,
+      user_name: currentUser.username,
+      user_avatar: currentUser.avatar_url,
+      role: 'listener',
+      joined_at: new Date().toISOString(),
+    }
+  ];
 
   const handleDeleteRoomConfirm = () => {
+    if (!isHost) {
+      showError('Только владелец комнаты может ее удалить!');
+      return;
+    }
     deleteRoom(room.id);
     showSuccess('Комната удалена');
     navigate('/');
@@ -122,7 +154,7 @@ export const RoomPage = () => {
 
   const handleSendMessage = (text: string) => {
     const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
+      id: `msg-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       room_id: room.id,
       user_id: currentUser.id,
       user_name: currentUser.username,
@@ -156,12 +188,12 @@ export const RoomPage = () => {
 
   const handlePlayQueueItem = (item: QueueItem) => {
     if (!isHost) {
-      showError('Только ведущий может переключать видео');
+      showError('Только владелец комнаты может переключать видео');
       return;
     }
     const ytDetails = extractYouTubeDetails(item.url);
     changeRoomMedia(room.id, item.url, item.title, ytDetails.thumbnail);
-    showSuccess(`Сейчас играет: ${item.title}`);
+    showSuccess(`Играет: ${item.title}`);
   };
 
   return (
@@ -182,7 +214,7 @@ export const RoomPage = () => {
               size="sm"
               className="text-slate-400 hover:text-white gap-1 text-xs px-2 h-7"
             >
-              <ArrowLeft className="h-3.5 w-3.5" /> Назад
+              <ArrowLeft className="h-3.5 w-3.5" /> На главную
             </Button>
 
             <div className="flex items-center gap-1.5">
@@ -195,16 +227,16 @@ export const RoomPage = () => {
                 variant="outline"
                 className="border-purple-800 text-purple-300 hover:bg-purple-950 text-[11px] h-7 gap-1"
               >
-                <Share2 className="h-3 w-3 text-pink-400" /> Поделиться
+                <Share2 className="h-3 w-3 text-pink-400" /> Поделиться ссылкой
               </Button>
 
-              {/* Удаление комнаты (только для ведущего) */}
+              {/* УДАЛЕНИЕ ТОЛЬКО ДЛЯ ВЛАДЕЛЬЦА */}
               {isHost && (
                 <Button
                   onClick={() => setIsDeleteDialogOpen(true)}
                   size="sm"
                   variant="destructive"
-                  className="bg-red-600/80 hover:bg-red-600 text-white text-[11px] h-7 gap-1"
+                  className="bg-red-600/80 hover:bg-red-600 text-white text-[11px] h-7 gap-1 font-semibold"
                   title="Удалить комнату"
                 >
                   <Trash2 className="h-3.5 w-3.5" /> Удалить
@@ -213,7 +245,6 @@ export const RoomPage = () => {
             </div>
           </div>
 
-          {/* Плеер синхронного просмотра */}
           <div className="sticky top-14 z-30 lg:relative lg:top-0 bg-slate-950 rounded-2xl w-full">
             <MediaPlayer
               room={room}
@@ -222,28 +253,34 @@ export const RoomPage = () => {
             />
           </div>
 
-          {/* Описание для ПК */}
           <div className="hidden lg:flex p-4 rounded-2xl border border-purple-900/40 bg-slate-900/80 items-center justify-between gap-3 w-full">
             <div>
-              <h2 className="text-lg font-bold text-slate-100">{room.title}</h2>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold text-slate-100">{room.title}</h2>
+                {room.is_private && (
+                  <span className="bg-amber-950/80 text-amber-300 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <Lock className="h-3 w-3" /> Приватная
+                  </span>
+                )}
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Ведущий: <span className="text-pink-400 font-medium">{room.host_name}</span> {room.description ? `• ${room.description}` : ''}
+                Владелец: <span className="text-pink-400 font-medium">{room.host_name}</span> {room.description ? `• ${room.description}` : ''}
               </p>
             </div>
 
             <div className="flex items-center gap-2">
-              <span className="flex items-center gap-1.5 text-xs bg-purple-950/80 border border-purple-800/40 text-purple-300 px-3 py-1 rounded-full">
-                <Users className="h-3.5 w-3.5 text-cyan-400" /> {room.member_count} Зрителей
+              <span className="flex items-center gap-1.5 text-xs bg-purple-950/80 border border-purple-800/40 text-purple-300 px-3 py-1 rounded-full font-bold">
+                <Users className="h-3.5 w-3.5 text-cyan-400" /> {roomMembers.length} Зрителей в сети
               </span>
             </div>
           </div>
         </div>
 
-        {/* Переключатель вкладок для мобильных устройств */}
+        {/* Переключатель вкладок для мобильных */}
         <div className="lg:hidden flex border-b border-purple-900/40 bg-slate-900/80 rounded-xl p-1 gap-1 my-1 w-full">
           <button
             onClick={() => setActiveMobileTab('chat')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
               activeMobileTab === 'chat'
                 ? 'bg-purple-700 text-white shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -255,7 +292,7 @@ export const RoomPage = () => {
 
           <button
             onClick={() => setActiveMobileTab('queue')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
               activeMobileTab === 'queue'
                 ? 'bg-purple-700 text-white shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -266,8 +303,20 @@ export const RoomPage = () => {
           </button>
 
           <button
+            onClick={() => setActiveMobileTab('members')}
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
+              activeMobileTab === 'members'
+                ? 'bg-purple-700 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Users className="h-3.5 w-3.5 text-cyan-400" />
+            <span>Люди ({roomMembers.length})</span>
+          </button>
+
+          <button
             onClick={() => setActiveMobileTab('info')}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg flex items-center justify-center gap-1.5 transition-all ${
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
               activeMobileTab === 'info'
                 ? 'bg-purple-700 text-white shadow'
                 : 'text-slate-400 hover:text-slate-200'
@@ -278,9 +327,8 @@ export const RoomPage = () => {
           </button>
         </div>
 
-        {/* Правая колонка / активная вкладка на мобильном */}
+        {/* Правая колонка / активная вкладка */}
         <div className="lg:col-span-4 flex flex-col gap-3 h-[480px] lg:h-auto w-full">
-          {/* Инфо вкладка на мобильном */}
           {activeMobileTab === 'info' && (
             <div className="lg:hidden p-4 rounded-2xl border border-purple-900/40 bg-slate-900/90 space-y-3 w-full">
               <div>
@@ -288,15 +336,15 @@ export const RoomPage = () => {
                 <p className="text-xs text-slate-400 mt-1">{room.description || 'Описание отсутствует.'}</p>
               </div>
               <div className="pt-2 border-t border-purple-950 flex items-center justify-between text-xs text-purple-300">
-                <span className="flex items-center gap-1.5">
-                  <Users className="h-3.5 w-3.5 text-cyan-400" /> {room.member_count} активных зрителей
+                <span className="flex items-center gap-1.5 font-bold">
+                  <Users className="h-3.5 w-3.5 text-cyan-400" /> {roomMembers.length} зрителей онлайн
                 </span>
-                <span className="text-pink-400 font-medium">Ведущий: {room.host_name}</span>
+                <span className="text-pink-400 font-medium">Владелец: {room.host_name}</span>
               </div>
             </div>
           )}
 
-          {/* Панель чата */}
+          {/* ЧАТ */}
           <div className={`h-full w-full flex-1 ${activeMobileTab !== 'chat' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomChat
               messages={roomMessages}
@@ -305,7 +353,7 @@ export const RoomPage = () => {
             />
           </div>
 
-          {/* Панель очереди */}
+          {/* ОЧЕРЕДЬ */}
           <div className={`h-full w-full flex-1 ${activeMobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomQueue
               queue={roomQueue}
@@ -316,18 +364,23 @@ export const RoomPage = () => {
               isHost={isHost}
             />
           </div>
+
+          {/* УЧАСТНИКИ В СЕТИ */}
+          <div className={`h-full w-full flex-1 ${activeMobileTab !== 'members' ? 'hidden lg:flex' : 'flex'}`}>
+            <RoomMembersList members={roomMembers} hostId={room.host_id} />
+          </div>
         </div>
       </main>
 
-      {/* Диалог подтверждения удаления комнаты */}
+      {/* Диалог удаления комнаты */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-red-400 flex items-center gap-2">
-              <Trash2 className="h-5 w-5" /> Удалить комнату
+              <Trash2 className="h-5 w-5" /> Удалить эту комнату?
             </DialogTitle>
             <DialogDescription className="text-slate-400 text-xs mt-1">
-              Вы уверены, что хотите удалить <span className="font-semibold text-slate-200">"{room.title}"</span>? Это закроет эфир для всех зрителей.
+              Вы владелец этой комнаты. Если вы удалите её, трансляция и чат будут закрыты для всех зрителей.
             </DialogDescription>
           </DialogHeader>
 
@@ -345,7 +398,7 @@ export const RoomPage = () => {
               onClick={handleDeleteRoomConfirm}
               className="bg-red-600 hover:bg-red-500 text-white font-semibold text-xs"
             >
-              Удалить
+              Да, удалить
             </Button>
           </DialogFooter>
         </DialogContent>

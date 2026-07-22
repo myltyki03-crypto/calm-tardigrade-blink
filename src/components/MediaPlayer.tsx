@@ -61,7 +61,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // Вычисление предполагаемого актуального времени ведущего
   const getCalculatedHostTime = () => {
     let startSec = room.playback_position_seconds || 0;
     if (room.is_playing && room.last_updated_at) {
@@ -73,7 +72,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, startSec);
   };
 
-  // Извлечение ID видео YouTube
   const getYouTubeVideoId = (url: string = '') => {
     let videoId = '4xDzrJKXOOY';
     if (url.includes('youtube.com/watch?v=')) {
@@ -86,7 +84,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const videoId = getYouTubeVideoId(room.current_media_url);
 
-  // Подгрузка YouTube IFrame API
   useEffect(() => {
     if (!window.YT) {
       const tag = document.createElement('script');
@@ -96,7 +93,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, []);
 
-  // Инициализация плеера YouTube
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
 
@@ -152,7 +148,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       };
     }
 
-    // Интервал отслеживания позиции и авто-синхронизации
     interval = setInterval(() => {
       if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         const cur = ytPlayerRef.current.getCurrentTime();
@@ -160,12 +155,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         if (typeof cur === 'number') {
           setCurrentTime(cur);
 
-          // ТОЛЬКО СОЗДАТЕЛЬ комнаты обновляет глобальную позицию в базе данных!
           if (isHost) {
             const playerState = ytPlayerRef.current.getPlayerState?.();
             updateRoomProgress(room.id, cur, playerState === 1);
           } else {
-            // Для слушателей: если рассинхрон больше 2.5 секунд - подстраиваемся под ведущего!
             const targetHostTime = getCalculatedHostTime();
             if (room.is_playing && Math.abs(cur - targetHostTime) > 2.5) {
               ytPlayerRef.current.seekTo(targetHostTime, true);
@@ -184,7 +177,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, []);
 
-  // Синхронизация состояния паузы/плея для слушателей
   useEffect(() => {
     if (!isHost && ytPlayerRef.current) {
       if (room.is_playing && !isPlaying) {
@@ -197,7 +189,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [room.is_playing, isHost]);
 
-  // Переключение видео при изменении URL
   useEffect(() => {
     if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
       const startSec = getCalculatedHostTime();
@@ -207,10 +198,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       });
       setCurrentTime(startSec);
       setDuration(0);
+      if (!room.is_playing) {
+        setTimeout(() => ytPlayerRef.current?.pauseVideo?.(), 200);
+      }
     }
   }, [videoId]);
 
-  // Полноэкранный режим
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
@@ -275,10 +268,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Пауза / Воспроизведение только для Ведущего
   const handleTogglePlay = () => {
     if (!isHost) {
-      showError('Только ведущий может управлять воспроизведением');
+      showError('Только владелец комнаты может управлять воспроизведением!');
       return;
     }
 
@@ -287,12 +279,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       ytPlayerRef.current.pauseVideo();
       setIsPlaying(false);
       updateRoomProgress(room.id, currentTime, false);
-      showSuccess('Воспроизведение приостановлено');
+      showSuccess('Пауза');
     } else {
       ytPlayerRef.current.playVideo();
       setIsPlaying(true);
       updateRoomProgress(room.id, currentTime, true);
-      showSuccess('Воспроизведение запущено');
+      showSuccess('Воспроизведение запущенно!');
     }
   };
 
@@ -324,10 +316,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Перемотка только для Ведущего
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) {
-      showError('Только ведущий может перематывать видео');
+      showError('Только владелец комнаты может перематывать видео!');
       return;
     }
 
@@ -347,7 +338,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         ytPlayerRef.current.playVideo();
         setIsPlaying(true);
       }
-      showSuccess('Синхронизировано с трансляцией!');
+      showSuccess('Синхронизировано!');
     }
   };
 
@@ -370,7 +361,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        {/* Контейнер племени */}
         <div ref={playerContainerRef} className="h-full w-full pointer-events-none scale-[1.04]" />
 
         <div
@@ -386,7 +376,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           >
             <div className="flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md px-3 py-1 text-xs text-white border border-purple-500/40">
               <Radio className="h-3.5 w-3.5 text-pink-500 animate-pulse" />
-              <span className="font-semibold text-purple-200">Прямой эфир</span>
+              <span className="font-semibold text-purple-200">
+                {room.is_playing ? 'Прямой эфир' : 'На паузе (ожидание владельца)'}
+              </span>
             </div>
 
             <Button
@@ -422,14 +414,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      {/* Нижняя панель управления */}
       <div
         onClick={(e) => e.stopPropagation()}
         className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/90 via-slate-950/50 to-transparent flex flex-col gap-2 transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
-        {/* Шкала времени */}
         <div className="flex items-center gap-2 px-1">
           <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
             {formatTime(currentTime)}
@@ -447,14 +437,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </span>
         </div>
 
-        {/* Кнопки управления */}
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Старт / Пауза */}
             <Button
               onClick={handleTogglePlay}
               size="icon"
-              title={isHost ? (isPlaying ? 'Пауза' : 'Пуск') : 'Только ведущий может управлять файлом'}
+              title={isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только владелец комнаты может запускать видео'}
               className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
                 isHost
                   ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
@@ -470,7 +458,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               )}
             </Button>
 
-            {/* Громкость */}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleToggleMute}

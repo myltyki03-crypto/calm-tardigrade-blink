@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Room, ChatMessage, QueueItem, UserProfile } from '@/types/rave';
+import { Room, ChatMessage, QueueItem, UserProfile, RoomMember } from '@/types/rave';
 import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE, CURRENT_USER } from '@/data/mockRaveData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { showSuccess, showError } from '@/utils/toast';
@@ -22,6 +22,9 @@ interface RoomContextType {
   changeRoomMedia: (roomId: string, url: string, title?: string, thumbnail?: string) => void;
   updateRoomProgress: (roomId: string, seconds: number, isPlaying?: boolean) => void;
   removeQueueItem: (roomId: string, itemId: string) => void;
+  activeMembersByRoom: Record<string, RoomMember[]>;
+  joinRoomPresence: (roomId: string) => Promise<void>;
+  leaveRoomPresence: (roomId: string) => Promise<void>;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
@@ -47,6 +50,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const saved = localStorage.getItem('pulserave_queue');
     return saved ? JSON.parse(saved) : { 'room-1': INITIAL_QUEUE };
   });
+
+  const [activeMembersByRoom, setActiveMembersByRoom] = useState<Record<string, RoomMember[]>>({});
 
   const fetchRooms = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -95,7 +100,29 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Загрузка данных из Supabase и подписка на Realtime изменения
+  const fetchMembers = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase.from('room_members').select('*');
+    if (data) {
+      const grouped: Record<string, RoomMember[]> = {};
+      data.forEach((m: any) => {
+        if (!grouped[m.room_id]) grouped[m.room_id] = [];
+        // Убираем дубликаты пользователей
+        if (!grouped[m.room_id].some(existing => existing.user_id === m.user_id)) {
+          grouped[m.room_id].push(m as RoomMember);
+        }
+      });
+      setActiveMembersByRoom(grouped);
+
+      // Синхронизируем счетчик зрителей
+      setRooms(prev => prev.map(r => {
+        const count = grouped[r.id]?.length || r.member_count || 1;
+        return { ...r, member_count: count };
+      }));
+    }
+  }, []);
+
+  // Загрузка данных и подписка
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsRoomsLoaded(true);
@@ -105,18 +132,22 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchRooms();
     fetchMessages();
     fetchQueue();
+    fetchMembers();
 
-    // Автоматический опрос каждые 3 секунды для телефонов (на случай проблем с WebSocket)
+    // Быстрый опрос каждые 2 секунды для мгновенной синхронизации чата на телефонах
     const interval = setInterval(() => {
       fetchRooms();
-    }, 3000);
+      fetchMessages();
+      fetchQueue();
+      fetchMembers();
+    }, 2000);
 
-    // Обновление при возврате на вкладку
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         fetchRooms();
         fetchMessages();
         fetchQueue();
+        fetchMembers();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -142,10 +173,14 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .channel('realtime:chat_messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
         const newMsg = payload.new as ChatMessage;
-        setMessagesByRoom((prev) => ({
-          ...prev,
-          [newMsg.room_id]: [...(prev[newMsg.room_id] || []), newMsg],
-        }));
+        setMessagesByRoom((prev) => {
+          const existing = prev[newMsg.room_id] || [];
+          if (existing.some(m => m.id === newMsg.id)) return prev;
+          return {
+            ...prev,
+            [newMsg.room_id]: [...existing, newMsg],
+          };
+        });
       })
       .subscribe();
 
@@ -176,14 +211,22 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       .subscribe();
 
+    const membersChannel = supabase
+      .channel('realtime:room_members')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members' }, () => {
+        fetchMembers();
+      })
+      .subscribe();
+
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(roomsChannel);
       supabase.removeChannel(chatChannel);
       supabase.removeChannel(queueChannel);
+      supabase.removeChannel(membersChannel);
     };
-  }, [fetchRooms, fetchMessages, fetchQueue]);
+  }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers]);
 
   useEffect(() => {
     localStorage.setItem('pulserave_user', JSON.stringify(currentUser));
@@ -192,6 +235,39 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
+
+  const joinRoomPresence = async (roomId: string) => {
+    const memberObj: RoomMember = {
+      id: `mem-${currentUser.id}-${roomId}`,
+      room_id: roomId,
+      user_id: currentUser.id,
+      user_name: currentUser.username,
+      user_avatar: currentUser.avatar_url,
+      role: 'listener',
+      joined_at: new Date().toISOString(),
+    };
+
+    setActiveMembersByRoom(prev => {
+      const list = prev[roomId] || [];
+      if (list.some(m => m.user_id === currentUser.id)) return prev;
+      return { ...prev, [roomId]: [...list, memberObj] };
+    });
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('room_members').upsert([memberObj]);
+    }
+  };
+
+  const leaveRoomPresence = async (roomId: string) => {
+    setActiveMembersByRoom(prev => ({
+      ...prev,
+      [roomId]: (prev[roomId] || []).filter(m => m.user_id !== currentUser.id)
+    }));
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('room_members').delete().eq('room_id', roomId).eq('user_id', currentUser.id);
+    }
+  };
 
   const fetchRoomDirectly = async (id: string): Promise<Room | null> => {
     if (!isSupabaseConfigured || !supabase) return null;
@@ -236,12 +312,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Ошибка добавления комнаты в Supabase:', error);
         showError(`Ошибка базы данных: ${error.message}`);
       } else {
-        showSuccess('Комната синхронизирована со всеми устройствами!');
+        showSuccess('Комната создана!');
       }
     }
   };
 
   const deleteRoom = async (roomId: string) => {
+    const targetRoom = rooms.find(r => r.id === roomId);
+    if (targetRoom && targetRoom.host_id !== currentUser.id) {
+      showError('Только владелец комнаты может ее удалить!');
+      return;
+    }
+
     setRooms((prev) => prev.filter((r) => r.id !== roomId));
 
     if (isSupabaseConfigured && supabase) {
@@ -262,7 +344,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('chat_messages').insert([message]);
-      if (error) console.error('Ошибка отправки сообщения в Supabase:', error);
+      if (error) {
+        console.error('Ошибка отправки сообщения в Supabase:', error);
+        showError('Не удалось отправить сообщение в чат');
+      }
     }
   };
 
@@ -297,7 +382,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const changeRoomMedia = async (roomId: string, url: string, title?: string, thumbnail?: string) => {
     const updatePayload = {
       current_media_url: url,
-      current_media_title: title || 'Playing video',
+      current_media_title: title || 'Воспроизведение видео',
       current_media_thumbnail: thumbnail,
       playback_position_seconds: 0,
       last_updated_at: new Date().toISOString(),
@@ -360,6 +445,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         changeRoomMedia,
         updateRoomProgress,
         removeQueueItem,
+        activeMembersByRoom,
+        joinRoomPresence,
+        leaveRoomPresence,
       }}
     >
       {children}
