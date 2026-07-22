@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Plus, Users, Wifi, WifiOff, LogIn } from 'lucide-react';
+import { Play, Plus, Users, LogIn } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRooms } from '@/context/RoomContext';
-import { isSupabaseConfigured } from '@/lib/supabase';
 import { AuthModal } from '@/components/AuthModal';
 
 interface NavbarProps {
@@ -16,7 +15,6 @@ interface NavbarProps {
 export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateModal,
   onOpenFriendsDrawer,
-  onOpenSqlModal,
 }) => {
   const navigate = useNavigate();
   const { currentUser, isLoggedIn } = useRooms();
@@ -44,27 +42,6 @@ export const Navbar: React.FC<NavbarProps> = ({
               </div>
             </div>
           </Link>
-
-          {/* Статус подключения к базе данных */}
-          <button
-            onClick={onOpenSqlModal}
-            className="flex items-center gap-1.5 text-[10px] md:text-[11px] font-medium px-2.5 py-1 rounded-full border bg-slate-900/90 hover:bg-slate-800 transition-colors cursor-pointer border-purple-900/50"
-            title="Настройки подключения к базе данных Supabase"
-          >
-            {isSupabaseConfigured ? (
-              <span className="flex items-center gap-1 text-emerald-400 font-semibold">
-                <Wifi className="h-3 w-3 animate-pulse" />
-                <span className="hidden sm:inline">Синхронизация Supabase</span>
-                <span className="sm:hidden">Онлайн</span>
-              </span>
-            ) : (
-              <span className="flex items-center gap-1 text-amber-400 font-semibold">
-                <WifiOff className="h-3 w-3" />
-                <span className="hidden sm:inline">Офлайн (Локальный режим)</span>
-                <span className="sm:hidden">Ключи БД</span>
-              </span>
-            )}
-          </button>
 
           {/* Кнопки действий */}
           <div className="flex items-center gap-1.5 md:gap-3">
