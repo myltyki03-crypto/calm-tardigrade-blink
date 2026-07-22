@@ -417,9 +417,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!dmErr && dmData) {
         setDirectMessages((prev) => {
           const map = new Map<string, DirectMessage>();
-          // Сначала сохраняем существующие локальные сообщения
           prev.forEach((m) => map.set(m.id, m));
-          // Затем добавляем или обновляем полученные из базы
           (dmData as DirectMessage[]).forEach((m) => map.set(m.id, m));
           return Array.from(map.values()).sort(
             (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
@@ -504,7 +502,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fetchQueue();
       fetchRoomMembers();
       fetchFriendData();
-    }, 4000);
+    }, 2500);
 
     return () => {
       clearInterval(interval);
@@ -675,6 +673,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const { error } = await supabase.from('direct_messages').insert([newDm]);
       if (error) {
         console.error('Failed to insert DM into Supabase:', error);
+        showError(`Ошибка отправки сообщения: ${error.message}`);
       }
     }
   };
@@ -683,24 +682,25 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser.username) return [];
 
     const myName = currentUser.username.toLowerCase().trim();
-    const myId = currentUser.id;
+    const myId = (currentUser.id || '').toLowerCase().trim();
+
     const tName = (targetUsername || '').toLowerCase().trim();
-    const tId = targetUserId;
+    const tId = (targetUserId || '').toLowerCase().trim();
 
     return directMessages
       .filter((m) => {
         const sName = (m.sender_name || '').toLowerCase().trim();
         const rName = (m.receiver_name || '').toLowerCase().trim();
-        const sId = m.sender_id;
-        const rId = m.receiver_id;
+        const sId = (m.sender_id || '').toLowerCase().trim();
+        const rId = (m.receiver_id || '').toLowerCase().trim();
 
-        const isFromMe = sId === myId || (sName && myName && sName === myName);
-        const isFromTarget = sId === tId || (sName && tName && sName === tName) || (tId && sName === tId.toLowerCase());
+        const senderIsMe = (myId && sId === myId) || (myName && sName === myName);
+        const senderIsTarget = (tId && sId === tId) || (tName && sName === tName);
 
-        const isToMe = rId === myId || (rName && myName && rName === myName);
-        const isToTarget = rId === tId || (rName && tName && rName === tName) || (tId && rName === tId.toLowerCase());
+        const receiverIsMe = (myId && rId === myId) || (myName && rName === myName);
+        const receiverIsTarget = (tId && rId === tId) || (tName && rName === tName);
 
-        return (isFromMe && isToTarget) || (isFromTarget && isToMe);
+        return (senderIsMe && receiverIsTarget) || (senderIsTarget && receiverIsMe);
       })
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   };
