@@ -175,7 +175,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         if (typeof cur === 'number') {
           setCurrentTime(cur);
-          if (isHost && now - lastHostSyncSaveRef.current > 6000) {
+          if (isHost && now - lastHostSyncSaveRef.current > 3000) {
             lastHostSyncSaveRef.current = now;
             if (ytPlayerRef.current.getPlayerState?.() === 1) {
               updateRoomProgress(room.id, cur, true);
@@ -205,7 +205,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           localTime = ytPlayerRef.current.getCurrentTime?.() || 0;
         } catch (err) {}
 
-        if (Math.abs(localTime - targetHostTime) > 10.0) {
+        if (Math.abs(localTime - targetHostTime) > 2.5) {
           ytPlayerRef.current.seekTo(targetHostTime, true);
         }
 
@@ -218,7 +218,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         }
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         const v = videoElementRef.current;
-        if (Math.abs(v.currentTime - targetHostTime) > 3.0) {
+        if (Math.abs(v.currentTime - targetHostTime) > 2.5) {
           v.currentTime = targetHostTime;
         }
         if (room.is_playing) {

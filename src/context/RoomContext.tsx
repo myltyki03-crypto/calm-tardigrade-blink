@@ -52,6 +52,15 @@ interface RoomContextType {
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
 
+const getOrCreateGuestId = () => {
+  let guestId = localStorage.getItem('pulserave_guest_id');
+  if (!guestId) {
+    guestId = 'guest_' + Date.now().toString(36) + '_' + Math.random().toString(36).substring(2, 7);
+    localStorage.setItem('pulserave_guest_id', guestId);
+  }
+  return guestId;
+};
+
 export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [accounts, setAccounts] = useState<RegisteredAccount[]>(() => {
     const saved = localStorage.getItem('pulserave_accounts');
@@ -67,10 +76,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.error('Failed to parse logged user:', e);
       }
     }
+    const guestId = getOrCreateGuestId();
     return {
-      id: '',
-      username: 'Гость',
-      avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
+      id: guestId,
+      username: `Гость_${guestId.slice(-4)}`,
+      avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${guestId}`,
     };
   });
 
@@ -136,7 +146,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [directMessages]);
 
   useEffect(() => {
-    if (isLoggedIn && currentUser.username && currentUser.username !== 'Гость') {
+    if (isLoggedIn && currentUser.username && !currentUser.username.startsWith('Гость')) {
       localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
       if (isSupabaseConfigured && supabase) {
         const payload = {
@@ -159,10 +169,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsLoggedIn(false);
     setFriendRequests([]);
     setDirectMessages([]);
+    const guestId = getOrCreateGuestId();
     setCurrentUser({
-      id: '',
-      username: 'Гость',
-      avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
+      id: guestId,
+      username: `Гость_${guestId.slice(-4)}`,
+      avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${guestId}`,
     });
 
     localStorage.removeItem('pulserave_accounts');
@@ -230,6 +241,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: newAcc.username,
           avatar_url: newAcc.avatar_url,
           status_message: newAcc.status_message,
+          password_hash: newAcc.password_hash,
         },
       ]);
     }
@@ -245,7 +257,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       (a) => a.username.toLowerCase() === cleanName.toLowerCase() && a.password_hash === password_hash
     );
 
-    if (isSupabaseConfigured && supabase) {
+    if (!found && isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('profiles')
         .select('*')
@@ -253,6 +265,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (data && !error) {
+        if (data.password_hash && data.password_hash !== password_hash) {
+          showError('Неверный пароль!');
+          return false;
+        }
+
         found = {
           id: data.id,
           username: data.username,
@@ -293,6 +310,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: found.username,
           avatar_url: found.avatar_url,
           status_message: found.status_message,
+          password_hash: found.password_hash,
         },
       ]);
     }
@@ -303,10 +321,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const logoutUser = () => {
     setIsLoggedIn(false);
+    const guestId = getOrCreateGuestId();
     setCurrentUser({
-      id: '',
-      username: 'Гость',
-      avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
+      id: guestId,
+      username: `Гость_${guestId.slice(-4)}`,
+      avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${guestId}`,
     });
     localStorage.removeItem('pulserave_logged_user');
     showSuccess('Вы вышли из аккаунта');
@@ -337,6 +356,19 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  const fetchQueue = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase.from('queue_items').select('*').order('created_at', { ascending: true });
+    if (data) {
+      const grouped: Record<string, QueueItem[]> = {};
+      data.forEach((item: any) => {
+        if (!grouped[item.room_id]) grouped[item.room_id] = [];
+        grouped[item.room_id].push(item as QueueItem);
+      });
+      setQueueByRoom((prev) => ({ ...prev, ...grouped }));
+    }
+  }, []);
+
   const fetchRoomMembers = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
     const { data } = await supabase.from('room_members').select('*');
@@ -360,7 +392,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchFriendData = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase || !currentUser.username || currentUser.username === 'Гость') return;
+    if (!isSupabaseConfigured || !supabase) return;
     
     try {
       const { data: reqData, error: reqErr } = await supabase
@@ -382,7 +414,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (e) {
       console.error('Error fetching friends/DM:', e);
     }
-  }, [currentUser.username]);
+  }, []);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -392,6 +424,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     fetchRooms();
     fetchMessages();
+    fetchQueue();
     fetchRoomMembers();
     fetchFriendData();
 
@@ -401,6 +434,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .on('postgres_changes', { event: '*', schema: 'public' }, () => {
         fetchRooms();
         fetchMessages();
+        fetchQueue();
         fetchRoomMembers();
         fetchFriendData();
       })
@@ -409,19 +443,20 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
+      fetchQueue();
       fetchRoomMembers();
       fetchFriendData();
-    }, 2000);
+    }, 1500);
 
     return () => {
       clearInterval(interval);
       if (supabase) supabase.removeChannel(channel);
     };
-  }, [fetchRooms, fetchMessages, fetchRoomMembers, fetchFriendData]);
+  }, [fetchRooms, fetchMessages, fetchQueue, fetchRoomMembers, fetchFriendData]);
 
   // Друзья логика
   const sendFriendRequest = async (targetUser: UserProfile) => {
-    if (!currentUser.id || currentUser.username === 'Гость') {
+    if (!currentUser.id) {
       showError('Войдите в аккаунт, чтобы добавлять в друзья');
       return;
     }
@@ -522,7 +557,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getFriendStatusWith = (targetUserId: string, targetUsername?: string): 'none' | 'pending_sent' | 'pending_received' | 'accepted' => {
-    if (!currentUser.username || currentUser.username === 'Гость') return 'none';
+    if (!currentUser.username) return 'none';
 
     const myName = currentUser.username.toLowerCase();
     const tName = (targetUsername || '').toLowerCase();
@@ -550,7 +585,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // ЛС логика
   const sendDirectMessage = async (receiver: UserProfile, messageText: string) => {
-    if (!currentUser.id || currentUser.username === 'Гость') {
+    if (!currentUser.id) {
       showError('Войдите в аккаунт, чтобы писать ЛС');
       return;
     }
@@ -591,7 +626,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const getDirectMessagesWith = (targetUserId: string, targetUsername?: string): DirectMessage[] => {
-    if (!currentUser.username || currentUser.username === 'Гость') return [];
+    if (!currentUser.username) return [];
 
     const myName = currentUser.username.toLowerCase();
     const myId = currentUser.id;
@@ -717,7 +752,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     markRoomUnlocked(newRoom.id);
 
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('rooms').insert([roomWithTimestamp]);
+      const { skip_votes, ...dbRoom } = roomWithTimestamp;
+      await supabase.from('rooms').insert([dbRoom]);
     }
   };
 
@@ -779,7 +815,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       playback_position_seconds: 0,
       last_updated_at: new Date().toISOString(),
       is_playing: true,
-      skip_votes: [],
     };
 
     setRooms((prev) =>
@@ -852,9 +887,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setRooms((prev) =>
         prev.map((r) => (r.id === roomId ? { ...r, skip_votes: updatedVotes } : r))
       );
-      if (isSupabaseConfigured && supabase) {
-        await supabase.from('rooms').update({ skip_votes: updatedVotes }).eq('id', roomId);
-      }
     }
   };
 
