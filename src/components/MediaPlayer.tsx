@@ -22,6 +22,13 @@ import {
 import { Room } from '@/types/rave';
 import { showSuccess } from '@/utils/toast';
 
+declare global {
+  interface Window {
+    YT: any;
+    onYouTubeIframeAPIReady: any;
+  }
+}
+
 interface MediaPlayerProps {
   room: Room;
   isHost: boolean;
@@ -36,7 +43,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   onSendReaction,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const playerContainerRef = useRef<HTMLDivElement>(null);
+  const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(room.is_playing);
@@ -47,8 +55,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentSpeed, setCurrentSpeed] = useState(1);
   const [showControls, setShowControls] = useState(true);
 
-  // Real & fallback video playback state
-  const [currentTime, setCurrentTime] = useState(room.playback_position_seconds || 0);
+  // Real playback time from YouTube SDK
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
   // Извлечение ID видео YouTube
@@ -64,19 +72,87 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const videoId = getYouTubeVideoId(room.current_media_url);
 
-  // Вспомогательная функция отправки команд в YouTube Player API
-  const sendPlayerCommand = (func: string, args: any[] = []) => {
-    if (iframeRef.current && iframeRef.current.contentWindow) {
-      iframeRef.current.contentWindow.postMessage(
-        JSON.stringify({
-          event: 'command',
-          func: func,
-          args: args,
-        }),
-        '*'
-      );
+  // Загрузка официального скрипта YouTube IFrame API
+  useEffect(() => {
+    if (!window.YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
     }
-  };
+  }, []);
+
+  // Инициализация YT.Player
+  useEffect(() => {
+    let interval: NodeJS.Timeout | null = null;
+
+    const initPlayer = () => {
+      if (!playerContainerRef.current) return;
+
+      ytPlayerRef.current = new window.YT.Player(playerContainerRef.current, {
+        videoId: videoId,
+        playerVars: {
+          autoplay: 1,
+          controls: 0,
+          disablekb: 1,
+          fs: 0,
+          modestbranding: 1,
+          rel: 0,
+          origin: window.location.origin,
+        },
+        events: {
+          onReady: (event: any) => {
+            event.target.playVideo();
+            event.target.setVolume(volume);
+            const dur = event.target.getDuration();
+            if (dur && dur > 0) setDuration(dur);
+          },
+          onStateChange: (event: any) => {
+            // 1 = PLAYING, 2 = PAUSED
+            if (event.data === 1) {
+              setIsPlaying(true);
+            } else if (event.data === 2) {
+              setIsPlaying(false);
+            }
+          },
+        },
+      });
+    };
+
+    if (window.YT && window.YT.Player) {
+      initPlayer();
+    } else {
+      window.onYouTubeIframeAPIReady = () => {
+        initPlayer();
+      };
+    }
+
+    // Регулярный опрос реальной длительности и позиции
+    interval = setInterval(() => {
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+        const cur = ytPlayerRef.current.getCurrentTime();
+        const dur = ytPlayerRef.current.getDuration();
+        if (typeof cur === 'number') setCurrentTime(cur);
+        if (typeof dur === 'number' && dur > 0) setDuration(dur);
+      }
+    }, 500);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+        ytPlayerRef.current.destroy();
+      }
+    };
+  }, []);
+
+  // Смена видео при изменении URL
+  useEffect(() => {
+    if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
+      ytPlayerRef.current.loadVideoById(videoId);
+      setCurrentTime(0);
+      setDuration(0);
+    }
+  }, [videoId]);
 
   // Полноэкранный режим
   useEffect(() => {
@@ -125,149 +201,89 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const toggleCaptions = () => {
     const nextState = !isCaptionsOn;
     setIsCaptionsOn(nextState);
-    if (nextState) {
-      sendPlayerCommand('loadModule', ['captions']);
-      sendPlayerCommand('setOption', ['captions', 'track', { languageCode: 'en' }]);
-      showSuccess('Subtitles Enabled');
-    } else {
-      sendPlayerCommand('unloadModule', ['captions']);
-      showSuccess('Subtitles Disabled');
+    if (ytPlayerRef.current) {
+      if (nextState) {
+        ytPlayerRef.current.loadModule?.('captions');
+        ytPlayerRef.current.setOption?.('captions', 'track', { languageCode: 'en' });
+        showSuccess('Subtitles Enabled');
+      } else {
+        ytPlayerRef.current.unloadModule?.('captions');
+        showSuccess('Subtitles Disabled');
+      }
     }
   };
 
   // Изменение скорости
   const handleSpeedChange = (speed: number) => {
     setCurrentSpeed(speed);
-    sendPlayerCommand('setPlaybackRate', [speed]);
-    showSuccess(`Playback Speed: ${speed}x`);
-  };
-
-  // 1. Приём сообщений от YouTube iframe API
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      try {
-        const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-
-        if (data && data.event === 'infoDelivery' && data.info) {
-          if (typeof data.info.currentTime === 'number' && data.info.currentTime > 0) {
-            setCurrentTime(data.info.currentTime);
-          }
-          if (typeof data.info.duration === 'number' && data.info.duration > 0) {
-            setDuration(data.info.duration);
-          }
-          if (typeof data.info.playerState === 'number') {
-            if (data.info.playerState === 1) setIsPlaying(true);
-            if (data.info.playerState === 2) setIsPlaying(false);
-          }
-        }
-      } catch (err) {
-        // Игнорируем внешние не-JSON сообщения
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-
-    const pingInterval = setInterval(() => {
-      sendPlayerCommand('listening', []);
-      sendPlayerCommand('getDuration', []);
-      sendPlayerCommand('getCurrentTime', []);
-    }, 1000);
-
-    return () => {
-      window.removeEventListener('message', handleMessage);
-      clearInterval(pingInterval);
-      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    };
-  }, [videoId]);
-
-  // 2. Гарантированный таймер воспроизведения секунда за секундой
-  useEffect(() => {
-    let playInterval: NodeJS.Timeout | null = null;
-
-    if (isPlaying) {
-      playInterval = setInterval(() => {
-        setCurrentTime((prev) => {
-          const maxDur = duration > 0 ? duration : 240;
-          if (prev >= maxDur) return 0;
-          return prev + 1;
-        });
-      }, 1000);
+    if (ytPlayerRef.current?.setPlaybackRate) {
+      ytPlayerRef.current.setPlaybackRate(speed);
+      showSuccess(`Playback Speed: ${speed}x`);
     }
-
-    return () => {
-      if (playInterval) clearInterval(playInterval);
-    };
-  }, [isPlaying, duration]);
-
-  // Сброс времени при смене видео
-  useEffect(() => {
-    setCurrentTime(0);
-    setDuration(240); // 4 мин по умолчанию до ответа API
-    setTimeout(() => {
-      sendPlayerCommand('listening', []);
-      sendPlayerCommand('getDuration', []);
-    }, 500);
-  }, [videoId]);
+  };
 
   // Переключение воспроизведения/паузы
   const handleTogglePlay = () => {
-    const nextState = !isPlaying;
-    setIsPlaying(nextState);
-    if (nextState) {
-      sendPlayerCommand('playVideo');
-      showSuccess('Playback Resumed');
-    } else {
-      sendPlayerCommand('pauseVideo');
+    if (!ytPlayerRef.current) return;
+    if (isPlaying) {
+      ytPlayerRef.current.pauseVideo();
+      setIsPlaying(false);
       showSuccess('Playback Paused');
+    } else {
+      ytPlayerRef.current.playVideo();
+      setIsPlaying(true);
+      showSuccess('Playback Resumed');
     }
   };
 
   // Изменение громкости
   const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume);
+    if (!ytPlayerRef.current) return;
+
     if (newVolume === 0) {
       setIsMuted(true);
-      sendPlayerCommand('mute');
+      ytPlayerRef.current.mute();
     } else {
       if (isMuted) {
         setIsMuted(false);
-        sendPlayerCommand('unMute');
+        ytPlayerRef.current.unMute();
       }
-      sendPlayerCommand('setVolume', [newVolume]);
+      ytPlayerRef.current.setVolume(newVolume);
     }
   };
 
   // Включение / выключение звука
   const handleToggleMute = () => {
+    if (!ytPlayerRef.current) return;
     if (isMuted) {
       setIsMuted(false);
-      sendPlayerCommand('unMute');
-      sendPlayerCommand('setVolume', [volume || 50]);
+      ytPlayerRef.current.unMute();
+      ytPlayerRef.current.setVolume(volume || 50);
     } else {
       setIsMuted(true);
-      sendPlayerCommand('mute');
+      ytPlayerRef.current.mute();
     }
   };
 
-  // Эффективная длительность видео
-  const effectiveDuration = duration > 0 ? duration : 240;
-
   // Промотка видео на точную секунду
   const handleSeek = (newProgressPercent: number) => {
-    const targetSeconds = (newProgressPercent / 100) * effectiveDuration;
-    setCurrentTime(targetSeconds);
-    sendPlayerCommand('seekTo', [targetSeconds, true]);
+    if (duration > 0 && ytPlayerRef.current?.seekTo) {
+      const targetSeconds = (newProgressPercent / 100) * duration;
+      setCurrentTime(targetSeconds);
+      ytPlayerRef.current.seekTo(targetSeconds, true);
+    }
   };
 
   // Пересинхронизация
   const handleSyncClick = () => {
-    sendPlayerCommand('seekTo', [currentTime, true]);
-    sendPlayerCommand('playVideo');
-    setIsPlaying(true);
-    showSuccess('Synchronized with Host Stream!');
+    if (ytPlayerRef.current?.seekTo) {
+      ytPlayerRef.current.seekTo(currentTime, true);
+      ytPlayerRef.current.playVideo();
+      setIsPlaying(true);
+      showSuccess('Synchronized with Host Stream!');
+    }
   };
-
-  const embedUrl = `https://www.youtube.com/embed/${videoId}?enablejsapi=1&autoplay=1&mute=0&controls=0&origin=${window.location.origin}`;
 
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
@@ -276,7 +292,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressPercent = (currentTime / effectiveDuration) * 100;
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div
@@ -289,13 +305,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     >
       {/* Video Container Frame */}
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        <iframe
-          ref={iframeRef}
-          src={embedUrl}
-          title={room.current_media_title || 'Media Stream'}
-          className="h-full w-full border-0 select-none"
-          allow="autoplay; encrypted-media; fullscreen"
-        />
+        {/* Element mounted by YouTube API */}
+        <div ref={playerContainerRef} className="h-full w-full" />
 
         {/* Clickable Overlay to Toggle Controls */}
         <div
@@ -362,14 +373,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {formatTime(currentTime)}
           </span>
           <Slider
-            value={[Math.min(100, Math.max(0, progressPercent))]}
+            value={[progressPercent]}
             max={100}
             step={0.1}
             onValueChange={(val) => handleSeek(val[0])}
             className="flex-1 cursor-pointer"
           />
           <span className="text-[10px] font-mono text-slate-400 w-10 text-right">
-            {formatTime(effectiveDuration)}
+            {formatTime(duration)}
           </span>
         </div>
 
