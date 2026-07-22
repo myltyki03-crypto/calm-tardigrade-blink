@@ -11,6 +11,8 @@ interface RoomContextType {
   queueByRoom: Record<string, QueueItem[]>;
   addQueueItem: (roomId: string, item: QueueItem) => void;
   voteQueueItem: (roomId: string, itemId: string) => void;
+  changeRoomMedia: (roomId: string, url: string, title?: string, thumbnail?: string) => void;
+  removeQueueItem: (roomId: string, itemId: string) => void;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
@@ -64,6 +66,31 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }));
   };
 
+  const changeRoomMedia = (roomId: string, url: string, title?: string, thumbnail?: string) => {
+    setRooms((prev) =>
+      prev.map((r) => {
+        if (r.id === roomId) {
+          return {
+            ...r,
+            current_media_url: url,
+            current_media_title: title || r.current_media_title || 'Playing video',
+            current_media_thumbnail: thumbnail || r.current_media_thumbnail,
+            playback_position_seconds: 0,
+            is_playing: true,
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const removeQueueItem = (roomId: string, itemId: string) => {
+    setQueueByRoom((prev) => ({
+      ...prev,
+      [roomId]: (prev[roomId] || []).filter((item) => item.id !== itemId),
+    }));
+  };
+
   return (
     <RoomContext.Provider
       value={{
@@ -75,6 +102,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         queueByRoom,
         addQueueItem,
         voteQueueItem,
+        changeRoomMedia,
+        removeQueueItem,
       }}
     >
       {children}

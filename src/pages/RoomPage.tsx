@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info } from 'lucide-react';
+import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Video } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Navbar } from '@/components/Navbar';
 import { MediaPlayer } from '@/components/MediaPlayer';
 import { RoomChat } from '@/components/RoomChat';
@@ -17,10 +19,32 @@ import { showSuccess } from '@/utils/toast';
 
 type MobileTab = 'chat' | 'queue' | 'info';
 
+const extractYouTubeDetails = (url: string) => {
+  let videoId = '4xDzrJKXOOY';
+  if (url.includes('youtube.com/watch?v=')) {
+    videoId = url.split('v=')[1]?.split('&')[0] || videoId;
+  } else if (url.includes('youtu.be/')) {
+    videoId = url.split('youtu.be/')[1]?.split('?')[0] || videoId;
+  }
+  return {
+    videoId,
+    thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+  };
+};
+
 export const RoomPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { getRoomById, messagesByRoom, sendMessage, queueByRoom, addQueueItem, voteQueueItem } = useRooms();
+  const {
+    getRoomById,
+    messagesByRoom,
+    sendMessage,
+    queueByRoom,
+    addQueueItem,
+    voteQueueItem,
+    changeRoomMedia,
+    removeQueueItem,
+  } = useRooms();
 
   const room = id ? getRoomById(id) : undefined;
 
@@ -29,6 +53,10 @@ export const RoomPage = () => {
   const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+
+  // Switch video modal
+  const [isChangeMediaOpen, setIsChangeMediaOpen] = useState(false);
+  const [newMediaUrl, setNewMediaUrl] = useState('');
 
   if (!room) {
     return (
@@ -73,12 +101,14 @@ export const RoomPage = () => {
   };
 
   const handleAddQueueItem = (url: string) => {
+    const ytDetails = extractYouTubeDetails(url);
     const newItem: QueueItem = {
       id: `q-${Date.now()}`,
       room_id: room.id,
-      title: 'Requested Video Track',
+      title: `YouTube Video (${ytDetails.videoId})`,
       url: url,
-      duration_seconds: 200,
+      thumbnail_url: ytDetails.thumbnail,
+      duration_seconds: 240,
       added_by_name: CURRENT_USER.username,
       votes: 1,
       created_at: new Date().toISOString(),
@@ -88,6 +118,23 @@ export const RoomPage = () => {
 
   const handleVoteItem = (itemId: string) => {
     voteQueueItem(room.id, itemId);
+  };
+
+  const handlePlayQueueItem = (item: QueueItem) => {
+    const ytDetails = extractYouTubeDetails(item.url);
+    changeRoomMedia(room.id, item.url, item.title, ytDetails.thumbnail);
+    removeQueueItem(room.id, item.id);
+    showSuccess(`Now playing: ${item.title}`);
+  };
+
+  const handleChangeMediaSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newMediaUrl.trim()) return;
+    const ytDetails = extractYouTubeDetails(newMediaUrl);
+    changeRoomMedia(room.id, newMediaUrl.trim(), `YouTube Video (${ytDetails.videoId})`, ytDetails.thumbnail);
+    setNewMediaUrl('');
+    setIsChangeMediaOpen(false);
+    showSuccess('Video switched successfully!');
   };
 
   return (
@@ -111,17 +158,27 @@ export const RoomPage = () => {
               <ArrowLeft className="h-3.5 w-3.5" /> Back
             </Button>
 
-            <Button
-              onClick={() => {
-                navigator.clipboard.writeText(window.location.href);
-                showSuccess('Room link copied!');
-              }}
-              size="sm"
-              variant="outline"
-              className="border-purple-800 text-purple-300 hover:bg-purple-950 text-[11px] h-7 gap-1"
-            >
-              <Share2 className="h-3 w-3 text-pink-400" /> Share
-            </Button>
+            <div className="flex items-center gap-1.5">
+              <Button
+                onClick={() => setIsChangeMediaOpen(true)}
+                size="sm"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white text-[11px] h-7 gap-1"
+              >
+                <Video className="h-3.5 w-3.5" /> Change Video
+              </Button>
+
+              <Button
+                onClick={() => {
+                  navigator.clipboard.writeText(window.location.href);
+                  showSuccess('Room link copied!');
+                }}
+                size="sm"
+                variant="outline"
+                className="border-purple-800 text-purple-300 hover:bg-purple-950 text-[11px] h-7 gap-1"
+              >
+                <Share2 className="h-3 w-3 text-pink-400" /> Share
+              </Button>
+            </div>
           </div>
 
           {/* Synchronized Player Sticky Container for Mobile */}
@@ -222,11 +279,41 @@ export const RoomPage = () => {
               queue={roomQueue}
               onAddQueueItem={handleAddQueueItem}
               onVoteItem={handleVoteItem}
+              onPlayNow={handlePlayQueueItem}
               isHost={isHost}
             />
           </div>
         </div>
       </main>
+
+      {/* Change Video Dialog */}
+      <Dialog open={isChangeMediaOpen} onOpenChange={setIsChangeMediaOpen}>
+        <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
+              Change Currently Playing Video
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handleChangeMediaSubmit} className="space-y-4 py-2">
+            <Input
+              placeholder="Paste new YouTube video URL..."
+              value={newMediaUrl}
+              onChange={(e) => setNewMediaUrl(e.target.value)}
+              className="bg-slate-950 border-purple-900 text-xs text-slate-100"
+              required
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setIsChangeMediaOpen(false)} className="border-slate-800 text-slate-300">
+                Cancel
+              </Button>
+              <Button type="submit" className="bg-pink-600 hover:bg-pink-500 text-white font-semibold">
+                Play Video
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <MobileBottomNav
         onOpenCreateModal={() => setIsCreateModalOpen(true)}

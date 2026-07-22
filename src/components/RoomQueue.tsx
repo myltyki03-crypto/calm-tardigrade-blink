@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
-import { ListMusic, Plus, ThumbsUp, Trash2, Link as LinkIcon } from 'lucide-react';
+import { ListMusic, Plus, ThumbsUp, Play, Link as LinkIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { QueueItem } from '@/types/rave';
-import { CURRENT_USER } from '@/data/mockRaveData';
 import { showSuccess } from '@/utils/toast';
 
 interface RoomQueueProps {
   queue: QueueItem[];
   onAddQueueItem: (url: string) => void;
   onVoteItem: (id: string) => void;
+  onPlayNow: (item: QueueItem) => void;
   isHost: boolean;
 }
 
@@ -18,6 +18,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
   queue,
   onAddQueueItem,
   onVoteItem,
+  onPlayNow,
   isHost,
 }) => {
   const [urlInput, setUrlInput] = useState('');
@@ -65,7 +66,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
           {queue.map((item, idx) => (
             <div
               key={item.id}
-              className="group flex items-center gap-2.5 p-2 rounded-xl bg-slate-950/60 border border-purple-950 hover:border-purple-800/60 transition-all text-xs"
+              className="group flex items-center gap-2 p-2 rounded-xl bg-slate-950/60 border border-purple-950 hover:border-purple-800/60 transition-all text-xs"
             >
               <span className="font-mono text-[10px] font-bold text-slate-500 w-4 text-center">
                 #{idx + 1}
@@ -80,15 +81,27 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
                 <p className="text-[10px] text-slate-400">Added by {item.added_by_name}</p>
               </div>
 
-              <Button
-                onClick={() => onVoteItem(item.id)}
-                size="sm"
-                variant="ghost"
-                className="h-7 px-2 text-[11px] text-pink-400 hover:bg-pink-950/40 gap-1 border border-pink-900/30 rounded-lg"
-              >
-                <ThumbsUp className="h-3 w-3" />
-                <span>{item.votes}</span>
-              </Button>
+              <div className="flex items-center gap-1">
+                <Button
+                  onClick={() => onPlayNow(item)}
+                  size="sm"
+                  className="h-7 px-2 text-[10px] bg-pink-600 hover:bg-pink-500 text-white gap-1 rounded-lg"
+                  title="Play video now"
+                >
+                  <Play className="h-3 w-3 fill-white" />
+                  <span className="hidden sm:inline">Play</span>
+                </Button>
+
+                <Button
+                  onClick={() => onVoteItem(item.id)}
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 px-2 text-[11px] text-pink-400 hover:bg-pink-950/40 gap-1 border border-pink-900/30 rounded-lg"
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                  <span>{item.votes}</span>
+                </Button>
+              </div>
             </div>
           ))}
         </div>
