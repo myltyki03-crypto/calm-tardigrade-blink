@@ -20,6 +20,8 @@ import { showSuccess, showError } from '@/utils/toast';
 
 type MobileTab = 'chat' | 'queue' | 'members' | 'info';
 
+const RAVE_REACTIONS = ['❤️', '🔥', '😂', '🎉', '💩', '😮'];
+
 const extractYouTubeDetails = (url: string) => {
   let videoId = '4xDzrJKXOOY';
   if (url.includes('youtube.com/watch?v=')) {
@@ -373,8 +375,26 @@ export const RoomPage = () => {
               room={room}
               isHost={isHost}
               floatingReactions={floatingReactions}
-              onSendReaction={handleSendReaction}
             />
+          </div>
+
+          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ ПОД ВИДЕО (ПЕРЕД ВКЛАДКАМИ ЧАТА/ОЧЕРЕДИ) */}
+          <div className="flex items-center justify-center gap-2 p-2 rounded-2xl bg-slate-900/90 border border-purple-900/40 shadow-lg w-full my-0.5">
+            <span className="text-[10px] text-purple-300/70 font-semibold uppercase tracking-wider hidden sm:inline mr-1">
+              Реакции:
+            </span>
+            <div className="flex items-center gap-2 overflow-x-auto scrollbar-none py-0.5">
+              {RAVE_REACTIONS.map((emoji) => (
+                <button
+                  key={emoji}
+                  onClick={() => handleSendReaction(emoji)}
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-slate-950 border border-purple-800/60 hover:bg-pink-600 hover:border-pink-400 hover:scale-125 active:scale-95 text-base sm:text-lg flex items-center justify-center transition-all duration-150 shadow shrink-0"
+                  title={`Отправить реакцию ${emoji}`}
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Панель информации о комнате для ПК */}
