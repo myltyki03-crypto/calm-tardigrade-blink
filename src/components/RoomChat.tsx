@@ -26,6 +26,33 @@ const formatMsgTime = (timeStr?: string) => {
   }
 };
 
+const formatDateHeader = (timeStr?: string) => {
+  if (!timeStr) return '';
+  try {
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return '';
+    
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    if (msgDate.getTime() === today.getTime()) {
+      return 'Сегодня';
+    } else if (msgDate.getTime() === yesterday.getTime()) {
+      return 'Вчера';
+    } else if (msgDate.getFullYear() === now.getFullYear()) {
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    } else {
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+  } catch {
+    return '';
+  }
+};
+
 export const RoomChat: React.FC<RoomChatProps> = ({
   messages,
   onSendMessage,
@@ -87,7 +114,7 @@ export const RoomChat: React.FC<RoomChatProps> = ({
               Чат пуст. Напишите первое сообщение!
             </div>
           ) : (
-            validMessages.map((msg) => {
+            validMessages.map((msg, index) => {
               if (msg.type === 'system') {
                 return (
                   <div key={msg.id} className="text-center my-1">
@@ -99,46 +126,56 @@ export const RoomChat: React.FC<RoomChatProps> = ({
               }
 
               const isMe = msg.user_id === currentUser.id;
+              const dateHeader = formatDateHeader(msg.created_at);
+              const prevMsg = index > 0 ? validMessages[index - 1] : null;
+              const prevDateHeader = prevMsg ? formatDateHeader(prevMsg.created_at) : null;
+              const showDateDivider = Boolean(dateHeader && dateHeader !== prevDateHeader);
 
               return (
-                <div
-                  key={msg.id}
-                  className={`flex gap-2 text-xs ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
-                >
-                  {!isMe && (
-                    <img
-                      src={msg.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.user_name || 'user')}`}
-                      alt={msg.user_name}
-                      onClick={() => handleAuthorClick(msg)}
-                      className="h-7 w-7 rounded-full object-cover shrink-0 ring-1 ring-purple-500/30 cursor-pointer hover:ring-pink-500 transition-all"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.user_name || 'user')}`;
-                      }}
-                    />
-                  )}
-                  <div
-                    className={`max-w-[82%] rounded-2xl px-3.5 py-2 ${
-                      isMe
-                        ? 'bg-gradient-to-r from-purple-700 via-pink-600 to-pink-500 text-white rounded-tr-none shadow-md shadow-pink-500/10'
-                        : 'bg-slate-950/90 border border-purple-900/50 text-slate-200 rounded-tl-none'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between gap-2 mb-0.5">
-                      {!isMe && (
-                        <span
-                          onClick={() => handleAuthorClick(msg)}
-                          className="font-bold text-[10px] text-pink-400 truncate max-w-[110px] cursor-pointer hover:underline"
-                        >
-                          {msg.user_name}
-                        </span>
-                      )}
-                      <span className="text-[9px] opacity-60 text-slate-300 ml-auto font-mono">
-                        {formatMsgTime(msg.created_at)}
+                <React.Fragment key={msg.id}>
+                  {showDateDivider && (
+                    <div className="flex justify-center my-2 sticky top-1 z-10">
+                      <span className="text-[10px] font-bold text-purple-200 bg-slate-950/90 border border-purple-800/60 px-3 py-0.5 rounded-full backdrop-blur-md shadow-md">
+                        {dateHeader}
                       </span>
                     </div>
-                    <p className="leading-relaxed break-words text-xs">{msg.message}</p>
+                  )}
+                  <div className={`flex gap-2 text-xs ${isMe ? 'flex-row-reverse' : 'flex-row'}`}>
+                    {!isMe && (
+                      <img
+                        src={msg.user_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.user_name || 'user')}`}
+                        alt={msg.user_name}
+                        onClick={() => handleAuthorClick(msg)}
+                        className="h-7 w-7 rounded-full object-cover shrink-0 ring-1 ring-purple-500/30 cursor-pointer hover:ring-pink-500 transition-all"
+                        onError={(e) => {
+                          (e.target as HTMLImageElement).src = `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.user_name || 'user')}`;
+                        }}
+                      />
+                    )}
+                    <div
+                      className={`max-w-[82%] rounded-2xl px-3.5 py-2 ${
+                        isMe
+                          ? 'bg-gradient-to-r from-purple-700 via-pink-600 to-pink-500 text-white rounded-tr-none shadow-md shadow-pink-500/10'
+                          : 'bg-slate-950/90 border border-purple-900/50 text-slate-200 rounded-tl-none'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 mb-0.5">
+                        {!isMe && (
+                          <span
+                            onClick={() => handleAuthorClick(msg)}
+                            className="font-bold text-[10px] text-pink-400 truncate max-w-[110px] cursor-pointer hover:underline"
+                          >
+                            {msg.user_name}
+                          </span>
+                        )}
+                        <span className="text-[9px] opacity-60 text-slate-300 ml-auto font-mono">
+                          {formatMsgTime(msg.created_at)}
+                        </span>
+                      </div>
+                      <p className="leading-relaxed break-words text-xs">{msg.message}</p>
+                    </div>
                   </div>
-                </div>
+                </React.Fragment>
               );
             })
           )}

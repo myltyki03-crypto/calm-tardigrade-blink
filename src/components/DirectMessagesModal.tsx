@@ -29,6 +29,33 @@ const formatMsgTime = (timeStr?: string) => {
   }
 };
 
+const formatDateHeader = (timeStr?: string) => {
+  if (!timeStr) return '';
+  try {
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return '';
+    
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+
+    const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+
+    if (msgDate.getTime() === today.getTime()) {
+      return 'Сегодня';
+    } else if (msgDate.getTime() === yesterday.getTime()) {
+      return 'Вчера';
+    } else if (msgDate.getFullYear() === now.getFullYear()) {
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
+    } else {
+      return d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
+    }
+  } catch {
+    return '';
+  }
+};
+
 export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   isOpen,
   onClose,
@@ -342,28 +369,40 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                         Нет сообщений с {selectedUser.username}. Напишите первое сообщение!
                       </div>
                     ) : (
-                      activeMessages.map((msg) => {
+                      activeMessages.map((msg, index) => {
                         const isMe =
                           msg.sender_id === currentUser.id ||
                           msg.sender_name.toLowerCase() === myName;
+
+                        const dateHeader = formatDateHeader(msg.created_at);
+                        const prevMsg = index > 0 ? activeMessages[index - 1] : null;
+                        const prevDateHeader = prevMsg ? formatDateHeader(prevMsg.created_at) : null;
+                        const showDateDivider = Boolean(dateHeader && dateHeader !== prevDateHeader);
+
                         return (
-                          <div
-                            key={msg.id}
-                            className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
-                          >
-                            <div
-                              className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
-                                isMe
-                                  ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-tr-none shadow-md'
-                                  : 'bg-slate-950 border border-purple-900/60 text-slate-200 rounded-tl-none'
-                              }`}
-                            >
-                              <p className="break-words">{msg.message}</p>
-                              <div className={`text-[9px] mt-0.5 text-right font-mono ${isMe ? 'text-pink-200/80' : 'text-slate-400'}`}>
-                                {formatMsgTime(msg.created_at)}
+                          <React.Fragment key={msg.id}>
+                            {showDateDivider && (
+                              <div className="flex justify-center my-3 sticky top-1 z-10">
+                                <span className="text-[10px] font-bold text-purple-200 bg-slate-950/90 border border-purple-800/60 px-3 py-0.5 rounded-full backdrop-blur-md shadow-md">
+                                  {dateHeader}
+                                </span>
+                              </div>
+                            )}
+                            <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                              <div
+                                className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                                  isMe
+                                    ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-tr-none shadow-md'
+                                    : 'bg-slate-950 border border-purple-900/60 text-slate-200 rounded-tl-none'
+                                }`}
+                              >
+                                <p className="break-words">{msg.message}</p>
+                                <div className={`text-[9px] mt-0.5 text-right font-mono ${isMe ? 'text-pink-200/80' : 'text-slate-400'}`}>
+                                  {formatMsgTime(msg.created_at)}
+                                </div>
                               </div>
                             </div>
-                          </div>
+                          </React.Fragment>
                         );
                       })
                     )}
