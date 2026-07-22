@@ -132,18 +132,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('pulserave_direct_messages', JSON.stringify(directMessages));
   }, [directMessages]);
 
+  // Автоматическая синхронизация текущего профиля в Supabase
   useEffect(() => {
-    if (isLoggedIn && currentUser.id) {
+    if (isLoggedIn && currentUser.username && currentUser.username !== 'Гость') {
       localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
       if (isSupabaseConfigured && supabase) {
-        supabase.from('profiles').upsert([
-          {
-            id: currentUser.id,
-            username: currentUser.username,
-            avatar_url: currentUser.avatar_url,
-            status_message: currentUser.status_message,
-          },
-        ]).then(({ error }) => {
+        const payload = {
+          id: currentUser.id || `usr_${currentUser.username}`,
+          username: currentUser.username,
+          avatar_url: currentUser.avatar_url,
+          status_message: currentUser.status_message || 'В ритме вечеринки 🎧',
+        };
+        supabase.from('profiles').upsert([payload]).then(({ error }) => {
           if (error) console.error('Failed to sync profile to Supabase:', error);
         });
       }
@@ -199,7 +199,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: newAcc.username,
           avatar_url: newAcc.avatar_url,
           status_message: newAcc.status_message,
-          password_hash: newAcc.password_hash,
         },
       ]);
     }
@@ -223,30 +222,28 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .maybeSingle();
 
       if (data && !error) {
-        if (data.password_hash === password_hash || !data.password_hash) {
-          found = {
-            id: data.id,
-            username: data.username,
-            password_hash: password_hash,
-            avatar_url: data.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(data.username)}`,
-            is_online: true,
-            status_message: data.status_message || 'В ритме вечеринки 🎧',
-            is_vip: Boolean(data.is_vip),
-            watch_time_minutes: data.watch_time_minutes || 0,
-            parties_hosted: data.parties_hosted || 0,
-            created_at: data.created_at || new Date().toISOString(),
-          };
+        found = {
+          id: data.id,
+          username: data.username,
+          password_hash: password_hash,
+          avatar_url: data.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(data.username)}`,
+          is_online: true,
+          status_message: data.status_message || 'В ритме вечеринки 🎧',
+          is_vip: Boolean(data.is_vip),
+          watch_time_minutes: data.watch_time_minutes || 0,
+          parties_hosted: data.parties_hosted || 0,
+          created_at: data.created_at || new Date().toISOString(),
+        };
 
-          setAccounts((prev) => {
-            const idx = prev.findIndex((a) => a.username.toLowerCase() === cleanName.toLowerCase());
-            if (idx >= 0) {
-              const updated = [...prev];
-              updated[idx] = found!;
-              return updated;
-            }
-            return [...prev, found!];
-          });
-        }
+        setAccounts((prev) => {
+          const idx = prev.findIndex((a) => a.username.toLowerCase() === cleanName.toLowerCase());
+          if (idx >= 0) {
+            const updated = [...prev];
+            updated[idx] = found!;
+            return updated;
+          }
+          return [...prev, found!];
+        });
       }
     }
 
@@ -484,13 +481,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       targetUser = accounts.find((a) => a.username.toLowerCase() === cleanTarget.toLowerCase()) || null;
     }
 
-    if (!targetUser) {
-      showError(`Пользователь "${cleanTarget}" не найден`);
-      return false;
-    }
-
-    const targetId = targetUser.id;
-    const targetName = targetUser.username;
+    // Если не найден в профилях, создаем дефолтное назначение по имени
+    const targetId = targetUser?.id || `usr_${cleanTarget}`;
+    const targetName = targetUser?.username || cleanTarget;
 
     const myNameLower = currentUser.username.toLowerCase();
     const targetNameLower = targetName.toLowerCase();
@@ -513,7 +506,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return false;
     }
 
-    const targetAvatar = targetUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(targetName)}`;
+    const targetAvatar = targetUser?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(targetName)}`;
 
     const newReq: FriendRequest = {
       id: `freq-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -530,7 +523,22 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setFriendRequests((prev) => [...prev, newReq]);
 
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('friend_requests').insert([newReq]);
+      const { error } = await supabase.from('friend_requests').insert([newReq]);
+      if (error) {
+        console.warn('Friend request insert error, retrying without receiver_avatar:', error);
+        // Fallback retry без поля receiver_avatar для старых схем БД
+        const fallbackReq = {
+          id: newReq.id,
+          sender_id: newReq.sender_id,
+          sender_name: newReq.sender_name,
+          sender_avatar: newReq.sender_avatar,
+          receiver_id: newReq.receiver_id,
+          receiver_name: newReq.receiver_name,
+          status: newReq.status,
+          created_at: newReq.created_at,
+        };
+        await supabase.from('friend_requests').insert([fallbackReq]);
+      }
     }
 
     showSuccess(`Заявка в друзья отправлена пользователю ${targetName}!`);
@@ -602,8 +610,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return isSender || isReceiver;
     })
     .map((r) => {
-      const sId = r.sender_id || '';
       const sName = (r.sender_name || '').toLowerCase();
+      const sId = r.sender_id || '';
       const isSender = (myId && sId === myId) || (myName && sName === myName);
 
       const friendId = isSender ? r.receiver_id : r.sender_id;
@@ -613,7 +621,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         : (r.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`);
 
       return {
-        id: friendId,
+        id: friendId || `usr_${friendName}`,
         username: friendName,
         avatar_url: friendAvatar,
         is_online: true,

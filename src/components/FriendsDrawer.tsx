@@ -40,23 +40,29 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
   const myId = currentUser.id || '';
   const myName = (currentUser.username || '').toLowerCase();
 
-  // Фильтруем входящие заявки текущему пользователю
-  const incomingRequests = friendRequests.filter(
-    (r) =>
-      r &&
-      r.status === 'pending' &&
-      ((myId && r.receiver_id === myId) ||
-       (myName && r.receiver_name && r.receiver_name.toLowerCase() === myName)) &&
-      (r.sender_id !== myId && r.sender_name && r.sender_name.toLowerCase() !== myName)
-  );
+  // Гибкая и точная фильтрация входящих заявок
+  const incomingRequests = friendRequests.filter((r) => {
+    if (!r || r.status !== 'pending') return false;
+    const rId = r.receiver_id || '';
+    const rName = (r.receiver_name || '').toLowerCase();
+    const sId = r.sender_id || '';
+    const sName = (r.sender_name || '').toLowerCase();
+
+    const isForMe = (myId && rId === myId) || (myName && rName === myName);
+    const isFromMe = (myId && sId === myId) || (myName && sName === myName);
+
+    return isForMe && !isFromMe;
+  });
 
   // Фильтруем исходящие заявки
-  const outgoingRequests = friendRequests.filter(
-    (r) =>
-      r &&
-      r.status === 'pending' &&
-      ((myId && r.sender_id === myId) || (myName && r.sender_name && r.sender_name.toLowerCase() === myName))
-  );
+  const outgoingRequests = friendRequests.filter((r) => {
+    if (!r || r.status !== 'pending') return false;
+    const sId = r.sender_id || '';
+    const sName = (r.sender_name || '').toLowerCase();
+
+    const isFromMe = (myId && sId === myId) || (myName && sName === myName);
+    return isFromMe;
+  });
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
