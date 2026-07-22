@@ -2,10 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Pause,
-  RefreshCw,
   Volume2,
   VolumeX,
-  Radio,
   Maximize,
   Minimize,
   Settings,
@@ -49,7 +47,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const lastAutoSeekTimeRef = useRef<number>(0);
   const lastHostSyncSaveRef = useRef<number>(0);
   const prevLastUpdatedRef = useRef<string | undefined>(room.last_updated_at);
 
@@ -373,18 +370,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  const handleSyncClick = () => {
-    const syncTime = getCalculatedHostTime();
-    if (ytPlayerRef.current?.seekTo) {
-      ytPlayerRef.current.seekTo(syncTime, true);
-      if (room.is_playing) {
-        ytPlayerRef.current.playVideo();
-        setIsPlaying(true);
-      }
-      showSuccess('Синхронизировано!');
-    }
-  };
-
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
     const mins = Math.floor(seconds / 60);
@@ -429,34 +414,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             <p className="text-[11px] text-slate-400 mt-2">
               Мобильный браузер требует клика для старта трансляции со звуком
             </p>
-          </div>
-        )}
-
-        {!isFullscreen && !needUserGesture && (
-          <div
-            className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
-              showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-            }`}
-          >
-            <div className="flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md px-3 py-1 text-xs text-white border border-purple-500/40">
-              <Radio className="h-3.5 w-3.5 text-pink-500 animate-pulse" />
-              <span className="font-semibold text-purple-200">
-                {room.is_playing ? 'Прямой эфир' : 'На паузе (ожидание владельца)'}
-              </span>
-            </div>
-
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleSyncClick();
-              }}
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] px-2.5 bg-slate-950/70 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/50 rounded-full"
-            >
-              <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-              Синхронизировать
-            </Button>
           </div>
         )}
       </div>
