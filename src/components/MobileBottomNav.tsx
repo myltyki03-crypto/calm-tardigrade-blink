@@ -28,7 +28,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         }`}
       >
         <Home className={`h-5 w-5 ${isHome ? 'text-pink-400' : ''}`} />
-        <span>Feed</span>
+        <span>Лента</span>
       </button>
 
       <button
@@ -36,11 +36,11 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         className="flex flex-col items-center gap-1 text-[10px] font-medium text-slate-400 hover:text-slate-200 relative"
       >
         <Users className="h-5 w-5 text-purple-400" />
-        <span>Friends</span>
+        <span>Друзья</span>
         <span className="absolute top-0 right-1 h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
       </button>
 
-      {/* Central Floating Create Button */}
+      {/* Кнопка создания по центру */}
       <button
         onClick={onOpenCreateModal}
         className="flex items-center justify-center h-12 w-12 rounded-full bg-gradient-to-tr from-purple-600 via-pink-600 to-pink-500 text-white shadow-lg shadow-pink-500/40 -mt-5 ring-4 ring-slate-950 hover:scale-105 active:scale-95 transition-all"
@@ -61,7 +61,7 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
             className="h-full w-full object-cover"
           />
         </div>
-        <span>Profile</span>
+        <span>Профиль</span>
       </button>
     </nav>
   );

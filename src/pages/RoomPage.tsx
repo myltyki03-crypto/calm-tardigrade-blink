@@ -81,7 +81,7 @@ export const RoomPage = () => {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 space-y-3">
         <Loader2 className="h-8 w-8 text-pink-500 animate-spin" />
-        <p className="text-slate-400 text-xs font-medium">Connecting to watch party room...</p>
+        <p className="text-slate-400 text-xs font-medium">Подключение к комнате просмотра...</p>
       </div>
     );
   }
@@ -89,10 +89,10 @@ export const RoomPage = () => {
   if (!room) {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
-        <h2 className="text-xl font-bold mb-2">Room not found</h2>
-        <p className="text-slate-400 text-xs mb-4">The party room you are looking for does not exist or has ended.</p>
+        <h2 className="text-xl font-bold mb-2">Комната не найдена</h2>
+        <p className="text-slate-400 text-xs mb-4">Запрошенная комната не существует или была закрыта ведущим.</p>
         <Button onClick={() => navigate('/')} className="bg-purple-600 hover:bg-purple-500 text-xs">
-          Back to Party List
+          Вернуться к списку комнат
         </Button>
       </div>
     );
@@ -104,7 +104,7 @@ export const RoomPage = () => {
 
   const handleDeleteRoomConfirm = () => {
     deleteRoom(room.id);
-    showSuccess('Party Room Deleted');
+    showSuccess('Комната удалена');
     navigate('/');
   };
 
@@ -139,7 +139,7 @@ export const RoomPage = () => {
     const newItem: QueueItem = {
       id: `q-${Date.now()}`,
       room_id: room.id,
-      title: `YouTube Video (${ytDetails.videoId})`,
+      title: `YouTube Видео (${ytDetails.videoId})`,
       url: url,
       thumbnail_url: ytDetails.thumbnail,
       duration_seconds: 240,
@@ -156,12 +156,12 @@ export const RoomPage = () => {
 
   const handlePlayQueueItem = (item: QueueItem) => {
     if (!isHost) {
-      showError('Only the room creator can switch videos.');
+      showError('Только ведущий может переключать видео');
       return;
     }
     const ytDetails = extractYouTubeDetails(item.url);
     changeRoomMedia(room.id, item.url, item.title, ytDetails.thumbnail);
-    showSuccess(`Now playing: ${item.title}`);
+    showSuccess(`Сейчас играет: ${item.title}`);
   };
 
   return (
@@ -173,7 +173,7 @@ export const RoomPage = () => {
       />
 
       <main className="w-full flex-1 p-2 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 max-w-7xl mx-auto">
-        {/* Left Column: Player & Room Info */}
+        {/* Левая колонка: плеер и инфо */}
         <div className="lg:col-span-8 flex flex-col gap-2 md:gap-4 w-full">
           <div className="flex items-center justify-between px-1 w-full">
             <Button
@@ -182,38 +182,38 @@ export const RoomPage = () => {
               size="sm"
               className="text-slate-400 hover:text-white gap-1 text-xs px-2 h-7"
             >
-              <ArrowLeft className="h-3.5 w-3.5" /> Back
+              <ArrowLeft className="h-3.5 w-3.5" /> Назад
             </Button>
 
             <div className="flex items-center gap-1.5">
               <Button
                 onClick={() => {
                   navigator.clipboard.writeText(window.location.href);
-                  showSuccess('Room link copied!');
+                  showSuccess('Ссылка на комнату скопирована!');
                 }}
                 size="sm"
                 variant="outline"
                 className="border-purple-800 text-purple-300 hover:bg-purple-950 text-[11px] h-7 gap-1"
               >
-                <Share2 className="h-3 w-3 text-pink-400" /> Share
+                <Share2 className="h-3 w-3 text-pink-400" /> Поделиться
               </Button>
 
-              {/* Delete Room Button (Host Only) */}
+              {/* Удаление комнаты (только для ведущего) */}
               {isHost && (
                 <Button
                   onClick={() => setIsDeleteDialogOpen(true)}
                   size="sm"
                   variant="destructive"
                   className="bg-red-600/80 hover:bg-red-600 text-white text-[11px] h-7 gap-1"
-                  title="Delete Room"
+                  title="Удалить комнату"
                 >
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                  <Trash2 className="h-3.5 w-3.5" /> Удалить
                 </Button>
               )}
             </div>
           </div>
 
-          {/* Synchronized Player Sticky Container for Mobile */}
+          {/* Плеер синхронного просмотра */}
           <div className="sticky top-14 z-30 lg:relative lg:top-0 bg-slate-950 rounded-2xl w-full">
             <MediaPlayer
               room={room}
@@ -222,24 +222,24 @@ export const RoomPage = () => {
             />
           </div>
 
-          {/* Desktop Info Box */}
+          {/* Описание для ПК */}
           <div className="hidden lg:flex p-4 rounded-2xl border border-purple-900/40 bg-slate-900/80 items-center justify-between gap-3 w-full">
             <div>
               <h2 className="text-lg font-bold text-slate-100">{room.title}</h2>
               <p className="text-xs text-slate-400 mt-0.5">
-                Hosted by <span className="text-pink-400 font-medium">{room.host_name}</span> {room.description ? `• ${room.description}` : ''}
+                Ведущий: <span className="text-pink-400 font-medium">{room.host_name}</span> {room.description ? `• ${room.description}` : ''}
               </p>
             </div>
 
             <div className="flex items-center gap-2">
               <span className="flex items-center gap-1.5 text-xs bg-purple-950/80 border border-purple-800/40 text-purple-300 px-3 py-1 rounded-full">
-                <Users className="h-3.5 w-3.5 text-cyan-400" /> {room.member_count} Listening
+                <Users className="h-3.5 w-3.5 text-cyan-400" /> {room.member_count} Зрителей
               </span>
             </div>
           </div>
         </div>
 
-        {/* Mobile View Tab Selector */}
+        {/* Переключатель вкладок для мобильных устройств */}
         <div className="lg:hidden flex border-b border-purple-900/40 bg-slate-900/80 rounded-xl p-1 gap-1 my-1 w-full">
           <button
             onClick={() => setActiveMobileTab('chat')}
@@ -250,7 +250,7 @@ export const RoomPage = () => {
             }`}
           >
             <MessageSquare className="h-3.5 w-3.5" />
-            <span>Chat ({roomMessages.length})</span>
+            <span>Чат ({roomMessages.length})</span>
           </button>
 
           <button
@@ -262,7 +262,7 @@ export const RoomPage = () => {
             }`}
           >
             <ListMusic className="h-3.5 w-3.5" />
-            <span>Queue ({roomQueue.length})</span>
+            <span>Очередь ({roomQueue.length})</span>
           </button>
 
           <button
@@ -274,29 +274,29 @@ export const RoomPage = () => {
             }`}
           >
             <Info className="h-3.5 w-3.5" />
-            <span>Info</span>
+            <span>Инфо</span>
           </button>
         </div>
 
-        {/* Right Column / Mobile Active Tab View */}
+        {/* Правая колонка / активная вкладка на мобильном */}
         <div className="lg:col-span-4 flex flex-col gap-3 h-[480px] lg:h-auto w-full">
-          {/* Mobile Info View */}
+          {/* Инфо вкладка на мобильном */}
           {activeMobileTab === 'info' && (
             <div className="lg:hidden p-4 rounded-2xl border border-purple-900/40 bg-slate-900/90 space-y-3 w-full">
               <div>
                 <h3 className="font-bold text-sm text-slate-100">{room.title}</h3>
-                <p className="text-xs text-slate-400 mt-1">{room.description || 'No description provided.'}</p>
+                <p className="text-xs text-slate-400 mt-1">{room.description || 'Описание отсутствует.'}</p>
               </div>
               <div className="pt-2 border-t border-purple-950 flex items-center justify-between text-xs text-purple-300">
                 <span className="flex items-center gap-1.5">
-                  <Users className="h-3.5 w-3.5 text-cyan-400" /> {room.member_count} active listeners
+                  <Users className="h-3.5 w-3.5 text-cyan-400" /> {room.member_count} активных зрителей
                 </span>
-                <span className="text-pink-400 font-medium">Host: {room.host_name}</span>
+                <span className="text-pink-400 font-medium">Ведущий: {room.host_name}</span>
               </div>
             </div>
           )}
 
-          {/* Chat Panel */}
+          {/* Панель чата */}
           <div className={`h-full w-full flex-1 ${activeMobileTab !== 'chat' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomChat
               messages={roomMessages}
@@ -305,7 +305,7 @@ export const RoomPage = () => {
             />
           </div>
 
-          {/* Queue Panel */}
+          {/* Панель очереди */}
           <div className={`h-full w-full flex-1 ${activeMobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomQueue
               queue={roomQueue}
@@ -319,15 +319,15 @@ export const RoomPage = () => {
         </div>
       </main>
 
-      {/* Delete Room Confirmation Dialog */}
+      {/* Диалог подтверждения удаления комнаты */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-lg font-bold text-red-400 flex items-center gap-2">
-              <Trash2 className="h-5 w-5" /> Delete Watch Party
+              <Trash2 className="h-5 w-5" /> Удалить комнату
             </DialogTitle>
             <DialogDescription className="text-slate-400 text-xs mt-1">
-              Are you sure you want to delete <span className="font-semibold text-slate-200">"{room.title}"</span>? This will close the room for all active listeners and remove it from the room list.
+              Вы уверены, что хотите удалить <span className="font-semibold text-slate-200">"{room.title}"</span>? Это закроет эфир для всех зрителей.
             </DialogDescription>
           </DialogHeader>
 
@@ -338,14 +338,14 @@ export const RoomPage = () => {
               onClick={() => setIsDeleteDialogOpen(false)}
               className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
             >
-              Cancel
+              Отмена
             </Button>
             <Button
               type="button"
               onClick={handleDeleteRoomConfirm}
               className="bg-red-600 hover:bg-red-500 text-white font-semibold text-xs"
             >
-              Delete Room
+              Удалить
             </Button>
           </DialogFooter>
         </DialogContent>

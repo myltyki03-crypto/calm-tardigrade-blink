@@ -23,7 +23,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   return (
     <header className="sticky top-0 z-40 w-full border-b border-purple-900/40 bg-slate-950/90 backdrop-blur-md">
       <div className="container mx-auto flex h-14 md:h-16 items-center justify-between px-3 md:px-4">
-        {/* Brand logo */}
+        {/* Бренд логотип */}
         <Link to="/" className="flex items-center gap-2 group">
           <div className="relative flex h-8 w-8 md:h-10 md:w-10 items-center justify-center rounded-xl bg-gradient-to-tr from-purple-600 via-pink-500 to-cyan-400 p-0.5 shadow-lg shadow-purple-500/20">
             <div className="flex h-full w-full items-center justify-center rounded-[10px] bg-slate-950">
@@ -42,28 +42,28 @@ export const Navbar: React.FC<NavbarProps> = ({
           </div>
         </Link>
 
-        {/* Connection status indicator (Clickable for Setup - Visible on ALL screen sizes now) */}
+        {/* Статус подключения к базе данных */}
         <button
           onClick={onOpenSqlModal}
           className="flex items-center gap-1.5 text-[10px] md:text-[11px] font-medium px-2.5 py-1 rounded-full border bg-slate-900/90 hover:bg-slate-800 transition-colors cursor-pointer border-purple-900/50"
-          title="Нажмите для настройки ключей базы данных Supabase"
+          title="Настройки подключения к базе данных Supabase"
         >
           {isSupabaseConfigured ? (
             <span className="flex items-center gap-1 text-emerald-400 font-semibold">
               <Wifi className="h-3 w-3 animate-pulse" />
-              <span className="hidden sm:inline">Supabase Sync Active</span>
-              <span className="sm:hidden">Online</span>
+              <span className="hidden sm:inline">Синхронизация Supabase</span>
+              <span className="sm:hidden">Онлайн</span>
             </span>
           ) : (
             <span className="flex items-center gap-1 text-amber-400 font-semibold">
               <WifiOff className="h-3 w-3" />
-              <span className="hidden sm:inline">Offline (Local Mode)</span>
-              <span className="sm:hidden">Ключи DB</span>
+              <span className="hidden sm:inline">Офлайн (Локальный режим)</span>
+              <span className="sm:hidden">Ключи БД</span>
             </span>
           )}
         </button>
 
-        {/* Action Controls */}
+        {/* Кнопки действий */}
         <div className="flex items-center gap-1.5 md:gap-3">
           <Button
             onClick={onOpenFriendsDrawer}
@@ -72,7 +72,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="hidden md:flex text-slate-300 hover:text-white relative text-xs h-8"
           >
             <Users className="h-4 w-4 text-purple-400 mr-1" />
-            <span>Friends</span>
+            <span>Друзья</span>
           </Button>
 
           <Button
@@ -81,10 +81,10 @@ export const Navbar: React.FC<NavbarProps> = ({
             className="hidden md:flex bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 text-white text-xs h-8 gap-1 font-semibold"
           >
             <Plus className="h-3.5 w-3.5" />
-            <span>Create Party</span>
+            <span>Создать комнату</span>
           </Button>
 
-          {/* User profile button */}
+          {/* Иконка профиля */}
           <Button
             onClick={() => navigate('/profile')}
             variant="ghost"

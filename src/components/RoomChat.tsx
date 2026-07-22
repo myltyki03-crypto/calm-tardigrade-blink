@@ -30,7 +30,7 @@ export const RoomChat: React.FC<RoomChatProps> = ({
 
   return (
     <div className="relative flex flex-col h-full w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
-      {/* Floating Reaction Overlay Animation */}
+      {/* Анимация реакций */}
       <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
         {floatingReactions.map((item) => (
           <div
@@ -43,10 +43,10 @@ export const RoomChat: React.FC<RoomChatProps> = ({
         ))}
       </div>
 
-      {/* Header */}
+      {/* Шапка чата */}
       <div className="p-3 border-b border-purple-900/40 flex items-center justify-between bg-slate-950/60">
         <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
-          <Sparkles className="h-3.5 w-3.5 text-pink-400" /> Live Party Chat
+          <Sparkles className="h-3.5 w-3.5 text-pink-400" /> Чат вечеринки
         </h4>
         <Button
           onClick={() => setIsMicOn(!isMicOn)}
@@ -59,11 +59,11 @@ export const RoomChat: React.FC<RoomChatProps> = ({
           }`}
         >
           {isMicOn ? <Mic className="h-3.5 w-3.5 text-pink-400" /> : <MicOff className="h-3.5 w-3.5" />}
-          <span>{isMicOn ? 'Voice Active' : 'Mic Off'}</span>
+          <span>{isMicOn ? 'Голос вкл' : 'Микр выкл'}</span>
         </Button>
       </div>
 
-      {/* Messages Feed */}
+      {/* Сообщения */}
       <ScrollArea className="flex-1 p-3">
         <div className="space-y-3">
           {messages.map((msg) => {
@@ -111,10 +111,10 @@ export const RoomChat: React.FC<RoomChatProps> = ({
         </div>
       </ScrollArea>
 
-      {/* Send Form */}
+      {/* Форма отправки */}
       <form onSubmit={handleSend} className="p-2 border-t border-purple-900/40 bg-slate-950/80 flex items-center gap-1.5 w-full">
         <Input
-          placeholder="Say something to the room..."
+          placeholder="Напишите сообщение..."
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
           className="bg-slate-900 border-purple-900/50 focus:border-pink-500 text-xs text-slate-100 placeholder:text-slate-500 flex-1"

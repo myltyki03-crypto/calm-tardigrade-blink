@@ -36,32 +36,32 @@ const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string;
   },
   youtube: {
     url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    title: 'lofi hip hop radio - beats to relax/study to',
+    title: 'Lofi Hip Hop Radio - beats to relax/study to',
     thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
   },
   movies: {
     url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    title: 'Indie Cinema Short Film',
+    title: 'Инди Анимационная Короткометражка',
     thumbnail: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop&q=80',
   },
   gaming: {
     url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    title: 'Top Gaming Highlights',
+    title: 'Лучшие игровые хайлайты',
     thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
   },
   anime: {
     url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    title: 'Anime Music Mix',
+    title: 'Аниме Музыкальный Микс',
     thumbnail: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop&q=80',
   },
   livestream: {
     url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
-    title: 'Live DJ Stream',
+    title: 'Прямой DJ Стрим',
     thumbnail: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
   },
   all: {
     url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
-    title: 'Popular Stream',
+    title: 'Популярная трансляция',
     thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
   },
 };
@@ -104,7 +104,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     if (mediaUrl.trim()) {
       finalUrl = mediaUrl.trim();
       const ytDetails = extractYouTubeDetails(finalUrl);
-      finalTitle = `YouTube Stream (${ytDetails.videoId})`;
+      finalTitle = `YouTube Видео (${ytDetails.videoId})`;
       finalThumbnail = ytDetails.thumbnail;
     }
 
@@ -128,7 +128,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     };
 
     addRoom(newRoom);
-    showSuccess('Party Room Created!');
+    showSuccess('Комната успешно создана!');
     setTitle('');
     setMediaUrl('');
     onClose();
@@ -140,21 +140,21 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
-            Create Watch Party Room
+            Создать комнату просмотра
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Start a live party room and invite your friends to join in real-time.
+            Запустите совместный эфир и пригласите друзей для просмотра в реальном времени.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 py-2">
           <div className="space-y-1.5">
             <Label htmlFor="title" className="text-xs font-semibold text-slate-300">
-              Party Title
+              Название комнаты
             </Label>
             <Input
               id="title"
-              placeholder="e.g. 🎧 Electronic Music Vibe Party"
+              placeholder="Например: 🎧 Вечеринка с электронной музыкой"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
@@ -164,11 +164,11 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
           <div className="space-y-1.5">
             <Label htmlFor="mediaUrl" className="text-xs font-semibold text-slate-300">
-              Video or Music Link <span className="text-slate-500 font-normal">(optional)</span>
+              Ссылка на YouTube <span className="text-slate-500 font-normal">(необязательно)</span>
             </Label>
             <Input
               id="mediaUrl"
-              placeholder="Paste YouTube link here..."
+              placeholder="Вставьте ссылку на видео..."
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
@@ -176,18 +176,18 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           </div>
 
           <div className="space-y-1.5">
-            <Label className="text-xs font-semibold text-slate-300">Category</Label>
+            <Label className="text-xs font-semibold text-slate-300">Категория</Label>
             <Select value={category} onValueChange={(val: CategoryType) => setCategory(val)}>
               <SelectTrigger className="bg-slate-950 border-purple-950 text-slate-100 text-xs">
-                <SelectValue placeholder="Select Category" />
+                <SelectValue placeholder="Выберите категорию" />
               </SelectTrigger>
               <SelectContent className="bg-slate-900 border-purple-800 text-slate-200 text-xs">
-                <SelectItem value="music">Music & DJ</SelectItem>
-                <SelectItem value="movies">Movies & Cinema</SelectItem>
-                <SelectItem value="youtube">YouTube Videos</SelectItem>
-                <SelectItem value="gaming">Gaming & Esports</SelectItem>
-                <SelectItem value="anime">Anime & Cartoons</SelectItem>
-                <SelectItem value="livestream">Live Streams</SelectItem>
+                <SelectItem value="music">Музыка и DJ</SelectItem>
+                <SelectItem value="movies">Фильмы и кино</SelectItem>
+                <SelectItem value="youtube">YouTube Видео</SelectItem>
+                <SelectItem value="gaming">Игры и киберспорт</SelectItem>
+                <SelectItem value="anime">Аниме и мультфильмы</SelectItem>
+                <SelectItem value="livestream">Прямые стримы</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -195,16 +195,16 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           <div className="pt-2 space-y-3 border-t border-purple-950">
             <div className="flex items-center justify-between">
               <div>
-                <Label className="text-xs font-medium text-slate-200">Private Room</Label>
-                <p className="text-[11px] text-slate-400">Only people with direct code can join</p>
+                <Label className="text-xs font-medium text-slate-200">Приватная комната</Label>
+                <p className="text-[11px] text-slate-400">Вход только по прямой ссылке</p>
               </div>
               <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
             </div>
 
             <div className="flex items-center justify-between">
               <div>
-                <Label className="text-xs font-medium text-slate-200">Allow Listeners to Add Queue</Label>
-                <p className="text-[11px] text-slate-400">Guests can submit video requests</p>
+                <Label className="text-xs font-medium text-slate-200">Разрешить зрителям добавлять треки</Label>
+                <p className="text-[11px] text-slate-400">Гости смогут пополнять очередь</p>
               </div>
               <Switch checked={allowGuestQueue} onCheckedChange={setAllowGuestQueue} />
             </div>
@@ -217,13 +217,13 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               onClick={onClose}
               className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
             >
-              Cancel
+              Отмена
             </Button>
             <Button
               type="submit"
               className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs"
             >
-              Launch Room
+              Запустить комнату
             </Button>
           </DialogFooter>
         </form>

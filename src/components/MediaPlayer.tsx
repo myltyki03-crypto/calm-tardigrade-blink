@@ -58,12 +58,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentSpeed, setCurrentSpeed] = useState(1);
   const [showControls, setShowControls] = useState(true);
 
-  // Real playback time from YouTube SDK
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
-  // Вычисление прошедшего времени с момента последнего сохранения
-  const getInitialSeekTime = () => {
+  // Вычисление предполагаемого актуального времени ведущего
+  const getCalculatedHostTime = () => {
     let startSec = room.playback_position_seconds || 0;
     if (room.is_playing && room.last_updated_at) {
       const elapsed = (Date.now() - new Date(room.last_updated_at).getTime()) / 1000;
@@ -87,7 +86,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const videoId = getYouTubeVideoId(room.current_media_url);
 
-  // Загрузка официального скрипта YouTube IFrame API
+  // Подгрузка YouTube IFrame API
   useEffect(() => {
     if (!window.YT) {
       const tag = document.createElement('script');
@@ -97,19 +96,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, []);
 
-  // Инициализация YT.Player
+  // Инициализация плеера YouTube
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
 
     const initPlayer = () => {
       if (!playerContainerRef.current) return;
 
-      const startSec = getInitialSeekTime();
+      const startSec = getCalculatedHostTime();
 
       ytPlayerRef.current = new window.YT.Player(playerContainerRef.current, {
         videoId: videoId,
         playerVars: {
-          autoplay: 1,
+          autoplay: room.is_playing ? 1 : 0,
           controls: 0,
           disablekb: 1,
           fs: 0,
@@ -122,7 +121,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         },
         events: {
           onReady: (event: any) => {
-            event.target.playVideo();
+            if (room.is_playing) {
+              event.target.playVideo();
+            } else {
+              event.target.pauseVideo();
+            }
             event.target.setVolume(volume);
             if (startSec > 0) {
               event.target.seekTo(startSec, true);
@@ -149,13 +152,25 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       };
     }
 
+    // Интервал отслеживания позиции и авто-синхронизации
     interval = setInterval(() => {
       if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         const cur = ytPlayerRef.current.getCurrentTime();
         const dur = ytPlayerRef.current.getDuration();
         if (typeof cur === 'number') {
           setCurrentTime(cur);
-          updateRoomProgress(room.id, cur, ytPlayerRef.current.getPlayerState?.() === 1);
+
+          // ТОЛЬКО СОЗДАТЕЛЬ комнаты обновляет глобальную позицию в базе данных!
+          if (isHost) {
+            const playerState = ytPlayerRef.current.getPlayerState?.();
+            updateRoomProgress(room.id, cur, playerState === 1);
+          } else {
+            // Для слушателей: если рассинхрон больше 2.5 секунд - подстраиваемся под ведущего!
+            const targetHostTime = getCalculatedHostTime();
+            if (room.is_playing && Math.abs(cur - targetHostTime) > 2.5) {
+              ytPlayerRef.current.seekTo(targetHostTime, true);
+            }
+          }
         }
         if (typeof dur === 'number' && dur > 0) setDuration(dur);
       }
@@ -169,10 +184,23 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, []);
 
-  // Смена видео при изменении URL
+  // Синхронизация состояния паузы/плея для слушателей
+  useEffect(() => {
+    if (!isHost && ytPlayerRef.current) {
+      if (room.is_playing && !isPlaying) {
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+      } else if (!room.is_playing && isPlaying) {
+        ytPlayerRef.current.pauseVideo();
+        setIsPlaying(false);
+      }
+    }
+  }, [room.is_playing, isHost]);
+
+  // Переключение видео при изменении URL
   useEffect(() => {
     if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-      const startSec = getInitialSeekTime();
+      const startSec = getCalculatedHostTime();
       ytPlayerRef.current.loadVideoById({
         videoId: videoId,
         startSeconds: startSec,
@@ -230,11 +258,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     if (ytPlayerRef.current) {
       if (nextState) {
         ytPlayerRef.current.loadModule?.('captions');
-        ytPlayerRef.current.setOption?.('captions', 'track', { languageCode: 'en' });
-        showSuccess('Subtitles Enabled');
+        ytPlayerRef.current.setOption?.('captions', 'track', { languageCode: 'ru' });
+        showSuccess('Субтитры включены');
       } else {
         ytPlayerRef.current.unloadModule?.('captions');
-        showSuccess('Subtitles Disabled');
+        showSuccess('Субтитры выключены');
       }
     }
   };
@@ -243,14 +271,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setCurrentSpeed(speed);
     if (ytPlayerRef.current?.setPlaybackRate) {
       ytPlayerRef.current.setPlaybackRate(speed);
-      showSuccess(`Playback Speed: ${speed}x`);
+      showSuccess(`Скорость: ${speed}x`);
     }
   };
 
   // Пауза / Воспроизведение только для Ведущего
   const handleTogglePlay = () => {
     if (!isHost) {
-      showError('Only the room creator can pause or play the video.');
+      showError('Только ведущий может управлять воспроизведением');
       return;
     }
 
@@ -259,12 +287,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       ytPlayerRef.current.pauseVideo();
       setIsPlaying(false);
       updateRoomProgress(room.id, currentTime, false);
-      showSuccess('Playback Paused');
+      showSuccess('Воспроизведение приостановлено');
     } else {
       ytPlayerRef.current.playVideo();
       setIsPlaying(true);
       updateRoomProgress(room.id, currentTime, true);
-      showSuccess('Playback Resumed');
+      showSuccess('Воспроизведение запущено');
     }
   };
 
@@ -299,7 +327,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   // Перемотка только для Ведущего
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) {
-      showError('Only the room creator can seek the timeline.');
+      showError('Только ведущий может перематывать видео');
       return;
     }
 
@@ -312,12 +340,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   const handleSyncClick = () => {
-    const syncTime = getInitialSeekTime();
+    const syncTime = getCalculatedHostTime();
     if (ytPlayerRef.current?.seekTo) {
       ytPlayerRef.current.seekTo(syncTime, true);
-      ytPlayerRef.current.playVideo();
-      setIsPlaying(true);
-      showSuccess('Synchronized with Host Stream!');
+      if (room.is_playing) {
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+      }
+      showSuccess('Синхронизировано с трансляцией!');
     }
   };
 
@@ -340,7 +370,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        {/* Iframe контейнер */}
+        {/* Контейнер племени */}
         <div ref={playerContainerRef} className="h-full w-full pointer-events-none scale-[1.04]" />
 
         <div
@@ -356,7 +386,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           >
             <div className="flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md px-3 py-1 text-xs text-white border border-purple-500/40">
               <Radio className="h-3.5 w-3.5 text-pink-500 animate-pulse" />
-              <span className="font-semibold text-purple-200">LIVE SYNC</span>
+              <span className="font-semibold text-purple-200">Прямой эфир</span>
             </div>
 
             <Button
@@ -369,7 +399,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               className="h-7 text-[11px] px-2.5 bg-slate-950/70 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/50 rounded-full"
             >
               <RefreshCw className="h-3 w-3 mr-1 animate-spin" />
-              Resync
+              Синхронизировать
             </Button>
           </div>
         )}
@@ -392,14 +422,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      {/* Прозрачная нижняя плашка управления с мягким темным градиентом */}
+      {/* Нижняя панель управления */}
       <div
         onClick={(e) => e.stopPropagation()}
         className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/90 via-slate-950/50 to-transparent flex flex-col gap-2 transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
       >
-        {/* Timeline */}
+        {/* Шкала времени */}
         <div className="flex items-center gap-2 px-1">
           <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
             {formatTime(currentTime)}
@@ -417,14 +447,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </span>
         </div>
 
-        {/* Control buttons */}
+        {/* Кнопки управления */}
         <div className="flex items-center justify-between pt-1">
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Play/Pause Button */}
+            {/* Старт / Пауза */}
             <Button
               onClick={handleTogglePlay}
               size="icon"
-              title={isHost ? (isPlaying ? 'Pause' : 'Play') : 'Only Creator can Pause/Play'}
+              title={isHost ? (isPlaying ? 'Пауза' : 'Пуск') : 'Только ведущий может управлять файлом'}
               className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
                 isHost
                   ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
@@ -440,7 +470,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               )}
             </Button>
 
-            {/* Volume Controls */}
+            {/* Громкость */}
             <div className="flex items-center gap-2">
               <button
                 onClick={handleToggleMute}
@@ -467,7 +497,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
           <div className="flex items-center gap-1.5 sm:gap-2">
             <span className="hidden md:inline-block truncate max-w-[150px] lg:max-w-[220px] text-xs font-semibold text-purple-200 mr-2 drop-shadow">
-              {room.current_media_title || 'Playing Stream'}
+              {room.current_media_title || 'Трансляция'}
             </span>
 
             <Button
@@ -477,7 +507,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               className={`h-8 w-8 rounded-lg text-slate-200 hover:text-white ${
                 isCaptionsOn ? 'bg-pink-950/80 text-pink-400 border border-pink-500/50' : 'hover:bg-slate-900/60'
               }`}
-              title="Subtitles / CC"
+              title="Субтитры"
             >
               <Subtitles className="h-4 w-4" />
             </Button>
@@ -488,14 +518,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                   size="icon"
                   variant="ghost"
                   className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
-                  title="Player Settings"
+                  title="Настройки плеера"
                 >
                   <Settings className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
               <PopoverContent className="w-48 bg-slate-900/95 backdrop-blur-md border-purple-900/60 p-2 text-slate-200 text-xs shadow-xl">
                 <div className="font-semibold text-purple-300 px-2 py-1 mb-1 border-b border-purple-950">
-                  Playback Speed
+                  Скорость воспроизведения
                 </div>
                 <div className="space-y-0.5">
                   {PLAYBACK_SPEEDS.map((speed) => (
@@ -504,7 +534,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                       onClick={() => handleSpeedChange(speed)}
                       className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-purple-950/60 transition-colors text-left"
                     >
-                      <span>{speed === 1 ? 'Normal (1x)' : `${speed}x`}</span>
+                      <span>{speed === 1 ? 'Обычная (1x)' : `${speed}x`}</span>
                       {currentSpeed === speed && <Check className="h-3.5 w-3.5 text-pink-400" />}
                     </button>
                   ))}
@@ -517,7 +547,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               size="icon"
               variant="ghost"
               className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
-              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+              title={isFullscreen ? 'Свернуть' : 'На весь экран'}
             >
               {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
             </Button>

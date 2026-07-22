@@ -18,12 +18,12 @@ interface FriendsDrawerProps {
 
 export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose }) => {
   const handleInvite = (friendName: string) => {
-    showSuccess(`Invite sent to ${friendName}!`);
+    showSuccess(`Приглашение отправлено пользователю ${friendName}!`);
   };
 
   const handleShareLink = () => {
     navigator.clipboard.writeText(window.location.origin);
-    showSuccess('Party link copied to clipboard!');
+    showSuccess('Ссылка на вечеринку скопирована в буфер обмена!');
   };
 
   return (
@@ -31,17 +31,17 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
       <SheetContent className="bg-slate-900 text-slate-100 border-purple-900/60 w-full sm:max-w-xs">
         <SheetHeader className="pb-3 border-b border-purple-900/40">
           <SheetTitle className="text-base font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400 flex items-center gap-2">
-            <Users className="h-4 w-4 text-pink-500" /> Rave Friends & Party
+            <Users className="h-4 w-4 text-pink-500" /> Друзья и вечеринки
           </SheetTitle>
           <SheetDescription className="text-slate-400 text-xs">
-            See who is online and invite them to your current room.
+            Смотрите, кто онлайн, и приглашайте друзей в вашу комнату.
           </SheetDescription>
         </SheetHeader>
 
         <div className="py-4 space-y-4">
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold uppercase text-slate-400 tracking-wider">
-              Online Friends ({MOCK_FRIENDS.length})
+              Друзья онлайн ({MOCK_FRIENDS.length})
             </span>
             <Button
               onClick={handleShareLink}
@@ -49,23 +49,23 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
               variant="outline"
               className="h-7 text-xs border-purple-800 text-purple-300 hover:bg-purple-950"
             >
-              <UserPlus className="h-3 w-3 mr-1" /> Copy Link
+              <UserPlus className="h-3 w-3 mr-1" /> Ссылка
             </Button>
           </div>
 
           {MOCK_FRIENDS.length === 0 ? (
             <div className="text-center py-10 px-2 space-y-3 bg-slate-950/50 rounded-2xl border border-purple-950">
               <Users className="h-8 w-8 text-purple-500/50 mx-auto" />
-              <p className="text-xs text-slate-400 font-medium">No friends online right now.</p>
+              <p className="text-xs text-slate-400 font-medium">Сейчас нет друзей в сети.</p>
               <p className="text-[11px] text-slate-500">
-                Share your room link with friends to watch videos together!
+                Поделитесь ссылкой на комнату с друзьями, чтобы смотреть видео вместе!
               </p>
               <Button
                 onClick={handleShareLink}
                 size="sm"
                 className="bg-pink-600 hover:bg-pink-500 text-white text-xs h-8 rounded-xl w-full"
               >
-                Share Invite Link
+                Скопировать ссылку-приглашение
               </Button>
             </div>
           ) : (
@@ -99,7 +99,7 @@ export const FriendsDrawer: React.FC<FriendsDrawerProps> = ({ isOpen, onClose })
                     size="sm"
                     className="h-7 text-[11px] px-2 bg-pink-600 hover:bg-pink-500 text-white rounded-lg"
                   >
-                    <Send className="h-3 w-3 mr-1" /> Invite
+                    <Send className="h-3 w-3 mr-1" /> Позвать
                   </Button>
                 </div>
               ))}

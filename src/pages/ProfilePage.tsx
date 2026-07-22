@@ -89,18 +89,18 @@ export const ProfilePage = () => {
           size="sm"
           className="text-slate-400 hover:text-white gap-1.5"
         >
-          <ArrowLeft className="h-4 w-4" /> Home
+          <ArrowLeft className="h-4 w-4" /> Главная
         </Button>
 
         <div className="p-6 rounded-3xl border border-purple-900/50 bg-slate-900/90 text-center relative overflow-hidden shadow-2xl">
-          {/* Edit Button */}
+          {/* Редактировать */}
           <Button
             onClick={handleOpenEdit}
             size="sm"
             variant="outline"
             className="absolute top-4 right-4 border-purple-800 text-purple-300 hover:bg-purple-950 hover:text-white text-xs gap-1.5 rounded-xl"
           >
-            <Edit3 className="h-3.5 w-3.5" /> Edit Profile
+            <Edit3 className="h-3.5 w-3.5" /> Изменить
           </Button>
 
           <div className="relative mx-auto h-24 w-24 rounded-full ring-4 ring-pink-500/50 overflow-hidden mb-4 mt-2 shadow-lg bg-slate-950">
@@ -117,31 +117,31 @@ export const ProfilePage = () => {
           <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
             {currentUser.username}
             <Badge className="bg-gradient-to-r from-pink-500 to-purple-600 text-white text-[10px]">
-              PRO HOST
+              ВЕДУЩИЙ
             </Badge>
           </h2>
 
           <p className="text-xs text-purple-300 mt-1 max-w-xs mx-auto">
-            {currentUser.status_message || 'No status message set'}
+            {currentUser.status_message || 'Статус не установлен'}
           </p>
 
           <div className="mt-6 grid grid-cols-2 gap-4 border-t border-purple-950 pt-4">
             <div className="p-3 rounded-2xl bg-slate-950/60 border border-purple-900/30">
               <Clock className="h-5 w-5 text-cyan-400 mx-auto mb-1" />
-              <div className="text-lg font-bold text-slate-100">{currentUser.watch_time_minutes || 0} min</div>
-              <div className="text-[10px] text-slate-400">Total Watch Time</div>
+              <div className="text-lg font-bold text-slate-100">{currentUser.watch_time_minutes || 0} мин</div>
+              <div className="text-[10px] text-slate-400">Время просмотра</div>
             </div>
 
             <div className="p-3 rounded-2xl bg-slate-950/60 border border-purple-900/30">
               <Radio className="h-5 w-5 text-pink-400 mx-auto mb-1" />
               <div className="text-lg font-bold text-slate-100">{currentUser.parties_hosted || 0}</div>
-              <div className="text-[10px] text-slate-400">Parties Hosted</div>
+              <div className="text-[10px] text-slate-400">Создано эфиров</div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* Edit Profile Modal */}
+      {/* Модалка редактирования */}
       <Dialog open={isEditModalOpen} onOpenChange={setIsEditModalOpen}>
         <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
           <DialogHeader>
@@ -149,7 +149,7 @@ export const ProfilePage = () => {
               Редактирование профиля
             </DialogTitle>
             <DialogDescription className="text-slate-400 text-xs">
-              Загрузите фото с компьютера или используйте стандартное авто-изображение.
+              Загрузите фото с компьютера или используйте стандартный аватар.
             </DialogDescription>
           </DialogHeader>
 
@@ -176,12 +176,11 @@ export const ProfilePage = () => {
                 id="status"
                 value={statusMessage}
                 onChange={(e) => setStatusMessage(e.target.value)}
-                placeholder="Например: Слушаю электронную музыку 🎧"
+                placeholder="Например: Слушаю музыку 🎧"
                 className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
               />
             </div>
 
-            {/* Загрузка фото через файл */}
             <div className="space-y-2">
               <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                 <Image className="h-3.5 w-3.5 text-purple-400" /> Фото профиля
@@ -199,7 +198,7 @@ export const ProfilePage = () => {
                 <div className="h-16 w-16 rounded-full overflow-hidden ring-2 ring-pink-500/50 bg-slate-950 shrink-0">
                   <img
                     src={avatarUrl || getDefaultAvatar(username)}
-                    alt="Preview"
+                    alt="Превью"
                     className="h-full w-full object-cover"
                     onError={(e) => {
                       (e.target as HTMLImageElement).src = getDefaultAvatar(username);
@@ -224,7 +223,7 @@ export const ProfilePage = () => {
                     size="sm"
                     className="text-slate-400 hover:text-white text-[11px] h-6 p-0 gap-1 justify-start"
                   >
-                    <RefreshCw className="h-3 w-3" /> Сбросить на стандартную
+                    <RefreshCw className="h-3 w-3" /> Сбросить аватарку
                   </Button>
                 </div>
               </div>
