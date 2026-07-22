@@ -395,14 +395,28 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchRoomMembers();
     fetchFriendData();
 
+    // Настройка мгновенных подписок Supabase Realtime
+    const channel = supabase
+      .channel('pulserave-realtime-channel')
+      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
+        fetchRooms();
+        fetchMessages();
+        fetchRoomMembers();
+        fetchFriendData();
+      })
+      .subscribe();
+
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
       fetchRoomMembers();
       fetchFriendData();
-    }, 1500);
+    }, 2000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      if (supabase) supabase.removeChannel(channel);
+    };
   }, [fetchRooms, fetchMessages, fetchRoomMembers, fetchFriendData]);
 
   // Друзья логика
