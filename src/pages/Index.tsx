@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import { RoomCard } from '@/components/RoomCard';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
 import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
+import { AuthModal } from '@/components/AuthModal';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { CategoryType, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
@@ -17,7 +18,7 @@ import { showSuccess, showError } from '@/utils/toast';
 
 const Index = () => {
   const navigate = useNavigate();
-  const { rooms, refreshRooms, currentUser } = useRooms();
+  const { rooms, refreshRooms, currentUser, isLoggedIn } = useRooms();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -26,10 +27,18 @@ const Index = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
   // Окно ввода пароля для приватной комнаты
   const [selectedPrivateRoom, setSelectedPrivateRoom] = useState<Room | null>(null);
   const [inputPassword, setInputPassword] = useState('');
+
+  // Открываем форму регистрации/входа если пользователь не авторизован
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setIsAuthModalOpen(true);
+    }
+  }, [isLoggedIn]);
 
   const categories: { id: CategoryType; label: string; icon: any }[] = [
     { id: 'all', label: 'Все комнаты', icon: Sparkles },
@@ -55,6 +64,11 @@ const Index = () => {
   });
 
   const handleRoomClick = (room: Room) => {
+    if (!isLoggedIn) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+
     const isOwner = room.host_id === currentUser.id;
     if (room.is_private && !isOwner) {
       setSelectedPrivateRoom(room);
@@ -79,10 +93,18 @@ const Index = () => {
     }
   };
 
+  const handleOpenCreateModal = () => {
+    if (!isLoggedIn) {
+      setIsAuthModalOpen(true);
+      return;
+    }
+    setIsCreateModalOpen(true);
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-16 md:pb-0">
       <Navbar
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        onOpenCreateModal={handleOpenCreateModal}
         onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
@@ -236,7 +258,7 @@ const Index = () => {
       </Dialog>
 
       <MobileBottomNav
-        onOpenCreateModal={() => setIsCreateModalOpen(true)}
+        onOpenCreateModal={handleOpenCreateModal}
         onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
       />
 
@@ -251,6 +273,10 @@ const Index = () => {
       <SqlSchemaDialog
         isOpen={isSqlModalOpen}
         onClose={() => setIsSqlModalOpen(false)}
+      />
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
       />
     </div>
   );

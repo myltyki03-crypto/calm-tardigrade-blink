@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Radio, Edit3, User, Upload, RefreshCw, MessageSquare, Image } from 'lucide-react';
+import { ArrowLeft, Clock, Radio, Edit3, User, Upload, RefreshCw, MessageSquare, Image, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ const getDefaultAvatar = (seed: string) => {
 
 export const ProfilePage = () => {
   const navigate = useNavigate();
-  const { currentUser, updateUserProfile } = useRooms();
+  const { currentUser, updateUserProfile, logoutUser } = useRooms();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -78,19 +78,35 @@ export const ProfilePage = () => {
     setIsEditModalOpen(false);
   };
 
+  const handleLogout = () => {
+    logoutUser();
+    navigate('/');
+  };
+
   const displayAvatar = currentUser.avatar_url || getDefaultAvatar(currentUser.username);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6 flex flex-col items-center">
       <div className="w-full max-w-xl space-y-6">
-        <Button
-          onClick={() => navigate('/')}
-          variant="ghost"
-          size="sm"
-          className="text-slate-400 hover:text-white gap-1.5"
-        >
-          <ArrowLeft className="h-4 w-4" /> Главная
-        </Button>
+        <div className="flex items-center justify-between">
+          <Button
+            onClick={() => navigate('/')}
+            variant="ghost"
+            size="sm"
+            className="text-slate-400 hover:text-white gap-1.5"
+          >
+            <ArrowLeft className="h-4 w-4" /> Главная
+          </Button>
+
+          <Button
+            onClick={handleLogout}
+            variant="ghost"
+            size="sm"
+            className="text-red-400 hover:text-red-300 hover:bg-red-950/40 text-xs gap-1.5 rounded-xl"
+          >
+            <LogOut className="h-4 w-4" /> Выйти из аккаунта
+          </Button>
+        </div>
 
         <div className="p-6 rounded-3xl border border-purple-900/50 bg-slate-900/90 text-center relative overflow-hidden shadow-2xl">
           {/* Редактировать */}

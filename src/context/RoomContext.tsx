@@ -1,11 +1,15 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { Room, ChatMessage, QueueItem, UserProfile, RoomMember } from '@/types/rave';
-import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE, CURRENT_USER } from '@/data/mockRaveData';
+import { Room, ChatMessage, QueueItem, UserProfile, RoomMember, RegisteredAccount } from '@/types/rave';
+import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE } from '@/data/mockRaveData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { showSuccess, showError } from '@/utils/toast';
 
 interface RoomContextType {
   currentUser: UserProfile;
+  isLoggedIn: boolean;
+  registerUser: (username: string, password_hash: string, avatar_url?: string) => boolean;
+  loginUser: (username: string, password_hash: string) => boolean;
+  logoutUser: () => void;
   updateUserProfile: (updated: Partial<UserProfile>) => void;
   rooms: Room[];
   isRoomsLoaded: boolean;
@@ -30,28 +34,31 @@ interface RoomContextType {
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
 
 export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Каждое устройство/браузер получает свой уникальный ID
+  // Список всех зарегистрированных аккаунтов на устройстве/в БД
+  const [accounts, setAccounts] = useState<RegisteredAccount[]>(() => {
+    const saved = localStorage.getItem('pulserave_accounts');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Текущий вошедший пользователь
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
-    const saved = localStorage.getItem('pulserave_user');
+    const saved = localStorage.getItem('pulserave_logged_user');
     if (saved) {
       try {
         return JSON.parse(saved);
       } catch (e) {
-        console.error('Failed to parse saved user:', e);
+        console.error('Failed to parse logged user:', e);
       }
     }
-    const uniqueId = 'user_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
-    const randomNum = Math.floor(Math.random() * 899) + 100;
     return {
-      id: uniqueId,
-      username: `Raver_${randomNum}`,
-      avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${uniqueId}`,
-      is_online: true,
-      status_message: 'В ритме вечеринки 🎧',
-      is_vip: false,
-      watch_time_minutes: 0,
-      parties_hosted: 0,
+      id: '',
+      username: 'Гость',
+      avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
     };
+  });
+
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean>(() => {
+    return Boolean(localStorage.getItem('pulserave_logged_user'));
   });
 
   const [rooms, setRooms] = useState<Room[]>(() => {
@@ -71,6 +78,91 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [activeMembersByRoom, setActiveMembersByRoom] = useState<Record<string, RoomMember[]>>({});
+
+  // Сохранение списка аккаунтов
+  useEffect(() => {
+    localStorage.setItem('pulserave_accounts', JSON.stringify(accounts));
+  }, [accounts]);
+
+  // Сохранение авторизованного пользователя
+  useEffect(() => {
+    if (isLoggedIn && currentUser.id) {
+      localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
+    } else {
+      localStorage.removeItem('pulserave_logged_user');
+    }
+  }, [currentUser, isLoggedIn]);
+
+  // ФУНКЦИИ РЕГИСТРАЦИИ И ВХОДА
+  const registerUser = (username: string, password_hash: string, avatar_url?: string): boolean => {
+    const cleanName = username.trim();
+    const existing = accounts.find((a) => a.username.toLowerCase() === cleanName.toLowerCase());
+
+    if (existing) {
+      showError('Пользователь с таким логином уже существует');
+      return false;
+    }
+
+    const userId = 'usr_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now().toString(36);
+    const newAcc: RegisteredAccount = {
+      id: userId,
+      username: cleanName,
+      password_hash: password_hash,
+      avatar_url: avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanName}`,
+      is_online: true,
+      status_message: 'В ритме вечеринки 🎧',
+      is_vip: false,
+      watch_time_minutes: 0,
+      parties_hosted: 0,
+      created_at: new Date().toISOString(),
+    };
+
+    setAccounts((prev) => [...prev, newAcc]);
+    setCurrentUser(newAcc);
+    setIsLoggedIn(true);
+
+    if (isSupabaseConfigured && supabase) {
+      supabase.from('profiles').upsert([
+        {
+          id: newAcc.id,
+          username: newAcc.username,
+          avatar_url: newAcc.avatar_url,
+          status_message: newAcc.status_message,
+        },
+      ]);
+    }
+
+    showSuccess(`Аккаунт ${cleanName} успешно зарегистрирован!`);
+    return true;
+  };
+
+  const loginUser = (username: string, password_hash: string): boolean => {
+    const cleanName = username.trim();
+    const found = accounts.find(
+      (a) => a.username.toLowerCase() === cleanName.toLowerCase() && a.password_hash === password_hash
+    );
+
+    if (!found) {
+      showError('Неверный логин или пароль');
+      return false;
+    }
+
+    setCurrentUser(found);
+    setIsLoggedIn(true);
+    showSuccess(`Добро пожаловать, ${found.username}!`);
+    return true;
+  };
+
+  const logoutUser = () => {
+    setIsLoggedIn(false);
+    setCurrentUser({
+      id: '',
+      username: 'Гость',
+      avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
+    });
+    localStorage.removeItem('pulserave_logged_user');
+    showSuccess('Вы вышли из аккаунта');
+  };
 
   const fetchRooms = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -167,90 +259,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
-    const roomsChannel = supabase
-      .channel('realtime:rooms')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          const inserted = payload.new as Room;
-          setRooms((prev) => [inserted, ...prev.filter((r) => r.id !== inserted.id)]);
-        } else if (payload.eventType === 'UPDATE') {
-          const updated = payload.new as Room;
-          setRooms((prev) => prev.map((r) => (r.id === updated.id ? { ...r, ...updated } : r)));
-        } else if (payload.eventType === 'DELETE') {
-          const deleted = payload.old as Room;
-          setRooms((prev) => prev.filter((r) => r.id !== deleted.id));
-        }
-      })
-      .subscribe();
-
-    const chatChannel = supabase
-      .channel('realtime:chat_messages')
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'chat_messages' }, (payload) => {
-        const newMsg = payload.new as ChatMessage;
-        setMessagesByRoom((prev) => {
-          const existing = prev[newMsg.room_id] || [];
-          if (existing.some(m => m.id === newMsg.id)) return prev;
-          return {
-            ...prev,
-            [newMsg.room_id]: [...existing, newMsg],
-          };
-        });
-      })
-      .subscribe();
-
-    const queueChannel = supabase
-      .channel('realtime:queue_items')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'queue_items' }, (payload) => {
-        if (payload.eventType === 'INSERT') {
-          const newItem = payload.new as QueueItem;
-          setQueueByRoom((prev) => ({
-            ...prev,
-            [newItem.room_id]: [...(prev[newItem.room_id] || []), newItem],
-          }));
-        } else if (payload.eventType === 'UPDATE') {
-          const updated = payload.new as QueueItem;
-          setQueueByRoom((prev) => ({
-            ...prev,
-            [updated.room_id]: (prev[updated.room_id] || []).map((item) =>
-              item.id === updated.id ? updated : item
-            ),
-          }));
-        } else if (payload.eventType === 'DELETE') {
-          const deleted = payload.old as QueueItem;
-          setQueueByRoom((prev) => ({
-            ...prev,
-            [deleted.room_id]: (prev[deleted.room_id] || []).filter((item) => item.id !== deleted.id),
-          }));
-        }
-      })
-      .subscribe();
-
-    const membersChannel = supabase
-      .channel('realtime:room_members')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members' }, () => {
-        fetchMembers();
-      })
-      .subscribe();
-
     return () => {
       clearInterval(interval);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
-      supabase.removeChannel(roomsChannel);
-      supabase.removeChannel(chatChannel);
-      supabase.removeChannel(queueChannel);
-      supabase.removeChannel(membersChannel);
     };
   }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers]);
-
-  useEffect(() => {
-    localStorage.setItem('pulserave_user', JSON.stringify(currentUser));
-  }, [currentUser]);
 
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));
   }, [rooms]);
 
   const joinRoomPresence = async (roomId: string) => {
+    if (!currentUser.id) return;
     const memberObj: RoomMember = {
       id: `mem-${currentUser.id}-${roomId}`,
       room_id: roomId,
@@ -273,6 +293,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const leaveRoomPresence = async (roomId: string) => {
+    if (!currentUser.id) return;
     setActiveMembersByRoom(prev => ({
       ...prev,
       [roomId]: (prev[roomId] || []).filter(m => m.user_id !== currentUser.id)
@@ -298,6 +319,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newProfile = { ...currentUser, ...updated };
     setCurrentUser(newProfile);
 
+    setAccounts((prev) =>
+      prev.map((acc) => (acc.id === newProfile.id ? { ...acc, ...updated } : acc))
+    );
+
     if (isSupabaseConfigured && supabase) {
       await supabase.from('profiles').upsert([
         {
@@ -305,8 +330,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           username: newProfile.username,
           avatar_url: newProfile.avatar_url,
           status_message: newProfile.status_message,
-          watch_time_minutes: newProfile.watch_time_minutes || 0,
-          parties_hosted: newProfile.parties_hosted || 0,
         },
       ]);
     }
@@ -443,6 +466,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <RoomContext.Provider
       value={{
         currentUser,
+        isLoggedIn,
+        registerUser,
+        loginUser,
+        logoutUser,
         updateUserProfile,
         rooms,
         isRoomsLoaded,

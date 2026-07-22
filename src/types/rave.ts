@@ -13,6 +13,11 @@ export interface UserProfile {
   parties_hosted?: number;
 }
 
+export interface RegisteredAccount extends UserProfile {
+  password_hash: string;
+  created_at: string;
+}
+
 export interface QueueItem {
   id: string;
   room_id: string;
