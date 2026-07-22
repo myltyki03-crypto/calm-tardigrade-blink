@@ -7,7 +7,6 @@ import {
   VolumeX,
   Maximize,
   Minimize,
-  Subtitles,
   Lock,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -46,26 +45,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isCaptionsOn, setIsCaptionsOn] = useState(false);
-  const isCaptionsOnRef = useRef(false);
   const [showControls, setShowControls] = useState(true);
 
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
 
-  useEffect(() => {
-    isCaptionsOnRef.current = isCaptionsOn;
-  }, [isCaptionsOn]);
-
   const forceDisableCaptions = () => {
-    if (!isCaptionsOnRef.current && ytPlayerRef.current) {
+    if (ytPlayerRef.current) {
       try {
         ytPlayerRef.current.unloadModule?.('captions');
         ytPlayerRef.current.setOption?.('captions', 'track', {});
         ytPlayerRef.current.setOption?.('cc', 'track', {});
       } catch (e) {
-        // Игнорируем внутренние ошибки YouTube API
+        // Игнорируем ошибки API YouTube
       }
     }
   };
@@ -174,9 +167,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         const dur = ytPlayerRef.current.getDuration();
         const now = Date.now();
 
-        if (!isCaptionsOnRef.current) {
-          forceDisableCaptions();
-        }
+        forceDisableCaptions();
 
         if (typeof cur === 'number') {
           setCurrentTime(cur);
@@ -314,25 +305,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       return;
     }
     setShowControls((prev) => !prev);
-  };
-
-  const toggleCaptions = () => {
-    const nextState = !isCaptionsOn;
-    setIsCaptionsOn(nextState);
-    isCaptionsOnRef.current = nextState;
-
-    if (ytPlayerRef.current) {
-      if (nextState) {
-        ytPlayerRef.current.loadModule?.('captions');
-        ytPlayerRef.current.setOption?.('captions', 'track', { languageCode: 'ru' });
-        showSuccess('Субтитры включены');
-      } else {
-        ytPlayerRef.current.unloadModule?.('captions');
-        ytPlayerRef.current.setOption?.('captions', 'track', {});
-        ytPlayerRef.current.setOption?.('cc', 'track', {});
-        showSuccess('Субтитры выключены');
-      }
-    }
   };
 
   const handleTogglePlay = () => {
@@ -552,22 +524,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <span className="hidden md:inline-block truncate max-w-[150px] lg:max-w-[220px] text-xs font-semibold text-purple-200 mr-2 drop-shadow">
-              {room.current_media_title || 'Трансляция'}
-            </span>
-
-            <Button
-              onClick={toggleCaptions}
-              size="icon"
-              variant="ghost"
-              className={`h-8 w-8 rounded-lg text-slate-200 hover:text-white ${
-                isCaptionsOn ? 'bg-pink-950/80 text-pink-400 border border-pink-500/50' : 'hover:bg-slate-900/60'
-              }`}
-              title="Субтитры"
-            >
-              <Subtitles className="h-4 w-4" />
-            </Button>
-
             <Button
               onClick={toggleFullscreen}
               size="icon"
