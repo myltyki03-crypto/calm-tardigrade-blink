@@ -34,7 +34,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
   onClose,
   selectedFriend: initialSelectedFriend,
 }) => {
-  const { currentUser, friendsList, directMessages, sendDirectMessage } = useRooms();
+  const { currentUser, friendsList, directMessages, sendDirectMessage, markDirectMessagesAsRead } = useRooms();
   
   const [activeFriend, setActiveFriend] = useState<UserProfile | null>(initialSelectedFriend || null);
   const [inputText, setInputText] = useState('');
@@ -67,6 +67,13 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
     return (isMeSender && isFriendReceiver) || (isFriendSender && isMeReceiver);
   });
 
+  // Автоматический сброс бейджа при открытии модального окна и просмотре диалога
+  useEffect(() => {
+    if (isOpen && activeFriend) {
+      markDirectMessagesAsRead(activeFriend.id, activeFriend.username);
+    }
+  }, [isOpen, activeFriend, conversation.length]);
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -83,6 +90,7 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
     setInputText('');
 
     await sendDirectMessage(activeFriend.id, activeFriend.username, text);
+    markDirectMessagesAsRead(activeFriend.id, activeFriend.username);
   };
 
   const filteredFriends = friendsList.filter((f) =>
@@ -128,7 +136,10 @@ export const DirectChatModal: React.FC<DirectChatModalProps> = ({
                     return (
                       <button
                         key={friend.id}
-                        onClick={() => setActiveFriend(friend)}
+                        onClick={() => {
+                          setActiveFriend(friend);
+                          markDirectMessagesAsRead(friend.id, friend.username);
+                        }}
                         className={`w-full flex items-center gap-2.5 p-2 rounded-xl text-left transition-all ${
                           isSelected
                             ? 'bg-gradient-to-r from-purple-800/80 to-pink-700/80 text-white font-semibold shadow-md'

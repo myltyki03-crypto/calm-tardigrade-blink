@@ -44,6 +44,7 @@ interface RoomContextType {
   // Личные сообщения
   directMessages: DirectMessage[];
   sendDirectMessage: (receiverId: string, receiverName: string, text: string) => Promise<boolean>;
+  markDirectMessagesAsRead: (friendId: string, friendName: string) => Promise<void>;
   unreadDirectCount: number;
 }
 
@@ -416,6 +417,32 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
 
     return true;
+  };
+
+  // Метод отметки сообщений как прочитанных
+  const markDirectMessagesAsRead = async (friendId: string, friendName: string) => {
+    if (!currentUser.id) return;
+    const myId = currentUser.id;
+    const myName = currentUser.username.toLowerCase();
+    const friendNameLower = friendName.toLowerCase();
+
+    setDirectMessages((prev) =>
+      prev.map((m) => {
+        const isForMe = m.receiver_id === myId || m.receiver_name.toLowerCase() === myName;
+        const isFromFriend = m.sender_id === friendId || m.sender_name.toLowerCase() === friendNameLower;
+        if (isForMe && isFromFriend && !m.is_read) {
+          return { ...m, is_read: true };
+        }
+        return m;
+      })
+    );
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase
+        .from('direct_messages')
+        .update({ is_read: true })
+        .or(`and(receiver_id.eq.${myId},sender_id.eq.${friendId}),and(receiver_name.ilike.${myName},sender_name.ilike.${friendNameLower})`);
+    }
   };
 
   // Метод отправки заявки в друзья по нику
@@ -889,6 +916,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         removeFriend,
         directMessages,
         sendDirectMessage,
+        markDirectMessagesAsRead,
         unreadDirectCount,
       }}
     >
