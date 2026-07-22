@@ -137,7 +137,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('pulserave_direct_messages', JSON.stringify(directMessages));
   }, [directMessages]);
 
-  // Синхронизация профиля с Supabase
   useEffect(() => {
     if (isLoggedIn && currentUser.username && currentUser.username !== 'Гость') {
       localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
@@ -183,7 +182,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    showSuccess('Все аккаунты и история личных сообщений сброшены!');
+    showSuccess('Все аккаунты и история сообщений сброшены!');
   };
 
   const registerUser = async (username: string, password_hash: string, avatar_url?: string): Promise<boolean> => {
@@ -353,6 +352,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // Получение присутствующих зрителей с таймаутом 40 секунд (вместо 15 сек)
   const fetchMembers = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase) return;
     const { data } = await supabase.from('room_members').select('*');
@@ -362,7 +362,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       data.forEach((m: any) => {
         const lastActive = m.joined_at ? new Date(m.joined_at).getTime() : 0;
-        const isRecent = now - lastActive < 15000;
+        const isRecent = now - lastActive < 40000; // 40 секунд таймаута активности
 
         if (isRecent) {
           if (!grouped[m.room_id]) grouped[m.room_id] = [];
@@ -382,7 +382,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (data) {
       const newRequests = data as FriendRequest[];
       
-      // Всплывающие уведомления о входящих заявках
       if (currentUser.username && currentUser.username !== 'Гость') {
         const myName = currentUser.username.toLowerCase();
         const myId = currentUser.id;
@@ -413,7 +412,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (data) {
       const newDms = data as DirectMessage[];
 
-      // Всплывающие уведомления о новых сообщениях ЛС
       if (currentUser.username && currentUser.username !== 'Гость') {
         const myName = currentUser.username.toLowerCase();
         const myId = currentUser.id;
@@ -467,6 +465,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages' }, () => {
         fetchMessages();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'room_members' }, () => {
+        fetchMembers();
       })
       .subscribe();
 
@@ -537,7 +538,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Метод отправки заявки в друзья по нику
+  // Улучшенный метод отправки заявки в друзья (с автоматическим принятием взаимных заявок)
   const sendFriendRequest = async (targetUsername: string): Promise<boolean> => {
     const cleanTarget = targetUsername.trim();
     if (!cleanTarget) {
@@ -579,6 +580,23 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const myNameLower = currentUser.username.toLowerCase();
     const targetNameLower = targetName.toLowerCase();
 
+    // Проверяем, нет ли ВХОДЯЩЕЙ заявки от адресата к нам
+    const incomingPendingFromTarget = friendRequests.find((r) => {
+      if (!r || r.status !== 'pending') return false;
+      const sId = r.sender_id || '';
+      const sName = (r.sender_name || '').toLowerCase();
+      const isFromTarget = (sId === targetId) || (sName === targetNameLower);
+      return isFromTarget;
+    });
+
+    // Если адрес уже прислал нам заявку, просто АВТО-ПРИНИМАЕМ ЕЁ!
+    if (incomingPendingFromTarget) {
+      await acceptFriendRequest(incomingPendingFromTarget.id);
+      showSuccess(`🎉 Вы и ${targetName} теперь друзья!`);
+      return true;
+    }
+
+    // Проверяем, не отправляли ли мы уже эту заявку ранее
     const existingReq = friendRequests.find(
       (r) =>
         r &&
@@ -615,21 +633,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     prevFriendReqIdsRef.current.add(newReq.id);
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('friend_requests').insert([newReq]);
-      if (error) {
-        console.warn('Friend request insert fallback:', error);
-        const fallbackReq = {
-          id: newReq.id,
-          sender_id: newReq.sender_id,
-          sender_name: newReq.sender_name,
-          sender_avatar: newReq.sender_avatar,
-          receiver_id: newReq.receiver_id,
-          receiver_name: newReq.receiver_name,
-          status: newReq.status,
-          created_at: newReq.created_at,
-        };
-        await supabase.from('friend_requests').insert([fallbackReq]);
-      }
+      await supabase.from('friend_requests').insert([newReq]);
       fetchFriendRequests();
     }
 
