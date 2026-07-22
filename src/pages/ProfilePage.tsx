@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Radio, Edit3, User, Image, MessageSquare } from 'lucide-react';
+import { ArrowLeft, Clock, Radio, Edit3, User, Upload, RefreshCw, MessageSquare, Image } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -14,37 +14,71 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { useRooms } from '@/context/RoomContext';
-import { showSuccess } from '@/utils/toast';
+import { showSuccess, showError } from '@/utils/toast';
+
+const getDefaultAvatar = (seed: string) => {
+  return `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(seed || 'raver')}`;
+};
 
 export const ProfilePage = () => {
   const navigate = useNavigate();
   const { currentUser, updateUserProfile } = useRooms();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [username, setUsername] = useState(currentUser.username);
   const [statusMessage, setStatusMessage] = useState(currentUser.status_message || '');
-  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url);
+  const [avatarUrl, setAvatarUrl] = useState(currentUser.avatar_url || getDefaultAvatar(currentUser.username));
 
   const handleOpenEdit = () => {
     setUsername(currentUser.username);
     setStatusMessage(currentUser.status_message || '');
-    setAvatarUrl(currentUser.avatar_url);
+    setAvatarUrl(currentUser.avatar_url || getDefaultAvatar(currentUser.username));
     setIsEditModalOpen(true);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) {
+      showError('Размер файла не должен превышать 5МБ');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (typeof reader.result === 'string') {
+        setAvatarUrl(reader.result);
+        showSuccess('Фото профиля выбрано!');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleResetToDefaultAvatar = () => {
+    const defaultImg = getDefaultAvatar(username || 'raver');
+    setAvatarUrl(defaultImg);
+    showSuccess('Установлена аватарка по умолчанию');
   };
 
   const handleSaveProfile = (e: React.FormEvent) => {
     e.preventDefault();
     if (!username.trim()) return;
 
+    const finalAvatar = avatarUrl.trim() || getDefaultAvatar(username);
+
     updateUserProfile({
       username: username.trim(),
       status_message: statusMessage.trim(),
-      avatar_url: avatarUrl.trim() || currentUser.avatar_url,
+      avatar_url: finalAvatar,
     });
 
-    showSuccess('Profile updated successfully!');
+    showSuccess('Профиль успешно обновлен!');
     setIsEditModalOpen(false);
   };
+
+  const displayAvatar = currentUser.avatar_url || getDefaultAvatar(currentUser.username);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 p-4 md:p-6 flex flex-col items-center">
@@ -69,11 +103,14 @@ export const ProfilePage = () => {
             <Edit3 className="h-3.5 w-3.5" /> Edit Profile
           </Button>
 
-          <div className="relative mx-auto h-24 w-24 rounded-full ring-4 ring-pink-500/50 overflow-hidden mb-4 mt-2 shadow-lg">
+          <div className="relative mx-auto h-24 w-24 rounded-full ring-4 ring-pink-500/50 overflow-hidden mb-4 mt-2 shadow-lg bg-slate-950">
             <img
-              src={currentUser.avatar_url}
+              src={displayAvatar}
               alt={currentUser.username}
               className="h-full w-full object-cover"
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = getDefaultAvatar(currentUser.username);
+              }}
             />
           </div>
 
@@ -109,23 +146,23 @@ export const ProfilePage = () => {
         <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-400">
-              Edit Your Profile
+              Редактирование профиля
             </DialogTitle>
             <DialogDescription className="text-slate-400 text-xs">
-              Update your nickname, status message, or profile avatar link.
+              Загрузите фото с компьютера или используйте стандартное авто-изображение.
             </DialogDescription>
           </DialogHeader>
 
           <form onSubmit={handleSaveProfile} className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="username" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <User className="h-3.5 w-3.5 text-pink-400" /> Username
+                <User className="h-3.5 w-3.5 text-pink-400" /> Имя пользователя
               </Label>
               <Input
                 id="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter nickname..."
+                placeholder="Введите имя..."
                 className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
                 required
               />
@@ -133,41 +170,64 @@ export const ProfilePage = () => {
 
             <div className="space-y-1.5">
               <Label htmlFor="status" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <MessageSquare className="h-3.5 w-3.5 text-cyan-400" /> Status Message
+                <MessageSquare className="h-3.5 w-3.5 text-cyan-400" /> Статус
               </Label>
               <Input
                 id="status"
                 value={statusMessage}
                 onChange={(e) => setStatusMessage(e.target.value)}
-                placeholder="e.g. Chilling with electronic music 🎧"
+                placeholder="Например: Слушаю электронную музыку 🎧"
                 className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
               />
             </div>
 
-            <div className="space-y-1.5">
-              <Label htmlFor="avatar" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
-                <Image className="h-3.5 w-3.5 text-purple-400" /> Avatar Image URL
+            {/* Загрузка фото через файл */}
+            <div className="space-y-2">
+              <Label className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <Image className="h-3.5 w-3.5 text-purple-400" /> Фото профиля
               </Label>
-              <Input
-                id="avatar"
-                value={avatarUrl}
-                onChange={(e) => setAvatarUrl(e.target.value)}
-                placeholder="Paste avatar URL..."
-                className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
-              />
-            </div>
 
-            {/* Avatar Preview */}
-            <div className="pt-2 flex items-center gap-3">
-              <span className="text-xs text-slate-400">Preview:</span>
-              <img
-                src={avatarUrl || currentUser.avatar_url}
-                alt="Preview"
-                className="h-10 w-10 rounded-full object-cover ring-2 ring-pink-500/50"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src = currentUser.avatar_url;
-                }}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                className="hidden"
               />
+
+              <div className="flex items-center gap-3">
+                <div className="h-16 w-16 rounded-full overflow-hidden ring-2 ring-pink-500/50 bg-slate-950 shrink-0">
+                  <img
+                    src={avatarUrl || getDefaultAvatar(username)}
+                    alt="Preview"
+                    className="h-full w-full object-cover"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = getDefaultAvatar(username);
+                    }}
+                  />
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <Button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    size="sm"
+                    className="bg-purple-800 hover:bg-purple-700 text-white text-xs gap-1.5 rounded-xl h-8"
+                  >
+                    <Upload className="h-3.5 w-3.5" /> Загрузить файл
+                  </Button>
+
+                  <Button
+                    type="button"
+                    onClick={handleResetToDefaultAvatar}
+                    variant="ghost"
+                    size="sm"
+                    className="text-slate-400 hover:text-white text-[11px] h-6 p-0 gap-1 justify-start"
+                  >
+                    <RefreshCw className="h-3 w-3" /> Сбросить на стандартную
+                  </Button>
+                </div>
+              </div>
             </div>
 
             <DialogFooter className="pt-3">
@@ -177,13 +237,13 @@ export const ProfilePage = () => {
                 onClick={() => setIsEditModalOpen(false)}
                 className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
               >
-                Cancel
+                Отмена
               </Button>
               <Button
                 type="submit"
                 className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-semibold text-xs"
               >
-                Save Changes
+                Сохранить
               </Button>
             </DialogFooter>
           </form>
