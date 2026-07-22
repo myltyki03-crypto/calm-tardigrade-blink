@@ -29,17 +29,43 @@ interface CreateRoomModalProps {
   onClose: () => void;
 }
 
-const extractYouTubeDetails = (url: string) => {
-  let videoId = '4xDzrJKXOOY';
-  if (url.includes('youtube.com/watch?v=')) {
-    videoId = url.split('v=')[1]?.split('&')[0] || videoId;
-  } else if (url.includes('youtu.be/')) {
-    videoId = url.split('youtu.be/')[1]?.split('?')[0] || videoId;
+// Дефолтные видео под каждую категорию
+const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string; thumbnail: string }> = {
+  music: {
+    url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
+    title: 'SYNTHWAVE Radio - Chill Beats to Relax/Study to',
+    thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
+  },
+  youtube: {
+    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    title: 'Lofi Hip Hop Radio - Beats to Relax to',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
+  },
+  movies: {
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    title: 'Indie Cinema Short Film',
+    thumbnail: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop&q=80',
+  },
+  gaming: {
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    title: 'Top Esports Clutch Highlights',
+    thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
+  },
+  anime: {
+    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    title: 'Anime Chill Vibes Session',
+    thumbnail: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop&q=80',
+  },
+  livestream: {
+    url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
+    title: 'Live Stream Party',
+    thumbnail: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?w=600&auto=format&fit=crop&q=80',
+  },
+  all: {
+    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    title: 'Lofi Beats',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
   }
-  return {
-    videoId,
-    thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-  };
 };
 
 export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
@@ -49,7 +75,6 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   const navigate = useNavigate();
   const { addRoom } = useRooms();
   const [title, setTitle] = useState('');
-  const [mediaUrl, setMediaUrl] = useState('https://www.youtube.com/watch?v=4xDzrJKXOOY');
   const [category, setCategory] = useState<CategoryType>('music');
   const [isPrivate, setIsPrivate] = useState(false);
   const [allowGuestQueue, setAllowGuestQueue] = useState(true);
@@ -58,7 +83,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     e.preventDefault();
     if (!title.trim()) return;
 
-    const ytDetails = extractYouTubeDetails(mediaUrl);
+    const defaultMedia = DEFAULT_CATEGORY_MEDIA[category] || DEFAULT_CATEGORY_MEDIA.music;
 
     const newRoom: Room = {
       id: `room-${Date.now()}`,
@@ -69,9 +94,9 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       host_avatar: CURRENT_USER.avatar_url,
       is_private: isPrivate,
       member_count: 1,
-      current_media_url: mediaUrl.trim() || 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
-      current_media_title: title.trim(),
-      current_media_thumbnail: ytDetails.thumbnail,
+      current_media_url: defaultMedia.url,
+      current_media_title: defaultMedia.title,
+      current_media_thumbnail: defaultMedia.thumbnail,
       playback_position_seconds: 0,
       is_playing: true,
       allow_guest_queue: allowGuestQueue,
@@ -81,6 +106,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
     addRoom(newRoom);
     showSuccess('Party Room Created!');
+    setTitle('');
     onClose();
     navigate(`/room/${newRoom.id}`);
   };
@@ -93,7 +119,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             Create Watch Party Room
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Start a live video or music session and invite your friends or the public to join in real-time.
+            Start a live party room and invite your friends to join in real-time.
           </DialogDescription>
         </DialogHeader>
 
@@ -109,19 +135,6 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               onChange={(e) => setTitle(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100"
               required
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label htmlFor="mediaUrl" className="text-xs font-semibold text-slate-300">
-              YouTube Video or Stream URL
-            </Label>
-            <Input
-              id="mediaUrl"
-              placeholder="https://www.youtube.com/watch?v=..."
-              value={mediaUrl}
-              onChange={(e) => setMediaUrl(e.target.value)}
-              className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100"
             />
           </div>
 
