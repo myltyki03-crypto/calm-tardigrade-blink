@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock, KeyRound, Sparkles } from 'lucide-react';
+import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -19,8 +19,6 @@ import { useRooms } from '@/context/RoomContext';
 import { showSuccess, showError } from '@/utils/toast';
 
 type MobileTab = 'chat' | 'queue' | 'members' | 'info';
-
-const RAVE_REACTIONS = ['❤️', '🔥', '😂', '🎉', '💩', '😮'];
 
 const extractYouTubeDetails = (url: string) => {
   let videoId = '4xDzrJKXOOY';
@@ -331,7 +329,7 @@ export const RoomPage = () => {
       />
 
       <main className="w-full flex-1 p-2 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 max-w-7xl mx-auto">
-        {/* Левая колонка - Видео, Панель реакций и Инфо о комнате */}
+        {/* Левая колонка - Видео и Инфо о комнате */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-2 md:gap-3 w-full">
           <div className="flex items-center justify-between px-1 w-full">
             <Button
@@ -375,28 +373,8 @@ export const RoomPage = () => {
               room={room}
               isHost={isHost}
               floatingReactions={floatingReactions}
+              onSendReaction={handleSendReaction}
             />
-          </div>
-
-          {/* НОВАЯ УДОБНАЯ ПАНЕЛЬ РЕАКЦИЙ RAVE (Под видеоплеером) */}
-          <div className="p-2.5 rounded-2xl border border-pink-500/30 bg-slate-900/90 backdrop-blur-md flex items-center justify-between gap-2 shadow-lg">
-            <div className="flex items-center gap-1.5">
-              <Sparkles className="h-4 w-4 text-pink-400 animate-pulse hidden sm:inline" />
-              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-300">Реакции:</span>
-            </div>
-
-            <div className="flex items-center gap-1 sm:gap-2">
-              {RAVE_REACTIONS.map((emoji) => (
-                <button
-                  key={emoji}
-                  onClick={() => handleSendReaction(emoji)}
-                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-xl bg-slate-950/80 border border-purple-900/60 hover:border-pink-500/80 hover:bg-pink-950/40 hover:scale-110 active:scale-90 text-base sm:text-lg flex items-center justify-center transition-all duration-150 shadow"
-                  title={`Отправить реакцию ${emoji}`}
-                >
-                  {emoji}
-                </button>
-              ))}
-            </div>
           </div>
 
           {/* Панель информации о комнате для ПК */}

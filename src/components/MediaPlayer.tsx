@@ -29,12 +29,16 @@ interface MediaPlayerProps {
   room: Room;
   isHost: boolean;
   floatingReactions?: { id: string; emoji: string; x: number }[];
+  onSendReaction?: (emoji: string) => void;
 }
+
+const RAVE_REACTIONS = ['❤️', '🔥', '😂', '🎉', '💩', '😮'];
 
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   room,
   isHost,
   floatingReactions = [],
+  onSendReaction,
 }) => {
   const { updateRoomProgress, voteToSkip } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -406,13 +410,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE */}
+        {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE (ПОВЕРХ ВИДЕО) */}
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
           {floatingReactions.map((e) => (
             <div
               key={e.id}
               style={{ left: `${e.x}%` }}
-              className="absolute bottom-10 text-4xl sm:text-5xl animate-[bounce_1.5s_ease-out_infinite] transition-all duration-1000 ease-out drop-shadow-[0_0_15px_rgba(236,72,153,0.8)]"
+              className="absolute bottom-12 text-4xl sm:text-5xl animate-[bounce_1.5s_ease-out_infinite] transition-all duration-1000 ease-out drop-shadow-[0_0_15px_rgba(236,72,153,0.8)]"
             >
               {e.emoji}
             </div>
@@ -487,6 +491,27 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <SkipForward className="h-3 w-3 text-pink-400" />
               <span>Пропустить ({skipVotesCount})</span>
             </Button>
+          </div>
+        )}
+
+        {/* ПАНЕЛЬ РЕАКЦИЙ RAVE ПРЯМО ПОВЕРХ ВИДЕО (Плавающая над управлением) */}
+        {onSendReaction && (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            className={`absolute bottom-16 right-3 z-30 flex items-center gap-1 sm:gap-1.5 p-1.5 rounded-full bg-slate-950/80 border border-pink-500/50 backdrop-blur-md shadow-2xl transition-all duration-300 ${
+              showControls ? 'opacity-100 scale-100 pointer-events-auto' : 'opacity-0 scale-90 pointer-events-none'
+            }`}
+          >
+            {RAVE_REACTIONS.map((emoji) => (
+              <button
+                key={emoji}
+                onClick={() => onSendReaction(emoji)}
+                className="h-7 w-7 sm:h-8 sm:w-8 rounded-full bg-purple-950/80 border border-purple-800/50 hover:bg-pink-600 hover:border-pink-400 hover:scale-125 active:scale-90 text-sm sm:text-base flex items-center justify-center transition-all duration-150 shadow"
+                title={`Запустить реакцию ${emoji}`}
+              >
+                {emoji}
+              </button>
+            ))}
           </div>
         )}
 
