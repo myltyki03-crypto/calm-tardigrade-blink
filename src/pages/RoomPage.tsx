@@ -273,18 +273,6 @@ export const RoomPage = () => {
     };
     setFloatingReactions((prev) => [...prev, reactionObj]);
 
-    sendMessage(room.id, {
-      id: `rx-${Date.now()}-${reactionObj.id}`,
-      room_id: room.id,
-      user_id: currentUser.id,
-      user_name: currentUser.username,
-      user_avatar: currentUser.avatar_url,
-      message: `${currentUser.username} ${emoji}`,
-      type: 'reaction',
-      reaction_symbol: emoji,
-      created_at: new Date().toISOString(),
-    });
-
     setTimeout(() => {
       setFloatingReactions((prev) => prev.filter((r) => r.id !== reactionObj.id));
     }, 2200);
