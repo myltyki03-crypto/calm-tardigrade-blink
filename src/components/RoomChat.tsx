@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Mic, MicOff, Sparkles } from 'lucide-react';
+import { Send, Mic, MicOff, Sparkles, Volume2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ChatMessage } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
+import { showSuccess, showError } from '@/utils/toast';
 
 interface RoomChatProps {
   messages: ChatMessage[];
@@ -31,7 +32,13 @@ export const RoomChat: React.FC<RoomChatProps> = ({
   const { currentUser } = useRooms();
   const [inputText, setInputText] = useState('');
   const [isMicOn, setIsMicOn] = useState(false);
+  const [micVolume, setMicVolume] = useState(0);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const animFrameRef = useRef<number | null>(null);
+  const recognitionRef = useRef<any>(null);
 
   // Фильтруем сообщения, исключая пустые
   const validMessages = messages.filter((m) => m && m.message && m.message.trim().length > 0);
@@ -43,6 +50,116 @@ export const RoomChat: React.FC<RoomChatProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [validMessages.length]);
+
+  // Очистка потока микрофона при размонтировании
+  useEffect(() => {
+    return () => {
+      stopMicrophone();
+    };
+  }, []);
+
+  const stopMicrophone = () => {
+    if (animFrameRef.current) {
+      cancelAnimationFrame(animFrameRef.current);
+      animFrameRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
+    }
+    if (mediaStreamRef.current) {
+      mediaStreamRef.current.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+    }
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {}
+      recognitionRef.current = null;
+    }
+    setIsMicOn(false);
+    setMicVolume(0);
+  };
+
+  const startMicrophone = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+
+      mediaStreamRef.current = stream;
+
+      // Анализатор уровня звука для отрисовки громкости
+      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioCtx) {
+        const audioCtx = new AudioCtx();
+        audioContextRef.current = audioCtx;
+
+        const source = audioCtx.createMediaStreamSource(stream);
+        const analyser = audioCtx.createAnalyser();
+        analyser.fftSize = 64;
+        source.connect(analyser);
+
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        const updateVolume = () => {
+          analyser.getByteFrequencyData(dataArray);
+          let sum = 0;
+          for (let i = 0; i < dataArray.length; i++) {
+            sum += dataArray[i];
+          }
+          const avg = sum / dataArray.length;
+          setMicVolume(Math.min(100, Math.round((avg / 128) * 100)));
+          animFrameRef.current = requestAnimationFrame(updateVolume);
+        };
+
+        updateVolume();
+      }
+
+      // Подключаем распознавание речи (SpeechRecognition) при наличии в браузере
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'ru-RU';
+        recognition.continuous = true;
+        recognition.interimResults = true;
+
+        recognition.onresult = (event: any) => {
+          let transcript = '';
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          if (transcript.trim()) {
+            setInputText(transcript);
+          }
+        };
+
+        recognition.onerror = () => {};
+        recognition.start();
+        recognitionRef.current = recognition;
+      }
+
+      setIsMicOn(true);
+      showSuccess('Микрофон включен! Говорите в чат');
+    } catch (err: any) {
+      console.error('Ошибка доступа к микрофону:', err);
+      showError('Не удалось включить микрофон. Проверьте разрешения в браузере.');
+      stopMicrophone();
+    }
+  };
+
+  const toggleMic = () => {
+    if (isMicOn) {
+      stopMicrophone();
+      showSuccess('Микрофон выключен');
+    } else {
+      startMicrophone();
+    }
+  };
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
@@ -71,26 +188,42 @@ export const RoomChat: React.FC<RoomChatProps> = ({
         <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
           <Sparkles className="h-3 w-3 text-pink-400" /> Сообщений: {validMessages.length}
         </span>
-        <Button
-          onClick={() => setIsMicOn(!isMicOn)}
-          size="sm"
-          variant="ghost"
-          className={`h-6 px-2 text-[10px] rounded-full gap-1 border ${
-            isMicOn
-              ? 'bg-pink-950/60 border-pink-500/60 text-pink-300 animate-pulse'
-              : 'border-slate-800 text-slate-400 hover:text-white'
-          }`}
-        >
-          {isMicOn ? <Mic className="h-3 w-3 text-pink-400" /> : <MicOff className="h-3 w-3" />}
-          <span>{isMicOn ? 'Голос вкл' : 'Микр выкл'}</span>
-        </Button>
+
+        <div className="flex items-center gap-2">
+          {/* Визуализатор громкости микрофона */}
+          {isMicOn && (
+            <div className="flex items-center gap-0.5 bg-pink-950/80 px-2 py-0.5 rounded-full border border-pink-500/40 text-[10px] text-pink-300">
+              <Volume2 className="h-3 w-3 text-pink-400 animate-pulse mr-0.5" />
+              <div className="w-8 bg-slate-950 rounded-full h-1.5 overflow-hidden border border-pink-500/30">
+                <div
+                  className="bg-gradient-to-r from-pink-500 to-cyan-400 h-full transition-all duration-75"
+                  style={{ width: `${micVolume}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          <Button
+            onClick={toggleMic}
+            size="sm"
+            variant="ghost"
+            className={`h-6 px-2 text-[10px] rounded-full gap-1 border transition-all ${
+              isMicOn
+                ? 'bg-pink-950/80 border-pink-500/80 text-pink-300 animate-pulse shadow-md shadow-pink-500/20'
+                : 'border-slate-800 text-slate-400 hover:text-white'
+            }`}
+          >
+            {isMicOn ? <Mic className="h-3 w-3 text-pink-400" /> : <MicOff className="h-3 w-3" />}
+            <span>{isMicOn ? 'Микр активен' : 'Включить микр'}</span>
+          </Button>
+        </div>
       </div>
 
-      {/* Список сообщений (занимает всё свободное место) */}
+      {/* Список сообщений */}
       <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2.5">
         {validMessages.length === 0 ? (
           <div className="text-center py-12 text-slate-500 text-xs">
-            Чат пуст. Напишите первое сообщение!
+            Чат пуст. Напишите или скажите сообщение голосом!
           </div>
         ) : (
           validMessages.map((msg) => {
@@ -147,16 +280,18 @@ export const RoomChat: React.FC<RoomChatProps> = ({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Форма отправки прижата строго книзу */}
+      {/* Форма отправки */}
       <form
         onSubmit={handleSend}
         className="mt-auto p-2.5 border-t border-purple-900/40 bg-slate-950 flex items-center gap-2 w-full shrink-0"
       >
         <Input
-          placeholder="Напишите сообщение..."
+          placeholder={isMicOn ? 'Говорите или пишите сообщение...' : 'Напишите сообщение...'}
           value={inputText}
           onChange={(e) => setInputText(e.target.value)}
-          className="bg-slate-900 border-purple-900/50 focus:border-pink-500 text-xs text-slate-100 placeholder:text-slate-500 flex-1 h-9 rounded-xl"
+          className={`bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 flex-1 h-9 rounded-xl transition-all ${
+            isMicOn ? 'border-pink-500/60 ring-1 ring-pink-500/30' : 'focus:border-pink-500'
+          }`}
         />
         <Button
           type="submit"
