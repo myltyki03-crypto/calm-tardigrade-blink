@@ -12,6 +12,18 @@ interface RoomChatProps {
   floatingReactions: { id: string; emoji: string; x: number }[];
 }
 
+const formatMsgTime = (timeStr?: string) => {
+  if (!timeStr) return '';
+  if (timeStr.length <= 5 && timeStr.includes(':')) return timeStr;
+  try {
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return timeStr;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return timeStr;
+  }
+};
+
 export const RoomChat: React.FC<RoomChatProps> = ({
   messages,
   onSendMessage,
@@ -98,11 +110,16 @@ export const RoomChat: React.FC<RoomChatProps> = ({
                       : 'bg-slate-950/80 border border-purple-900/30 text-slate-200 rounded-tl-none'
                   }`}
                 >
-                  {!isMe && (
-                    <div className="font-semibold text-[10px] text-pink-400 mb-0.5">
-                      {msg.user_name}
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between gap-2 mb-0.5">
+                    {!isMe && (
+                      <div className="font-semibold text-[10px] text-pink-400">
+                        {msg.user_name}
+                      </div>
+                    )}
+                    <span className="text-[9px] opacity-60 text-slate-300 ml-auto font-mono">
+                      {formatMsgTime(msg.created_at)}
+                    </span>
+                  </div>
                   <p className="leading-relaxed break-words">{msg.message}</p>
                 </div>
               </div>

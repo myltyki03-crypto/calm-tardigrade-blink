@@ -196,10 +196,7 @@ export const RoomPage = () => {
   const roomMessages = messagesByRoom[room.id] || [];
   const roomQueue = queueByRoom[room.id] || [];
   
-  // ФОРМИРОВАНИЕ ПОЛНОГО И ЧИСТОГО СПИСКА УЧАСТНИКОВ (ВЛАДЕЛЕЦ + ВЕБ/МОБИЛЬНЫЕ ГОСТИ)
   const rawMembers = activeMembersByRoom[room.id] || [];
-  
-  // Проверяем наличие самого текущего пользователя
   const hasMe = rawMembers.some((m) => m.user_id === currentUser.id);
   const meMember: RoomMember = {
     id: `mem-${currentUser.id}-${room.id}`,
@@ -213,7 +210,6 @@ export const RoomPage = () => {
 
   let combined = hasMe ? [...rawMembers] : [meMember, ...rawMembers];
 
-  // Проверяем наличие Владельца комнаты
   const hasHost = combined.some((m) => m.user_id === room.host_id);
   if (!hasHost) {
     const hostMember: RoomMember = {
@@ -228,7 +224,6 @@ export const RoomPage = () => {
     combined.unshift(hostMember);
   }
 
-  // Подставляем свежие имя и аватарку владельца и расставляем Владельца первым
   const roomMembers = combined
     .map((m) => {
       if (m.user_id === room.host_id) {
@@ -285,7 +280,7 @@ export const RoomPage = () => {
       user_avatar: currentUser.avatar_url,
       message: text,
       type: 'chat',
-      created_at: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      created_at: new Date().toISOString(), // Важно: формат ISO для Supabase!
     };
     sendMessage(room.id, newMsg);
   };

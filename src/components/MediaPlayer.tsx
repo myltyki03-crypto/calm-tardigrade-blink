@@ -188,7 +188,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, []);
 
-  // Синхронизация времени для зрителей БЕЗ бесконечной перезагрузки буфера
+  // Синхронизация времени для зрителей с высоким порогом (10 секунд)
   useEffect(() => {
     if (!isHost && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
       if (room.last_updated_at !== prevLastUpdatedRef.current) {
@@ -202,8 +202,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         const diff = Math.abs(localTime - targetHostTime);
 
-        // Делаем seekTo ТОЛЬКО если рассинхрон больше 3.5 секунд!
-        if (diff > 3.5) {
+        // Перематываем только при КРУПНОМ рассинхроне (> 10 секунд), чтобы исключить прерывания буфера
+        if (diff > 10.0) {
           ytPlayerRef.current.seekTo(targetHostTime, true);
         }
 
@@ -419,7 +419,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1">
-        {/* Увеличение масштаба кадрирует и полностью убирает служебные полосы и надписи YouTube */}
         <div
           ref={playerContainerRef}
           className="h-full w-full pointer-events-none scale-[1.35] origin-center"
@@ -430,7 +429,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           className="absolute inset-0 z-10 cursor-pointer"
         />
 
-        {/* Кнопка синхронизации */}
         {!isFullscreen && !needUserGesture && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
@@ -452,7 +450,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* Кнопка разблокировки видео для смартфонов */}
         {(needUserGesture || (!isPlaying && room.is_playing && !isHost)) && (
           <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
             <Button

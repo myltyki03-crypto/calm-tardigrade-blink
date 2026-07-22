@@ -68,8 +68,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isRoomsLoaded, setIsRoomsLoaded] = useState<boolean>(!isSupabaseConfigured);
 
-  const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>({
-    'room-1': INITIAL_MESSAGES,
+  const [messagesByRoom, setMessagesByRoom] = useState<Record<string, ChatMessage[]>>(() => {
+    const saved = localStorage.getItem('pulserave_messages');
+    return saved ? JSON.parse(saved) : { 'room-1': INITIAL_MESSAGES };
   });
 
   const [queueByRoom, setQueueByRoom] = useState<Record<string, QueueItem[]>>(() => {
@@ -78,7 +79,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [activeMembersByRoom, setActiveMembersByRoom] = useState<Record<string, RoomMember[]>>({});
-  
   const [unlockedRoomIds, setUnlockedRoomIds] = useState<string[]>([]);
 
   const markRoomUnlocked = (roomId: string) => {
@@ -88,6 +88,14 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     localStorage.setItem('pulserave_accounts', JSON.stringify(accounts));
   }, [accounts]);
+
+  useEffect(() => {
+    localStorage.setItem('pulserave_messages', JSON.stringify(messagesByRoom));
+  }, [messagesByRoom]);
+
+  useEffect(() => {
+    localStorage.setItem('pulserave_queue', JSON.stringify(queueByRoom));
+  }, [queueByRoom]);
 
   useEffect(() => {
     if (isLoggedIn && currentUser.id) {
@@ -100,14 +108,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const registerUser = async (username: string, password_hash: string, avatar_url?: string): Promise<boolean> => {
     const cleanName = username.trim();
 
-    // 1. Проверяем локальный список
     const existingLocal = accounts.find((a) => a.username.toLowerCase() === cleanName.toLowerCase());
     if (existingLocal) {
       showError('Пользователь с таким логином уже существует');
       return false;
     }
 
-    // 2. Если Supabase подключен - проверяем наличие в облаке
     if (isSupabaseConfigured && supabase) {
       const { data } = await supabase
         .from('profiles')
@@ -161,12 +167,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loginUser = async (username: string, password_hash: string): Promise<boolean> => {
     const cleanName = username.trim();
 
-    // 1. Проверяем локальные аккаунты
     let found = accounts.find(
       (a) => a.username.toLowerCase() === cleanName.toLowerCase() && a.password_hash === password_hash
     );
 
-    // 2. Если локально не найден, но Supabase подключен — ищем в облаке Supabase!
     if (!found && isSupabaseConfigured && supabase) {
       const { data, error } = await supabase
         .from('profiles')
@@ -189,7 +193,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
             created_at: data.created_at || new Date().toISOString(),
           };
 
-          // Добавляем аккаунт в локальный массив устройства
           setAccounts((prev) => {
             if (!prev.some((a) => a.id === found!.id)) {
               return [...prev, found!];
@@ -197,7 +200,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
             return prev;
           });
 
-          // Если в БД не было записано пароля (старая регистрация), обновляем пароль
           if (!data.password_hash) {
             await supabase.from('profiles').update({ password_hash }).eq('id', data.id);
           }
@@ -304,7 +306,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Синхронизация текущего профиля с Supabase
   const fetchMyProfile = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || !currentUser?.id) return;
     const { data } = await supabase
@@ -346,7 +347,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchMyProfile();
 
     const channel = supabase
-      .channel('global_realtime')
+      .channel('global_realtime_full')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rooms' },
@@ -357,6 +358,30 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
               prev.map((r) => (r.id === updatedRoom.id ? { ...r, ...updatedRoom } : r))
             );
           }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+        (payload: any) => {
+          if (payload.new && payload.new.room_id) {
+            const newMsg = payload.new as ChatMessage;
+            setMessagesByRoom((prev) => {
+              const currentList = prev[newMsg.room_id] || [];
+              if (currentList.some((m) => m.id === newMsg.id)) return prev;
+              return {
+                ...prev,
+                [newMsg.room_id]: [...currentList, newMsg],
+              };
+            });
+          }
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'queue_items' },
+        () => {
+          fetchQueue();
         }
       )
       .on(
