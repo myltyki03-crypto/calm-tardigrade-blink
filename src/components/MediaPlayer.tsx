@@ -34,7 +34,7 @@ declare global {
 interface MediaPlayerProps {
   room: Room;
   isHost: boolean;
-  onSendReaction: (emoji: string) => void;
+  onSendReaction?: (emoji: string) => void;
 }
 
 const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
@@ -42,7 +42,6 @@ const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   room,
   isHost,
-  onSendReaction,
 }) => {
   const { updateRoomProgress } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -395,23 +394,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             </Button>
           </div>
         )}
-
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/30 transition-opacity duration-300 ${
-            showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-          }`}
-        >
-          {['🔥', '❤️', '🎉', '🎧', '😮'].map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => onSendReaction(emoji)}
-              className="h-7 w-7 rounded-full flex items-center justify-center text-sm hover:scale-125 hover:bg-purple-800/50 transition-all"
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
       </div>
 
       <div
