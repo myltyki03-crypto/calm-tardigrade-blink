@@ -11,6 +11,7 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useRooms } from '@/context/RoomContext';
 import { UserProfile } from '@/types/rave';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 
 interface DirectMessagesModalProps {
   isOpen: boolean;
@@ -100,9 +101,35 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
 
   const activeMessages = selectedUser ? getDirectMessagesWith(selectedUser.id, selectedUser.username) : [];
 
+  // Автопрокрутка вниз при отправке или получении нового сообщения
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages.length, mobileShowChat]);
+
+  // Подписка на изменение сообщений специально при открытой модалке чата
+  useEffect(() => {
+    if (!isOpen || !isSupabaseConfigured || !supabase) return;
+
+    const modalChannel = supabase
+      .channel('direct_messages_modal_channel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+        () => {
+          // Вызов скролла к последнему сообщению
+          setTimeout(() => {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+          }, 100);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      if (supabase) {
+        supabase.removeChannel(modalChannel);
+      }
+    };
+  }, [isOpen]);
 
   const handleSelectUser = (user: UserProfile) => {
     setActiveDmUserId(user.username);
@@ -331,7 +358,9 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                       </div>
                     ) : (
                       activeMessages.map((msg) => {
-                        const isMe = msg.sender_name.toLowerCase() === myName;
+                        const isMe =
+                          msg.sender_id === currentUser.id ||
+                          msg.sender_name.toLowerCase() === myName;
                         return (
                           <div
                             key={msg.id}

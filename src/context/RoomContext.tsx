@@ -428,16 +428,63 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchRoomMembers();
     fetchFriendData();
 
-    // Настройка мгновенных подписок Supabase Realtime
-    const channel = supabase
-      .channel('pulserave-realtime-channel')
-      .on('postgres_changes', { event: '*', schema: 'public' }, () => {
-        fetchRooms();
-        fetchMessages();
-        fetchQueue();
-        fetchRoomMembers();
-        fetchFriendData();
-      })
+    // Настройка прямых Realtime подписок для всех таблиц
+    const realtimeChannel = supabase
+      .channel('pulserave-global-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'direct_messages' },
+        (payload) => {
+          const newDm = payload.new as DirectMessage;
+          setDirectMessages((prev) => {
+            if (prev.some((m) => m.id === newDm.id)) return prev;
+            return [...prev, newDm];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'friend_requests' },
+        () => {
+          fetchFriendData();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'chat_messages' },
+        (payload) => {
+          const newMsg = payload.new as ChatMessage;
+          setMessagesByRoom((prev) => {
+            const list = prev[newMsg.room_id] || [];
+            if (list.some((m) => m.id === newMsg.id)) return prev;
+            return {
+              ...prev,
+              [newMsg.room_id]: [...list, newMsg],
+            };
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms' },
+        () => {
+          fetchRooms();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'queue_items' },
+        () => {
+          fetchQueue();
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'room_members' },
+        () => {
+          fetchRoomMembers();
+        }
+      )
       .subscribe();
 
     const interval = setInterval(() => {
@@ -446,11 +493,13 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fetchQueue();
       fetchRoomMembers();
       fetchFriendData();
-    }, 1500);
+    }, 3000);
 
     return () => {
       clearInterval(interval);
-      if (supabase) supabase.removeChannel(channel);
+      if (supabase) {
+        supabase.removeChannel(realtimeChannel);
+      }
     };
   }, [fetchRooms, fetchMessages, fetchQueue, fetchRoomMembers, fetchFriendData]);
 
@@ -583,7 +632,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return isSender ? 'pending_sent' : 'pending_received';
   };
 
-  // ЛС логика
+  // ЛС логика - с оптическими обновлениями и гарантированной доставкой в Realtime
   const sendDirectMessage = async (receiver: UserProfile, messageText: string) => {
     if (!currentUser.id) {
       showError('Войдите в аккаунт, чтобы писать ЛС');
@@ -604,7 +653,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       created_at: new Date().toISOString(),
     };
 
-    setDirectMessages((prev) => [...prev, newDm]);
+    // Оптимистичное добавление в состояние
+    setDirectMessages((prev) => {
+      if (prev.some((m) => m.id === newDm.id)) return prev;
+      return [...prev, newDm];
+    });
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('direct_messages').insert([{
@@ -641,12 +694,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const rId = m.receiver_id;
 
         const isFromMeToTarget =
-          (sId === myId || sName === myName) &&
-          (rId === tId || (tName && rName === tName));
+          (sId === myId || (sName && myName && sName === myName)) &&
+          (rId === tId || (rName && tName && rName === tName));
 
         const isFromTargetToMe =
-          (sId === tId || (tName && sName === tName)) &&
-          (rId === myId || rName === myName);
+          (sId === tId || (sName && tName && sName === tName)) &&
+          (rId === myId || (rName && myName && rName === myName));
 
         return isFromMeToTarget || isFromTargetToMe;
       })
