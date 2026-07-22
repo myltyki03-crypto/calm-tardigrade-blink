@@ -224,13 +224,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  // Эффективная длительность (если YouTube еще не вернул точный duration)
+  const effectiveDuration = duration > 0 ? duration : 300;
+
   // Промотка видео на точную секунду
   const handleSeek = (newProgressPercent: number) => {
-    if (duration > 0) {
-      const targetSeconds = (newProgressPercent / 100) * duration;
-      setCurrentTime(targetSeconds);
-      sendPlayerCommand('seekTo', [targetSeconds, true]);
-    }
+    const targetSeconds = (newProgressPercent / 100) * effectiveDuration;
+    setCurrentTime(targetSeconds);
+    sendPlayerCommand('seekTo', [targetSeconds, true]);
   };
 
   // Пересинхронизация
@@ -250,7 +251,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progressPercent = effectiveDuration > 0 ? (currentTime / effectiveDuration) * 100 : 0;
 
   return (
     <div
@@ -277,7 +278,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           className="absolute inset-0 z-10 cursor-pointer"
         />
 
-        {/* Sync Status Floating Badge - скрывается в полноэкранном режиме и при отсутствии активности */}
+        {/* Sync Status Floating Badge */}
         {!isFullscreen && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
@@ -290,7 +291,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             </div>
 
             <Button
-              onClick={handleSyncClick}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSyncClick();
+              }}
               size="sm"
               variant="outline"
               className="h-7 text-[11px] px-2.5 bg-slate-950/70 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/50 rounded-full"
@@ -303,6 +307,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         {/* Floating Quick Reaction Bar */}
         <div
+          onClick={(e) => e.stopPropagation()}
           className={`absolute bottom-16 right-3 z-20 flex items-center gap-1 bg-slate-950/80 backdrop-blur-md p-1 rounded-full border border-purple-800/40 transition-opacity duration-300 ${
             showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
           }`}
@@ -319,8 +324,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      {/* Floating Control Bar Overlay (Smooth auto-hide) */}
+      {/* Floating Control Bar Overlay */}
       <div
+        onClick={(e) => e.stopPropagation()}
         className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950 via-slate-950/90 to-transparent flex flex-col gap-2 transition-all duration-300 ${
           showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
         }`}
@@ -338,7 +344,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             className="flex-1 cursor-pointer"
           />
           <span className="text-[10px] font-mono text-slate-400 w-10 text-right">
-            {formatTime(duration)}
+            {formatTime(effectiveDuration)}
           </span>
         </div>
 
