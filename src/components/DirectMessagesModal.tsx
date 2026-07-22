@@ -18,6 +18,17 @@ interface DirectMessagesModalProps {
   initialTargetUser?: UserProfile | null;
 }
 
+const formatMsgTime = (timeStr?: string) => {
+  if (!timeStr) return '';
+  try {
+    const d = new Date(timeStr);
+    if (isNaN(d.getTime())) return timeStr;
+    return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } catch {
+    return timeStr;
+  }
+};
+
 export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   isOpen,
   onClose,
@@ -338,7 +349,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                         return (
                           <div
                             key={msg.id}
-                            className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
+                            className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}
                           >
                             <div
                               className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
@@ -348,6 +359,9 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                               }`}
                             >
                               <p className="break-words">{msg.message}</p>
+                              <div className={`text-[9px] mt-0.5 text-right font-mono ${isMe ? 'text-pink-200/80' : 'text-slate-400'}`}>
+                                {formatMsgTime(msg.created_at)}
+                              </div>
                             </div>
                           </div>
                         );
