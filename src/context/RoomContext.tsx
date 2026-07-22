@@ -560,14 +560,17 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const removeFriend = async (friendId: string) => {
+    const myNameLower = (currentUser?.username || '').toLowerCase();
+
     setFriendRequests((prev) =>
-      prev.filter(
-        (r) =>
-          !(
-            (r.sender_id === currentUser.id && r.receiver_id === friendId) ||
-            (r.sender_id === friendId && r.receiver_id === currentUser.id)
-          )
-      )
+      prev.filter((r) => {
+        const sName = (r.sender_name || '').toLowerCase();
+        const rName = (r.receiver_name || '').toLowerCase();
+        const isMatch =
+          (r.sender_id === currentUser.id || sName === myNameLower || r.sender_id === friendId) &&
+          (r.receiver_id === currentUser.id || rName === myNameLower || r.receiver_id === friendId);
+        return !isMatch;
+      })
     );
 
     if (isSupabaseConfigured && supabase) {
@@ -580,7 +583,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     showSuccess('Пользователь удален из друзей');
   };
 
-  // Безопасный расчет списка друзей
+  // Расчет списка принятых друзей
   const myId = currentUser?.id || '';
   const myName = (currentUser?.username || '').toLowerCase();
 
