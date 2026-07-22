@@ -21,6 +21,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { Room } from '@/types/rave';
+import { useRooms } from '@/context/RoomContext';
 import { showError, showSuccess } from '@/utils/toast';
 
 declare global {
@@ -43,6 +44,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   isHost,
   onSendReaction,
 }) => {
+  const { updateRoomProgress } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const ytPlayerRef = useRef<any>(null);
@@ -59,6 +61,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   // Real playback time from YouTube SDK
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
+
+  // Вычисление прошедшего времени с момента последнего сохранения
+  const getInitialSeekTime = () => {
+    let startSec = room.playback_position_seconds || 0;
+    if (room.is_playing && room.last_updated_at) {
+      const elapsed = (Date.now() - new Date(room.last_updated_at).getTime()) / 1000;
+      if (elapsed > 0) {
+        startSec += elapsed;
+      }
+    }
+    return Math.max(0, startSec);
+  };
 
   // Извлечение ID видео YouTube
   const getYouTubeVideoId = (url: string = '') => {
@@ -83,12 +97,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, []);
 
-  // Инициализация YT.Player
+  // Инициализация YT.Player с подмотанным временем
   useEffect(() => {
     let interval: NodeJS.Timeout | null = null;
 
     const initPlayer = () => {
       if (!playerContainerRef.current) return;
+
+      const startSec = getInitialSeekTime();
 
       ytPlayerRef.current = new window.YT.Player(playerContainerRef.current, {
         videoId: videoId,
@@ -99,12 +115,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           fs: 0,
           modestbranding: 1,
           rel: 0,
+          start: Math.floor(startSec),
           origin: window.location.origin,
         },
         events: {
           onReady: (event: any) => {
             event.target.playVideo();
             event.target.setVolume(volume);
+            if (startSec > 0) {
+              event.target.seekTo(startSec, true);
+            }
             const dur = event.target.getDuration();
             if (dur && dur > 0) setDuration(dur);
           },
@@ -131,10 +151,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         const cur = ytPlayerRef.current.getCurrentTime();
         const dur = ytPlayerRef.current.getDuration();
-        if (typeof cur === 'number') setCurrentTime(cur);
+        if (typeof cur === 'number') {
+          setCurrentTime(cur);
+          // Периодическое сохранение прогресса
+          updateRoomProgress(room.id, cur, ytPlayerRef.current.getPlayerState?.() === 1);
+        }
         if (typeof dur === 'number' && dur > 0) setDuration(dur);
       }
-    }, 500);
+    }, 1000);
 
     return () => {
       if (interval) clearInterval(interval);
@@ -147,8 +171,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   // Смена видео при изменении URL
   useEffect(() => {
     if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
-      ytPlayerRef.current.loadVideoById(videoId);
-      setCurrentTime(0);
+      const startSec = getInitialSeekTime();
+      ytPlayerRef.current.loadVideoById({
+        videoId: videoId,
+        startSeconds: startSec,
+      });
+      setCurrentTime(startSec);
       setDuration(0);
     }
   }, [videoId]);
@@ -229,10 +257,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     if (isPlaying) {
       ytPlayerRef.current.pauseVideo();
       setIsPlaying(false);
+      updateRoomProgress(room.id, currentTime, false);
       showSuccess('Playback Paused');
     } else {
       ytPlayerRef.current.playVideo();
       setIsPlaying(true);
+      updateRoomProgress(room.id, currentTime, true);
       showSuccess('Playback Resumed');
     }
   };
@@ -276,12 +306,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       const targetSeconds = (newProgressPercent / 100) * duration;
       setCurrentTime(targetSeconds);
       ytPlayerRef.current.seekTo(targetSeconds, true);
+      updateRoomProgress(room.id, targetSeconds, isPlaying);
     }
   };
 
   const handleSyncClick = () => {
+    const syncTime = getInitialSeekTime();
     if (ytPlayerRef.current?.seekTo) {
-      ytPlayerRef.current.seekTo(currentTime, true);
+      ytPlayerRef.current.seekTo(syncTime, true);
       ytPlayerRef.current.playVideo();
       setIsPlaying(true);
       showSuccess('Synchronized with Host Stream!');

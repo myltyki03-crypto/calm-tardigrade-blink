@@ -13,6 +13,7 @@ interface RoomContextType {
   addQueueItem: (roomId: string, item: QueueItem) => void;
   voteQueueItem: (roomId: string, itemId: string) => void;
   changeRoomMedia: (roomId: string, url: string, title?: string, thumbnail?: string) => void;
+  updateRoomProgress: (roomId: string, seconds: number, isPlaying?: boolean) => void;
   removeQueueItem: (roomId: string, itemId: string) => void;
 }
 
@@ -96,7 +97,24 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
             current_media_title: title || r.current_media_title || 'Playing video',
             current_media_thumbnail: thumbnail || r.current_media_thumbnail,
             playback_position_seconds: 0,
+            last_updated_at: new Date().toISOString(),
             is_playing: true,
+          };
+        }
+        return r;
+      })
+    );
+  };
+
+  const updateRoomProgress = (roomId: string, seconds: number, isPlaying?: boolean) => {
+    setRooms((prev) =>
+      prev.map((r) => {
+        if (r.id === roomId) {
+          return {
+            ...r,
+            playback_position_seconds: seconds,
+            last_updated_at: new Date().toISOString(),
+            is_playing: isPlaying !== undefined ? isPlaying : r.is_playing,
           };
         }
         return r;
@@ -124,6 +142,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addQueueItem,
         voteQueueItem,
         changeRoomMedia,
+        updateRoomProgress,
         removeQueueItem,
       }}
     >

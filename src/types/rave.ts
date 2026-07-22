@@ -65,6 +65,7 @@ export interface Room {
   current_media_title?: string;
   current_media_thumbnail?: string;
   playback_position_seconds: number;
+  last_updated_at?: string;
   is_playing: boolean;
   member_count: number;
   allow_guest_queue: boolean;
