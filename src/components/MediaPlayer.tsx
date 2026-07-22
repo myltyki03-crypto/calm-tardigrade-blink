@@ -1,7 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Play, Pause, RefreshCw, Volume2, VolumeX, Radio } from 'lucide-react';
+import {
+  Play,
+  Pause,
+  RefreshCw,
+  Volume2,
+  VolumeX,
+  Radio,
+  Maximize,
+  Minimize,
+  Settings,
+  Subtitles,
+  Check,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from '@/components/ui/popover';
 import { Room } from '@/types/rave';
 import { showSuccess } from '@/utils/toast';
 
@@ -11,16 +28,23 @@ interface MediaPlayerProps {
   onSendReaction: (emoji: string) => void;
 }
 
+const PLAYBACK_SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   room,
   isHost,
   onSendReaction,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+
   const [isPlaying, setIsPlaying] = useState(room.is_playing);
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
-  
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isCaptionsOn, setIsCaptionsOn] = useState(false);
+  const [currentSpeed, setCurrentSpeed] = useState(1);
+
   // Real video playback state
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -52,12 +76,59 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  // Полноэкранный режим
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => {
+      document.removeEventListener('fullscreenchange', handleFullscreenChange);
+    };
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!containerRef.current) return;
+
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch((err) => {
+        console.error('Fullscreen error:', err);
+      });
+    } else {
+      document.exitFullscreen().catch((err) => {
+        console.error('Exit fullscreen error:', err);
+      });
+    }
+  };
+
+  // Переключение субтитров
+  const toggleCaptions = () => {
+    const nextState = !isCaptionsOn;
+    setIsCaptionsOn(nextState);
+    if (nextState) {
+      sendPlayerCommand('loadModule', ['captions']);
+      sendPlayerCommand('setOption', ['captions', 'track', { languageCode: 'en' }]);
+      showSuccess('Subtitles Enabled');
+    } else {
+      sendPlayerCommand('unloadModule', ['captions']);
+      showSuccess('Subtitles Disabled');
+    }
+  };
+
+  // Изменение скорости
+  const handleSpeedChange = (speed: number) => {
+    setCurrentSpeed(speed);
+    sendPlayerCommand('setPlaybackRate', [speed]);
+    showSuccess(`Playback Speed: ${speed}x`);
+  };
+
   // Слушаем живые события от YouTube iframe API
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
-        
+
         if (data && data.event === 'infoDelivery' && data.info) {
           if (typeof data.info.currentTime === 'number') {
             setCurrentTime(data.info.currentTime);
@@ -66,7 +137,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             setDuration(data.info.duration);
           }
           if (typeof data.info.playerState === 'number') {
-            // playerState 1 = playing, 2 = paused
             if (data.info.playerState === 1) setIsPlaying(true);
             if (data.info.playerState === 2) setIsPlaying(false);
           }
@@ -78,7 +148,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
     window.addEventListener('message', handleMessage);
 
-    // Подключаемся к плееру для систематического получения обновлений времени
     const pingInterval = setInterval(() => {
       sendPlayerCommand('listening', []);
     }, 1000);
@@ -144,7 +213,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Пересинхронизация с сервером/хостом
+  // Пересинхронизация
   const handleSyncClick = () => {
     sendPlayerCommand('seekTo', [currentTime, true]);
     sendPlayerCommand('playVideo');
@@ -164,15 +233,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className="relative flex flex-col rounded-2xl border border-purple-900/40 bg-slate-950 overflow-hidden shadow-2xl select-none">
+    <div
+      ref={containerRef}
+      className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all ${
+        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border border-purple-900/40 shadow-2xl'
+      }`}
+    >
       {/* Video Container Frame */}
-      <div className="relative aspect-video w-full bg-black overflow-hidden group select-none">
+      <div className="relative aspect-video w-full bg-black overflow-hidden group select-none flex-1">
         <iframe
           ref={iframeRef}
           src={embedUrl}
           title={room.current_media_title || 'Media Stream'}
           className="h-full w-full border-0 select-none"
-          allow="autoplay; encrypted-media"
+          allow="autoplay; encrypted-media; fullscreen"
         />
 
         {/* Sync Status Floating Badge */}
@@ -207,8 +281,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         </div>
       </div>
 
-      {/* Control Bar Below Player */}
-      <div className="p-3 bg-slate-900/90 border-t border-purple-950 flex flex-col gap-2">
+      {/* Control Bar Below Player (YouTube Style Controls) */}
+      <div className="p-3 bg-slate-900/95 border-t border-purple-950 flex flex-col gap-2 shrink-0">
         {/* Seek timeline */}
         <div className="flex items-center gap-2 px-1">
           <span className="text-[10px] font-mono text-purple-300 w-10">
@@ -228,7 +302,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         {/* Controls layout */}
         <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
+            {/* Play/Pause */}
             <Button
               onClick={handleTogglePlay}
               size="icon"
@@ -254,23 +329,74 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 max={100}
                 step={1}
                 onValueChange={(val) => handleVolumeChange(val[0])}
-                className="w-20 md:w-28 cursor-pointer"
+                className="w-16 sm:w-24 cursor-pointer"
               />
-              <span className="text-[10px] font-mono text-slate-400 w-6">
+              <span className="text-[10px] font-mono text-slate-400 w-6 hidden sm:inline">
                 {isMuted ? '0%' : `${volume}%`}
               </span>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-300">
-            <span className="truncate max-w-[120px] sm:max-w-[220px] font-semibold text-purple-200">
+          {/* Right Player Buttons: Title, Subtitles, Settings, Fullscreen */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="hidden md:inline-block truncate max-w-[150px] lg:max-w-[220px] text-xs font-semibold text-purple-200 mr-2">
               {room.current_media_title || 'Playing Stream'}
             </span>
-            {isHost && (
-              <span className="hidden sm:inline-block text-[10px] bg-purple-950 border border-purple-700/50 text-purple-300 px-2 py-0.5 rounded-full">
-                Host Controls
-              </span>
-            )}
+
+            {/* Subtitles Button (CC) */}
+            <Button
+              onClick={toggleCaptions}
+              size="icon"
+              variant="ghost"
+              className={`h-8 w-8 rounded-lg text-slate-300 hover:text-white ${
+                isCaptionsOn ? 'bg-pink-950/60 text-pink-400 border border-pink-500/50' : 'hover:bg-slate-800'
+              }`}
+              title="Subtitles / CC"
+            >
+              <Subtitles className="h-4 w-4" />
+            </Button>
+
+            {/* Settings Menu Popover */}
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800"
+                  title="Player Settings"
+                >
+                  <Settings className="h-4 w-4" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-48 bg-slate-900 border-purple-900/60 p-2 text-slate-200 text-xs shadow-xl">
+                <div className="font-semibold text-purple-300 px-2 py-1 mb-1 border-b border-purple-950">
+                  Playback Speed
+                </div>
+                <div className="space-y-0.5">
+                  {PLAYBACK_SPEEDS.map((speed) => (
+                    <button
+                      key={speed}
+                      onClick={() => handleSpeedChange(speed)}
+                      className="w-full flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-purple-950/60 transition-colors text-left"
+                    >
+                      <span>{speed === 1 ? 'Normal (1x)' : `${speed}x`}</span>
+                      {currentSpeed === speed && <Check className="h-3.5 w-3.5 text-pink-400" />}
+                    </button>
+                  ))}
+                </div>
+              </PopoverContent>
+            </Popover>
+
+            {/* Fullscreen Button */}
+            <Button
+              onClick={toggleFullscreen}
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800"
+              title={isFullscreen ? 'Exit Fullscreen' : 'Fullscreen'}
+            >
+              {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </Button>
           </div>
         </div>
       </div>
