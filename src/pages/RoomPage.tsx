@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Video } from 'lucide-react';
+import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Video, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Navbar } from '@/components/Navbar';
 import { MediaPlayer } from '@/components/MediaPlayer';
 import { RoomChat } from '@/components/RoomChat';
@@ -44,6 +44,7 @@ export const RoomPage = () => {
     voteQueueItem,
     changeRoomMedia,
     removeQueueItem,
+    deleteRoom,
   } = useRooms();
 
   const room = id ? getRoomById(id) : undefined;
@@ -53,6 +54,7 @@ export const RoomPage = () => {
   const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
 
   // Switch video modal
   const [isChangeMediaOpen, setIsChangeMediaOpen] = useState(false);
@@ -73,6 +75,12 @@ export const RoomPage = () => {
   const isHost = room.host_id === CURRENT_USER.id;
   const roomMessages = messagesByRoom[room.id] || [];
   const roomQueue = queueByRoom[room.id] || [];
+
+  const handleDeleteRoomConfirm = () => {
+    deleteRoom(room.id);
+    showSuccess('Party Room Deleted');
+    navigate('/');
+  };
 
   const handleSendReaction = (emoji: string) => {
     const reactionObj = {
@@ -178,6 +186,19 @@ export const RoomPage = () => {
               >
                 <Share2 className="h-3 w-3 text-pink-400" /> Share
               </Button>
+
+              {/* Delete Room Button (Host Only) */}
+              {isHost && (
+                <Button
+                  onClick={() => setIsDeleteDialogOpen(true)}
+                  size="sm"
+                  variant="destructive"
+                  className="bg-red-600/80 hover:bg-red-600 text-white text-[11px] h-7 gap-1"
+                  title="Delete Room"
+                >
+                  <Trash2 className="h-3.5 w-3.5" /> Delete
+                </Button>
+              )}
             </div>
           </div>
 
@@ -315,6 +336,38 @@ export const RoomPage = () => {
         </DialogContent>
       </Dialog>
 
+      {/* Delete Room Confirmation Dialog */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-red-400 flex items-center gap-2">
+              <Trash2 className="h-5 w-5" /> Delete Watch Party
+            </DialogTitle>
+            <DialogDescription className="text-slate-400 text-xs mt-1">
+              Are you sure you want to delete <span className="font-semibold text-slate-200">"{room.title}"</span>? This will close the room for all active listeners and remove it from the room list.
+            </DialogDescription>
+          </DialogHeader>
+
+          <DialogFooter className="mt-4 flex items-center justify-end gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsDeleteDialogOpen(false)}
+              className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={handleDeleteRoomConfirm}
+              className="bg-red-600 hover:bg-red-500 text-white font-semibold text-xs"
+            >
+              Delete Room
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <MobileBottomNav
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
         onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
@@ -332,6 +385,124 @@ export const RoomPage = () => {
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
       />
+    </div>
+  );
+};
+</dyad-file>
+
+Также добавим иконку удаления непосредственно на карточку комнаты в каталоге (`RoomCard.tsx`):
+
+<dyad-write path="src/components/RoomCard.tsx" description="Добавление кнопки быстрого удаления на карточку комнаты для создателя">
+import React from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Users, Play, Shield, Volume2, Trash2 } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { Room } from '@/types/rave';
+import { CURRENT_USER } from '@/data/mockRaveData';
+import { useRooms } from '@/context/RoomContext';
+import { showSuccess } from '@/utils/toast';
+
+interface RoomCardProps {
+  room: Room;
+}
+
+export const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
+  const navigate = useNavigate();
+  const { deleteRoom } = useRooms();
+
+  const isHost = room.host_id === CURRENT_USER.id;
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteRoom(room.id);
+    showSuccess('Room deleted');
+  };
+
+  return (
+    <div
+      onClick={() => navigate(`/room/${room.id}`)}
+      className="group relative cursor-pointer overflow-hidden rounded-2xl border border-purple-900/30 bg-slate-900/90 hover:border-pink-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10 hover:-translate-y-1 flex flex-col justify-between"
+    >
+      {/* Thumbnail Header */}
+      <div className="relative aspect-video w-full overflow-hidden bg-slate-950">
+        <img
+          src={room.current_media_thumbnail || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80'}
+          alt={room.title}
+          className="h-full w-full object-cover opacity-80 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
+
+        {/* Live Indicator Pill */}
+        <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-slate-950/80 backdrop-blur-md px-2.5 py-1 text-[11px] font-semibold text-white border border-purple-500/30">
+          <span className="relative flex h-2 w-2">
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-pink-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2 w-2 bg-pink-500"></span>
+          </span>
+          <span className="uppercase tracking-wider text-pink-400 text-[10px]">LIVE</span>
+        </div>
+
+        {/* Listeners Badge & Trash button for Host */}
+        <div className="absolute top-3 right-3 flex items-center gap-1.5">
+          {isHost && (
+            <button
+              onClick={handleDelete}
+              className="p-1 rounded-full bg-red-950/80 hover:bg-red-600 text-red-300 hover:text-white backdrop-blur-md border border-red-800/50 transition-all"
+              title="Delete Room"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+
+          <div className="flex items-center gap-1 rounded-full bg-purple-950/80 backdrop-blur-md px-2.5 py-1 text-xs font-medium text-purple-200 border border-purple-700/40">
+            <Users className="h-3.5 w-3.5 text-cyan-400" />
+            <span>{room.member_count}</span>
+          </div>
+        </div>
+
+        {/* Hover Play Button Overlay */}
+        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-purple-950/40 backdrop-blur-[2px]">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pink-500 text-white shadow-lg shadow-pink-500/50 scale-90 group-hover:scale-100 transition-transform">
+            <Play className="h-6 w-6 fill-white ml-0.5" />
+          </div>
+        </div>
+
+        {/* Category Pill */}
+        <div className="absolute bottom-2 left-3">
+          <Badge className="bg-purple-900/80 text-purple-200 hover:bg-purple-900 border-none text-[10px] uppercase font-bold tracking-wider">
+            {room.category}
+          </Badge>
+        </div>
+      </div>
+
+      {/* Card Content Body */}
+      <div className="p-4 flex-1 flex flex-col justify-between">
+        <div>
+          <h3 className="line-clamp-1 text-base font-bold text-slate-100 group-hover:text-pink-400 transition-colors">
+            {room.title}
+          </h3>
+          <p className="mt-1 line-clamp-1 text-xs text-slate-400 flex items-center gap-1.5">
+            <Volume2 className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+            <span>{room.current_media_title || 'Playing media...'}</span>
+          </p>
+        </div>
+
+        {/* Host Info Footer */}
+        <div className="mt-4 flex items-center justify-between border-t border-purple-950/60 pt-3 text-xs text-slate-400">
+          <div className="flex items-center gap-2">
+            <img
+              src={room.host_avatar}
+              alt={room.host_name}
+              className="h-6 w-6 rounded-full object-cover ring-1 ring-purple-500/50"
+            />
+            <span className="font-medium text-slate-300">{room.host_name}</span>
+          </div>
+          {room.is_private && (
+            <span className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-800/40">
+              <Shield className="h-3 w-3" /> Private
+            </span>
+          )}
+        </div>
+      </div>
     </div>
   );
 };

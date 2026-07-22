@@ -5,6 +5,7 @@ import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE } from '@/data/mockRaveD
 interface RoomContextType {
   rooms: Room[];
   addRoom: (room: Room) => void;
+  deleteRoom: (roomId: string) => void;
   getRoomById: (id: string) => Room | undefined;
   messagesByRoom: Record<string, ChatMessage[]>;
   sendMessage: (roomId: string, message: ChatMessage) => void;
@@ -37,6 +38,20 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const addRoom = (newRoom: Room) => {
     setRooms((prev) => [newRoom, ...prev]);
+  };
+
+  const deleteRoom = (roomId: string) => {
+    setRooms((prev) => prev.filter((r) => r.id !== roomId));
+    setMessagesByRoom((prev) => {
+      const next = { ...prev };
+      delete next[roomId];
+      return next;
+    });
+    setQueueByRoom((prev) => {
+      const next = { ...prev };
+      delete next[roomId];
+      return next;
+    });
   };
 
   const getRoomById = (id: string) => {
@@ -96,6 +111,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         rooms,
         addRoom,
+        deleteRoom,
         getRoomById,
         messagesByRoom,
         sendMessage,
