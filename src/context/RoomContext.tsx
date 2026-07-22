@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 import { Room, ChatMessage, QueueItem, UserProfile } from '@/types/rave';
 import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE, CURRENT_USER } from '@/data/mockRaveData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -9,6 +9,7 @@ interface RoomContextType {
   updateUserProfile: (updated: Partial<UserProfile>) => void;
   rooms: Room[];
   isRoomsLoaded: boolean;
+  refreshRooms: () => Promise<void>;
   addRoom: (room: Room) => void;
   deleteRoom: (roomId: string) => void;
   getRoomById: (id: string) => Room | undefined;
@@ -47,6 +48,53 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : { 'room-1': INITIAL_QUEUE };
   });
 
+  const fetchRooms = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    try {
+      const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
+      if (error) {
+        console.error('Error fetching rooms:', error);
+      } else if (data && data.length > 0) {
+        setRooms(data as Room[]);
+      } else if (data && data.length === 0) {
+        const { error: seedErr } = await supabase.from('rooms').insert(INITIAL_ROOMS);
+        if (!seedErr) {
+          setRooms(INITIAL_ROOMS);
+          await supabase.from('chat_messages').insert(INITIAL_MESSAGES);
+          await supabase.from('queue_items').insert(INITIAL_QUEUE);
+        }
+      }
+    } finally {
+      setIsRoomsLoaded(true);
+    }
+  }, []);
+
+  const fetchMessages = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
+    if (data) {
+      const grouped: Record<string, ChatMessage[]> = {};
+      data.forEach((msg: any) => {
+        if (!grouped[msg.room_id]) grouped[msg.room_id] = [];
+        grouped[msg.room_id].push(msg as ChatMessage);
+      });
+      setMessagesByRoom((prev) => ({ ...prev, ...grouped }));
+    }
+  }, []);
+
+  const fetchQueue = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase) return;
+    const { data } = await supabase.from('queue_items').select('*').order('votes', { ascending: false });
+    if (data) {
+      const grouped: Record<string, QueueItem[]> = {};
+      data.forEach((item: any) => {
+        if (!grouped[item.room_id]) grouped[item.room_id] = [];
+        grouped[item.room_id].push(item as QueueItem);
+      });
+      setQueueByRoom((prev) => ({ ...prev, ...grouped }));
+    }
+  }, []);
+
   // Загрузка данных из Supabase и подписка на Realtime изменения
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -54,53 +102,24 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const fetchRooms = async () => {
-      try {
-        const { data, error } = await supabase.from('rooms').select('*').order('created_at', { ascending: false });
-        if (error) {
-          console.error('Error fetching rooms:', error);
-        } else if (data && data.length > 0) {
-          setRooms(data as Room[]);
-        } else if (data && data.length === 0) {
-          const { error: seedErr } = await supabase.from('rooms').insert(INITIAL_ROOMS);
-          if (!seedErr) {
-            setRooms(INITIAL_ROOMS);
-            await supabase.from('chat_messages').insert(INITIAL_MESSAGES);
-            await supabase.from('queue_items').insert(INITIAL_QUEUE);
-          }
-        }
-      } finally {
-        setIsRoomsLoaded(true);
-      }
-    };
-
-    const fetchMessages = async () => {
-      const { data } = await supabase.from('chat_messages').select('*').order('created_at', { ascending: true });
-      if (data) {
-        const grouped: Record<string, ChatMessage[]> = {};
-        data.forEach((msg: any) => {
-          if (!grouped[msg.room_id]) grouped[msg.room_id] = [];
-          grouped[msg.room_id].push(msg as ChatMessage);
-        });
-        setMessagesByRoom((prev) => ({ ...prev, ...grouped }));
-      }
-    };
-
-    const fetchQueue = async () => {
-      const { data } = await supabase.from('queue_items').select('*').order('votes', { ascending: false });
-      if (data) {
-        const grouped: Record<string, QueueItem[]> = {};
-        data.forEach((item: any) => {
-          if (!grouped[item.room_id]) grouped[item.room_id] = [];
-          grouped[item.room_id].push(item as QueueItem);
-        });
-        setQueueByRoom((prev) => ({ ...prev, ...grouped }));
-      }
-    };
-
     fetchRooms();
     fetchMessages();
     fetchQueue();
+
+    // Автоматический опрос каждые 3 секунды для телефонов (на случай проблем с WebSocket)
+    const interval = setInterval(() => {
+      fetchRooms();
+    }, 3000);
+
+    // Обновление при возврате на вкладку
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchRooms();
+        fetchMessages();
+        fetchQueue();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     // Realtime подписки
     const roomsChannel = supabase
@@ -158,11 +177,13 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .subscribe();
 
     return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       supabase.removeChannel(roomsChannel);
       supabase.removeChannel(chatChannel);
       supabase.removeChannel(queueChannel);
     };
-  }, []);
+  }, [fetchRooms, fetchMessages, fetchQueue]);
 
   useEffect(() => {
     localStorage.setItem('pulserave_user', JSON.stringify(currentUser));
@@ -202,15 +223,20 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addRoom = async (newRoom: Room) => {
-    setRooms((prev) => [newRoom, ...prev]);
+    const roomWithTimestamp = {
+      ...newRoom,
+      last_updated_at: new Date().toISOString(),
+    };
+
+    setRooms((prev) => [roomWithTimestamp, ...prev]);
 
     if (isSupabaseConfigured && supabase) {
-      const { error } = await supabase.from('rooms').insert([newRoom]);
+      const { error } = await supabase.from('rooms').insert([roomWithTimestamp]);
       if (error) {
         console.error('Ошибка добавления комнаты в Supabase:', error);
         showError(`Ошибка базы данных: ${error.message}`);
       } else {
-        showSuccess('Комната синхронизирована с сервером!');
+        showSuccess('Комната синхронизирована со всеми устройствами!');
       }
     }
   };
@@ -321,6 +347,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateUserProfile,
         rooms,
         isRoomsLoaded,
+        refreshRooms: fetchRooms,
         addRoom,
         deleteRoom,
         getRoomById,

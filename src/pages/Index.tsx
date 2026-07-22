@@ -7,13 +7,16 @@ import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { CategoryType } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
-import { Sparkles, Radio, Music, Film, Tv, Gamepad2, PlayCircle, Search } from 'lucide-react';
+import { isSupabaseConfigured } from '@/lib/supabase';
+import { Sparkles, Radio, Music, Film, Gamepad2, PlayCircle, Search, WifiOff, RefreshCw } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
 
 const Index = () => {
-  const { rooms } = useRooms();
+  const { rooms, refreshRooms } = useRooms();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
+  const [isRefreshing, setIsRefreshing] = useState(false);
   
   // Modals state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -28,6 +31,12 @@ const Index = () => {
     { id: 'gaming', label: 'Gaming', icon: Gamepad2 },
     { id: 'livestream', label: 'Live Streams', icon: Radio },
   ];
+
+  const handleManualRefresh = async () => {
+    setIsRefreshing(true);
+    await refreshRooms();
+    setTimeout(() => setIsRefreshing(false), 600);
+  };
 
   const filteredRooms = rooms.filter((r) => {
     const matchesCategory = activeCategory === 'all' || r.category === activeCategory;
@@ -44,6 +53,24 @@ const Index = () => {
         onOpenFriendsDrawer={() => setIsFriendsDrawerOpen(true)}
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
+
+      {/* Offline Alert Banner if Supabase is not connected */}
+      {!isSupabaseConfigured && (
+        <div className="bg-amber-950/80 border-b border-amber-500/40 px-4 py-2 text-center text-xs text-amber-200 flex items-center justify-center gap-2">
+          <WifiOff className="h-4 w-4 text-amber-400 shrink-0" />
+          <span>
+            <strong>Локальный режим:</strong> Подключите базу данных Supabase, чтобы комнаты синхронизировались между вашим ПК и телефоном.
+          </span>
+          <Button
+            onClick={() => setIsSqlModalOpen(true)}
+            size="sm"
+            variant="outline"
+            className="h-6 text-[11px] px-2 border-amber-400 text-amber-300 hover:bg-amber-900/60"
+          >
+            Инструкция
+          </Button>
+        </div>
+      )}
 
       {/* Hero Banner Section */}
       <section className="relative overflow-hidden border-b border-purple-900/30 bg-gradient-to-b from-purple-950/40 via-slate-950 to-slate-950 py-6 md:py-10 px-4">
@@ -64,15 +91,26 @@ const Index = () => {
             Join public watch rooms, stream YouTube videos, anime or live DJ mixes with friends worldwide.
           </p>
 
-          {/* Search Bar */}
-          <div className="mt-4 md:mt-6 max-w-md mx-auto relative">
-            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-purple-400" />
-            <Input
-              placeholder="Search party rooms or host..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-10 h-9 md:h-10 text-xs md:text-sm rounded-full bg-slate-900/90 border-purple-800/60 text-slate-100 focus:border-pink-500"
-            />
+          {/* Search Bar & Refresh */}
+          <div className="mt-4 md:mt-6 max-w-md mx-auto flex items-center gap-2">
+            <div className="relative flex-1">
+              <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-purple-400" />
+              <Input
+                placeholder="Search party rooms or host..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 h-9 md:h-10 text-xs md:text-sm rounded-full bg-slate-900/90 border-purple-800/60 text-slate-100 focus:border-pink-500"
+              />
+            </div>
+            <Button
+              onClick={handleManualRefresh}
+              size="icon"
+              variant="outline"
+              className="h-9 w-9 rounded-full border-purple-800 text-purple-300 hover:bg-purple-900/50 shrink-0"
+              title="Обновить список комнат"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin text-pink-400' : ''}`} />
+            </Button>
           </div>
         </div>
       </section>
