@@ -10,7 +10,6 @@ import {
   Lock,
   Tv,
   SkipForward,
-  Sparkles,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -29,16 +28,15 @@ declare global {
 interface MediaPlayerProps {
   room: Room;
   isHost: boolean;
-  onSendReaction?: (emoji: string) => void;
+  floatingReactions?: { id: string; emoji: string; x: number }[];
 }
-
-const RAVE_REACTIONS = ['❤️', '🔥', '😂', '🎉', '💩', '😮'];
 
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   room,
   isHost,
+  floatingReactions = [],
 }) => {
-  const { updateRoomProgress, voteToSkip, sendMessage, currentUser } = useRooms();
+  const { updateRoomProgress, voteToSkip } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
@@ -59,35 +57,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
-
-  // Состояние с визуальными эффектами парящих эмодзи поверх видео
-  const [floatingEmojis, setFloatingEmojis] = useState<
-    { id: string; emoji: string; leftPercent: number }[]
-  >([]);
-
-  const triggerFloatingEmoji = (emoji: string) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    const leftPercent = Math.floor(Math.random() * 80) + 10;
-
-    setFloatingEmojis((prev) => [...prev, { id, emoji, leftPercent }]);
-
-    // Отправляем короткое системное сообщение о реакции в чат
-    sendMessage(room.id, {
-      id: `rx-${Date.now()}-${id}`,
-      room_id: room.id,
-      user_id: currentUser.id,
-      user_name: currentUser.username,
-      user_avatar: currentUser.avatar_url,
-      message: `${currentUser.username} ${emoji}`,
-      type: 'reaction',
-      reaction_symbol: emoji,
-      created_at: new Date().toISOString(),
-    });
-
-    setTimeout(() => {
-      setFloatingEmojis((prev) => prev.filter((e) => e.id !== id));
-    }, 2200);
-  };
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -425,7 +394,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const currentHostname = window.location.hostname || 'localhost';
-
   const skipVotesCount = room.skip_votes?.length || 0;
 
   return (
@@ -440,10 +408,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE */}
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-          {floatingEmojis.map((e) => (
+          {floatingReactions.map((e) => (
             <div
               key={e.id}
-              style={{ left: `${e.leftPercent}%` }}
+              style={{ left: `${e.x}%` }}
               className="absolute bottom-10 text-4xl sm:text-5xl animate-[bounce_1.5s_ease-out_infinite] transition-all duration-1000 ease-out drop-shadow-[0_0_15px_rgba(236,72,153,0.8)]"
             >
               {e.emoji}
@@ -521,25 +489,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             </Button>
           </div>
         )}
-
-        {/* RAVE ЭКРАННАЯ ПАНЕЛЬ СМАЙЛИКОВ-РЕАКЦИЙ ПРЯМО ПОВЕРХ ВИДЕО */}
-        <div
-          className={`absolute bottom-16 right-3 z-30 flex items-center gap-1.5 p-1.5 rounded-full bg-slate-950/80 border border-pink-500/40 backdrop-blur-md shadow-xl transition-all duration-300 ${
-            showControls ? 'opacity-100 scale-100' : 'opacity-0 scale-90 pointer-events-none'
-          }`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          {RAVE_REACTIONS.map((emoji) => (
-            <button
-              key={emoji}
-              onClick={() => triggerFloatingEmoji(emoji)}
-              className="h-8 w-8 rounded-full bg-purple-950/60 hover:bg-pink-600/80 hover:scale-125 active:scale-95 text-base flex items-center justify-center transition-all duration-150 border border-purple-800/40"
-              title={`Запустить реакцию ${emoji}`}
-            >
-              {emoji}
-            </button>
-          ))}
-        </div>
 
         {/* Бейдж Twitch */}
         {mediaInfo.type === 'twitch' && (
