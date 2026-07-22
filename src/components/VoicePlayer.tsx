@@ -16,24 +16,47 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
     const audio = audioRef.current;
     if (!audio) return;
 
-    const handleTimeUpdate = () => setCurrentTime(audio.currentTime);
-    const handleLoadedMetadata = () => {
-      if (audio.duration && !isNaN(audio.duration)) {
-        setDuration(audio.duration);
+    let isCalibrating = false;
+
+    // Спец-хак для сжатых WebM записей с мобильных браузеров
+    const calibrateDuration = () => {
+      if (isCalibrating) return;
+      isCalibrating = true;
+
+      // Принудительно запрашиваем реальный конец аудиопотока
+      audio.currentTime = 1e101;
+
+      const handleSeekEnd = () => {
+        audio.removeEventListener('timeupdate', handleSeekEnd);
+        const realDuration = audio.currentTime;
+        audio.currentTime = 0;
+        setDuration(realDuration);
+        isCalibrating = false;
+      };
+
+      audio.addEventListener('timeupdate', handleSeekEnd);
+    };
+
+    const handleTimeUpdate = () => {
+      if (!isCalibrating && audio.currentTime < 1e100) {
+        setCurrentTime(audio.currentTime);
       }
     };
+
     const handleEnded = () => {
       setIsPlaying(false);
       setCurrentTime(0);
     };
 
+    audio.addEventListener('loadedmetadata', calibrateDuration);
+    audio.addEventListener('durationchange', calibrateDuration);
     audio.addEventListener('timeupdate', handleTimeUpdate);
-    audio.addEventListener('loadedmetadata', handleLoadedMetadata);
     audio.addEventListener('ended', handleEnded);
 
     return () => {
+      audio.removeEventListener('loadedmetadata', calibrateDuration);
+      audio.removeEventListener('durationchange', calibrateDuration);
       audio.removeEventListener('timeupdate', handleTimeUpdate);
-      audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
       audio.removeEventListener('ended', handleEnded);
     };
   }, [src]);
@@ -59,13 +82,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
   };
 
   const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds)) return '0:00';
+    if (!seconds || isNaN(seconds) || seconds < 0) return '0:00';
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
-
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
     <div className="flex items-center gap-2.5 py-1 min-w-[180px] sm:min-w-[220px]">
