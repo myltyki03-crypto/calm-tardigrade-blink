@@ -42,64 +42,70 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   const [mobileShowChat, setMobileShowChat] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Формируем уникальный список собеседников (из ЛС + друзья + открытый профиль)
+  const myName = currentUser.username.toLowerCase();
+
+  // Формируем список уникальных собеседников
   const conversationUsersMap = new Map<string, UserProfile>();
 
-  // 1. Добавляем тех, с кем есть переписка
   directMessages.forEach((msg) => {
-    if (msg.sender_id === currentUser.id && msg.receiver_id) {
-      conversationUsersMap.set(msg.receiver_id, {
-        id: msg.receiver_id,
-        username: msg.receiver_name || 'Пользователь',
-        avatar_url: msg.receiver_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.receiver_name || 'user')}`,
+    const sName = msg.sender_name.toLowerCase();
+    const rName = msg.receiver_name.toLowerCase();
+
+    if (sName === myName && msg.receiver_name) {
+      conversationUsersMap.set(rName, {
+        id: msg.receiver_id || rName,
+        username: msg.receiver_name,
+        avatar_url: msg.receiver_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.receiver_name)}`,
         is_online: true,
       });
-    } else if (msg.receiver_id === currentUser.id && msg.sender_id) {
-      conversationUsersMap.set(msg.sender_id, {
-        id: msg.sender_id,
-        username: msg.sender_name || 'Пользователь',
-        avatar_url: msg.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.sender_name || 'user')}`,
+    } else if (rName === myName && msg.sender_name) {
+      conversationUsersMap.set(sName, {
+        id: msg.sender_id || sName,
+        username: msg.sender_name,
+        avatar_url: msg.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.sender_name)}`,
         is_online: true,
       });
     }
   });
 
-  // 2. Добавляем принятых друзей
   friendsList.forEach((f) => {
-    if (!conversationUsersMap.has(f.id)) {
-      conversationUsersMap.set(f.id, f);
+    const key = f.username.toLowerCase();
+    if (!conversationUsersMap.has(key)) {
+      conversationUsersMap.set(key, f);
     }
   });
 
-  // 3. Если перешли из карточки профиля конкретного юзера
-  if (initialTargetUser && initialTargetUser.id !== currentUser.id) {
-    conversationUsersMap.set(initialTargetUser.id, initialTargetUser);
+  if (initialTargetUser && initialTargetUser.username.toLowerCase() !== myName) {
+    conversationUsersMap.set(initialTargetUser.username.toLowerCase(), initialTargetUser);
   }
 
   const allConversations = Array.from(conversationUsersMap.values());
 
-  // Определяем текущего выбранного собеседника
   const selectedUser =
-    allConversations.find((u) => u.id === activeDmUserId) ||
+    allConversations.find(
+      (u) =>
+        u.id === activeDmUserId ||
+        u.username.toLowerCase() === (activeDmUserId || '').toLowerCase()
+    ) ||
     initialTargetUser ||
     allConversations[0] ||
     null;
 
   useEffect(() => {
     if (initialTargetUser) {
-      setActiveDmUserId(initialTargetUser.id);
+      setActiveDmUserId(initialTargetUser.id || initialTargetUser.username);
       setMobileShowChat(true);
     }
   }, [initialTargetUser]);
 
-  const activeMessages = selectedUser ? getDirectMessagesWith(selectedUser.id) : [];
+  const activeMessages = selectedUser ? getDirectMessagesWith(selectedUser.id, selectedUser.username) : [];
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeMessages.length, mobileShowChat]);
 
   const handleSelectUser = (user: UserProfile) => {
-    setActiveDmUserId(user.id);
+    setActiveDmUserId(user.username);
     setMobileShowChat(true);
   };
 
@@ -110,16 +116,19 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     setInputText('');
   };
 
-  const pendingRequests = friendRequests.filter(
-    (r) => r.receiver_id === currentUser.id && r.status === 'pending'
-  );
+  // Фильтрация входящих заявок
+  const pendingRequests = friendRequests.filter((r) => {
+    const isForMe =
+      r.receiver_id === currentUser.id ||
+      r.receiver_name.toLowerCase() === myName;
+    return isForMe && r.status === 'pending';
+  });
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-2xl h-[85vh] sm:h-[600px] p-0 flex flex-col overflow-hidden">
         <DialogHeader className="p-3 border-b border-purple-900/40 bg-slate-950 flex flex-row items-center justify-between shrink-0">
           <div className="flex items-center gap-2">
-            {/* Кнопка Назад на мобильных при открытом чате */}
             {mobileShowChat && (
               <Button
                 onClick={() => setMobileShowChat(false)}
@@ -223,7 +232,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
           </ScrollArea>
         ) : (
           <div className="flex-1 flex min-h-0 w-full overflow-hidden">
-            {/* Список диалогов (скрываем на мобильных, если открыт чат) */}
             <div
               className={`w-full sm:w-1/3 sm:min-w-[200px] border-r border-purple-900/40 bg-slate-950/50 flex flex-col shrink-0 ${
                 mobileShowChat ? 'hidden sm:flex' : 'flex'
@@ -242,13 +250,13 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                   </div>
                 ) : (
                   allConversations.map((user) => {
-                    const isSelected = selectedUser?.id === user.id;
-                    const isFriend = friendsList.some((f) => f.id === user.id);
+                    const isSelected = selectedUser?.username.toLowerCase() === user.username.toLowerCase();
+                    const isFriend = friendsList.some((f) => f.username.toLowerCase() === user.username.toLowerCase());
                     const avatar = user.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.username)}`;
 
                     return (
                       <div
-                        key={user.id}
+                        key={user.id || user.username}
                         onClick={() => handleSelectUser(user)}
                         className={`flex items-center justify-between p-3 border-b border-purple-950/50 cursor-pointer transition-all ${
                           isSelected
@@ -293,7 +301,6 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
               </ScrollArea>
             </div>
 
-            {/* Окно сообщений (показываем на мобильных только если выбран чат) */}
             <div
               className={`flex-1 flex flex-col bg-slate-900 min-w-0 ${
                 !mobileShowChat ? 'hidden sm:flex' : 'flex'
@@ -324,7 +331,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                       </div>
                     ) : (
                       activeMessages.map((msg) => {
-                        const isMe = msg.sender_id === currentUser.id;
+                        const isMe = msg.sender_name.toLowerCase() === myName;
                         return (
                           <div
                             key={msg.id}

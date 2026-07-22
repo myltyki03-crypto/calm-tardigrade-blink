@@ -43,8 +43,8 @@ interface RoomContextType {
   rejectFriendRequest: (requestId: string) => Promise<void>;
   removeFriend: (targetUserId: string) => Promise<void>;
   sendDirectMessage: (receiver: UserProfile, messageText: string) => Promise<void>;
-  getFriendStatusWith: (targetUserId: string) => 'none' | 'pending_sent' | 'pending_received' | 'accepted';
-  getDirectMessagesWith: (targetUserId: string) => DirectMessage[];
+  getFriendStatusWith: (targetUserId: string, targetUsername?: string) => 'none' | 'pending_sent' | 'pending_received' | 'accepted';
+  getDirectMessagesWith: (targetUserId: string, targetUsername?: string) => DirectMessage[];
   friendsList: UserProfile[];
   activeDmUserId: string | null;
   setActiveDmUserId: (id: string | null) => void;
@@ -338,29 +338,29 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const fetchFriendData = useCallback(async () => {
-    if (!isSupabaseConfigured || !supabase || !currentUser.id) return;
+    if (!isSupabaseConfigured || !supabase || !currentUser.username || currentUser.username === 'Гость') return;
     
-    // Загрузка заявок
+    // Загрузка заявок по ID и по имени
     const { data: reqData } = await supabase
       .from('friend_requests')
       .select('*')
-      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`);
+      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id},sender_name.ilike.${currentUser.username},receiver_name.ilike.${currentUser.username}`);
 
     if (reqData) {
       setFriendRequests(reqData as FriendRequest[]);
     }
 
-    // Загрузка ЛС
+    // Загрузка ЛС по ID и по имени
     const { data: dmData } = await supabase
       .from('direct_messages')
       .select('*')
-      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`)
+      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id},sender_name.ilike.${currentUser.username},receiver_name.ilike.${currentUser.username}`)
       .order('created_at', { ascending: true });
 
     if (dmData) {
       setDirectMessages(dmData as DirectMessage[]);
     }
-  }, [currentUser.id]);
+  }, [currentUser.id, currentUser.username]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -383,21 +383,33 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   // Друзья логика
   const sendFriendRequest = async (targetUser: UserProfile) => {
-    if (!currentUser.id) {
+    if (!currentUser.id || currentUser.username === 'Гость') {
       showError('Войдите в аккаунт, чтобы добавлять в друзья');
       return;
     }
 
-    if (targetUser.id === currentUser.id) {
+    if (
+      targetUser.id === currentUser.id ||
+      targetUser.username.toLowerCase() === currentUser.username.toLowerCase()
+    ) {
       showError('Нельзя добавить самого себя');
       return;
     }
 
-    const existing = friendRequests.find(
-      (r) =>
-        (r.sender_id === currentUser.id && r.receiver_id === targetUser.id) ||
-        (r.sender_id === targetUser.id && r.receiver_id === currentUser.id)
-    );
+    const isMatch = (r: FriendRequest) => {
+      const sName = r.sender_name.toLowerCase();
+      const rName = r.receiver_name.toLowerCase();
+      const myName = currentUser.username.toLowerCase();
+      const tName = targetUser.username.toLowerCase();
+
+      return (
+        (sName === myName && rName === tName) ||
+        (sName === tName && rName === myName) ||
+        (r.sender_id === currentUser.id && r.receiver_id === targetUser.id)
+      );
+    };
+
+    const existing = friendRequests.find(isMatch);
 
     if (existing) {
       if (existing.status === 'accepted') {
@@ -471,23 +483,36 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     showSuccess('Удален из друзей');
   };
 
-  const getFriendStatusWith = (targetUserId: string): 'none' | 'pending_sent' | 'pending_received' | 'accepted' => {
-    if (!currentUser.id || !targetUserId) return 'none';
-    const req = friendRequests.find(
-      (r) =>
-        (r.sender_id === currentUser.id && r.receiver_id === targetUserId) ||
-        (r.sender_id === targetUserId && r.receiver_id === currentUser.id)
-    );
+  const getFriendStatusWith = (targetUserId: string, targetUsername?: string): 'none' | 'pending_sent' | 'pending_received' | 'accepted' => {
+    if (!currentUser.username || currentUser.username === 'Гость') return 'none';
+
+    const myName = currentUser.username.toLowerCase();
+    const tName = (targetUsername || '').toLowerCase();
+
+    const req = friendRequests.find((r) => {
+      const sName = r.sender_name.toLowerCase();
+      const rName = r.receiver_name.toLowerCase();
+
+      if (r.sender_id === currentUser.id && r.receiver_id === targetUserId) return true;
+      if (r.sender_id === targetUserId && r.receiver_id === currentUser.id) return true;
+      if (tName && ((sName === myName && rName === tName) || (sName === tName && rName === myName))) return true;
+
+      return false;
+    });
 
     if (!req) return 'none';
     if (req.status === 'accepted') return 'accepted';
-    if (req.sender_id === currentUser.id) return 'pending_sent';
-    return 'pending_received';
+
+    const isSender =
+      req.sender_id === currentUser.id ||
+      req.sender_name.toLowerCase() === myName;
+
+    return isSender ? 'pending_sent' : 'pending_received';
   };
 
   // ЛС логика
   const sendDirectMessage = async (receiver: UserProfile, messageText: string) => {
-    if (!currentUser.id) {
+    if (!currentUser.id || currentUser.username === 'Гость') {
       showError('Войдите в аккаунт, чтобы писать ЛС');
       return;
     }
@@ -513,25 +538,38 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  const getDirectMessagesWith = (targetUserId: string): DirectMessage[] => {
-    if (!currentUser.id || !targetUserId) return [];
+  const getDirectMessagesWith = (targetUserId: string, targetUsername?: string): DirectMessage[] => {
+    if (!currentUser.username || currentUser.username === 'Гость') return [];
+
+    const myName = currentUser.username.toLowerCase();
+    const tName = (targetUsername || '').toLowerCase();
+
     return directMessages
-      .filter(
-        (m) =>
-          (m.sender_id === currentUser.id && m.receiver_id === targetUserId) ||
-          (m.sender_id === targetUserId && m.receiver_id === currentUser.id)
-      )
+      .filter((m) => {
+        const sName = m.sender_name.toLowerCase();
+        const rName = m.receiver_name.toLowerCase();
+
+        if (m.sender_id === currentUser.id && m.receiver_id === targetUserId) return true;
+        if (m.sender_id === targetUserId && m.receiver_id === currentUser.id) return true;
+        if (tName && ((sName === myName && rName === tName) || (sName === tName && rName === myName))) return true;
+
+        return false;
+      })
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   };
 
   const friendsList: UserProfile[] = friendRequests
     .filter((r) => r.status === 'accepted')
     .map((r) => {
-      const isSender = r.sender_id === currentUser.id;
+      const myName = currentUser.username.toLowerCase();
+      const isSender =
+        r.sender_id === currentUser.id ||
+        r.sender_name.toLowerCase() === myName;
+
       return {
         id: isSender ? r.receiver_id : r.sender_id,
         username: isSender ? r.receiver_name : r.sender_name,
-        avatar_url: isSender ? r.sender_avatar || '' : r.sender_avatar || '',
+        avatar_url: isSender ? r.receiver_avatar || '' : r.sender_avatar || '',
         is_online: true,
       };
     });
