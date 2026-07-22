@@ -222,7 +222,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const grouped: Record<string, RoomMember[]> = {};
 
       data.forEach((m: any) => {
-        // Фильтруем участников: активными считаются те, у кого joined_at обновлялся не позднее 15 секунд назад
         const lastActive = m.joined_at ? new Date(m.joined_at).getTime() : 0;
         const isRecent = now - lastActive < 15000;
 
@@ -236,7 +235,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setActiveMembersByRoom(grouped);
 
-      // Синхронизируем количество онлайн зрителей в объекте комнаты
       setRooms((prev) =>
         prev.map((r) => {
           const count = grouped[r.id]?.length || 1;
@@ -257,12 +255,29 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchQueue();
     fetchMembers();
 
+    // Supabase Realtime канал для мгновенной передачи изменений мотки между устройствами
+    const channel = supabase
+      .channel('rooms_realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'rooms' },
+        (payload: any) => {
+          if (payload.new && payload.new.id) {
+            const updatedRoom = payload.new as Room;
+            setRooms((prev) =>
+              prev.map((r) => (r.id === updatedRoom.id ? { ...r, ...updatedRoom } : r))
+            );
+          }
+        }
+      )
+      .subscribe();
+
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
       fetchQueue();
       fetchMembers();
-    }, 2000);
+    }, 1500);
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
@@ -276,6 +291,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     return () => {
       clearInterval(interval);
+      if (supabase) supabase.removeChannel(channel);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers]);

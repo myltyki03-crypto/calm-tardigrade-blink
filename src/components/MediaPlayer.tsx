@@ -12,7 +12,6 @@ import {
   Subtitles,
   Check,
   Lock,
-  VolumeUp,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -52,6 +51,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const lastAutoSeekTimeRef = useRef<number>(0);
   const lastHostSyncSaveRef = useRef<number>(0);
+  const prevLastUpdatedRef = useRef<string | undefined>(room.last_updated_at);
 
   const [isPlaying, setIsPlaying] = useState(room.is_playing);
   const [volume, setVolume] = useState(80);
@@ -116,7 +116,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           rel: 0,
           iv_load_policy: 3,
           autohide: 1,
-          playsinline: 1, // ВАЖНО ДЛЯ МОБИЛЬНЫХ ТЕЛЕФОНОВ (iOS / Android)
+          playsinline: 1,
           start: Math.floor(startSec),
           origin: window.location.origin,
         },
@@ -169,22 +169,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setCurrentTime(cur);
 
           if (isHost) {
-            if (now - lastHostSyncSaveRef.current > 8000) {
+            if (now - lastHostSyncSaveRef.current > 6000) {
               lastHostSyncSaveRef.current = now;
               const playerState = ytPlayerRef.current.getPlayerState?.();
               updateRoomProgress(room.id, cur, playerState === 1);
-            }
-          } else {
-            const targetHostTime = getCalculatedHostTime();
-            const timeDiff = Math.abs(cur - targetHostTime);
-
-            if (
-              room.is_playing &&
-              timeDiff > 6 &&
-              now - lastAutoSeekTimeRef.current > 8000
-            ) {
-              lastAutoSeekTimeRef.current = now;
-              ytPlayerRef.current.seekTo(targetHostTime, true);
             }
           }
         }
@@ -200,20 +188,27 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, []);
 
+  // Мгновенная реакция плеера гостя на перематывание или изменения со стороны владельца
   useEffect(() => {
-    if (!isHost && ytPlayerRef.current) {
-      if (room.is_playing && !isPlaying) {
-        const p = ytPlayerRef.current.playVideo();
-        if (p && typeof p.catch === 'function') {
-          p.catch(() => setNeedUserGesture(true));
+    if (!isHost && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
+      if (room.last_updated_at !== prevLastUpdatedRef.current) {
+        prevLastUpdatedRef.current = room.last_updated_at;
+        const targetHostTime = getCalculatedHostTime();
+        
+        ytPlayerRef.current.seekTo(targetHostTime, true);
+        if (room.is_playing) {
+          const p = ytPlayerRef.current.playVideo?.();
+          if (p && typeof p.catch === 'function') {
+            p.catch(() => setNeedUserGesture(true));
+          }
+          setIsPlaying(true);
+        } else {
+          ytPlayerRef.current.pauseVideo?.();
+          setIsPlaying(false);
         }
-        setIsPlaying(true);
-      } else if (!room.is_playing && isPlaying) {
-        ytPlayerRef.current.pauseVideo();
-        setIsPlaying(false);
       }
     }
-  }, [room.is_playing, isHost]);
+  }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost]);
 
   useEffect(() => {
     if (ytPlayerRef.current && typeof ytPlayerRef.current.loadVideoById === 'function') {
@@ -417,7 +412,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           className="absolute inset-0 z-10 cursor-pointer"
         />
 
-        {/* Кнопка запуска видео для мобильных устройств, если мобильный браузер заблокировал автовоспроизведение */}
+        {/* Кнопка разблокировки видео для смартфонов */}
         {(needUserGesture || (!isPlaying && room.is_playing && !isHost)) && (
           <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
             <Button
