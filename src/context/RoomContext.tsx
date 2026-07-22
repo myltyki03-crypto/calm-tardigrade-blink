@@ -304,6 +304,35 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
+  // Синхронизация текущего профиля с Supabase
+  const fetchMyProfile = useCallback(async () => {
+    if (!isSupabaseConfigured || !supabase || !currentUser?.id) return;
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', currentUser.id)
+      .maybeSingle();
+
+    if (data) {
+      setCurrentUser((prev) => {
+        if (!prev || !prev.id) return prev;
+        if (
+          prev.avatar_url !== data.avatar_url ||
+          prev.username !== data.username ||
+          prev.status_message !== data.status_message
+        ) {
+          return {
+            ...prev,
+            username: data.username || prev.username,
+            avatar_url: data.avatar_url || prev.avatar_url,
+            status_message: data.status_message !== undefined ? data.status_message : prev.status_message,
+          };
+        }
+        return prev;
+      });
+    }
+  }, [currentUser?.id]);
+
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsRoomsLoaded(true);
@@ -314,9 +343,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchMessages();
     fetchQueue();
     fetchMembers();
+    fetchMyProfile();
 
     const channel = supabase
-      .channel('rooms_realtime')
+      .channel('global_realtime')
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'rooms' },
@@ -329,6 +359,21 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       )
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        (payload: any) => {
+          if (payload.new && payload.new.id === currentUser?.id) {
+            const updated = payload.new;
+            setCurrentUser((prev) => ({
+              ...prev,
+              username: updated.username || prev.username,
+              avatar_url: updated.avatar_url || prev.avatar_url,
+              status_message: updated.status_message !== undefined ? updated.status_message : prev.status_message,
+            }));
+          }
+        }
+      )
       .subscribe();
 
     const interval = setInterval(() => {
@@ -336,6 +381,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       fetchMessages();
       fetchQueue();
       fetchMembers();
+      fetchMyProfile();
     }, 1500);
 
     const handleVisibilityChange = () => {
@@ -344,6 +390,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         fetchMessages();
         fetchQueue();
         fetchMembers();
+        fetchMyProfile();
       }
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
@@ -353,7 +400,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (supabase) supabase.removeChannel(channel);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers]);
+  }, [fetchRooms, fetchMessages, fetchQueue, fetchMembers, fetchMyProfile, currentUser?.id]);
 
   useEffect(() => {
     localStorage.setItem('pulserave_rooms', JSON.stringify(rooms));

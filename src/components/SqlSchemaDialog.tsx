@@ -118,6 +118,7 @@ alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.chat_messages;
 alter publication supabase_realtime add table public.queue_items;
 alter publication supabase_realtime add table public.room_members;
+alter publication supabase_realtime add table public.profiles;
 `;
 
 export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClose }) => {
