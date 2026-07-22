@@ -170,7 +170,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             if (now - lastHostSyncSaveRef.current > 6000) {
               lastHostSyncSaveRef.current = now;
               const playerState = ytPlayerRef.current.getPlayerState?.();
-              updateRoomProgress(room.id, cur, playerState === 1);
+              if (playerState === 1) {
+                updateRoomProgress(room.id, cur, true);
+              }
             }
           }
         }
@@ -186,19 +188,34 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, []);
 
+  // Синхронизация времени для зрителей БЕЗ бесконечной перезагрузки буфера
   useEffect(() => {
     if (!isHost && ytPlayerRef.current && typeof ytPlayerRef.current.seekTo === 'function') {
       if (room.last_updated_at !== prevLastUpdatedRef.current) {
         prevLastUpdatedRef.current = room.last_updated_at;
         const targetHostTime = getCalculatedHostTime();
-        
-        ytPlayerRef.current.seekTo(targetHostTime, true);
+
+        let localTime = 0;
+        try {
+          localTime = ytPlayerRef.current.getCurrentTime?.() || 0;
+        } catch (err) {}
+
+        const diff = Math.abs(localTime - targetHostTime);
+
+        // Делаем seekTo ТОЛЬКО если рассинхрон больше 3.5 секунд!
+        if (diff > 3.5) {
+          ytPlayerRef.current.seekTo(targetHostTime, true);
+        }
+
         if (room.is_playing) {
-          const p = ytPlayerRef.current.playVideo?.();
-          if (p && typeof p.catch === 'function') {
-            p.catch(() => setNeedUserGesture(true));
+          const playerState = ytPlayerRef.current.getPlayerState?.();
+          if (playerState !== 1 && playerState !== 3) {
+            const p = ytPlayerRef.current.playVideo?.();
+            if (p && typeof p.catch === 'function') {
+              p.catch(() => setNeedUserGesture(true));
+            }
+            setIsPlaying(true);
           }
-          setIsPlaying(true);
         } else {
           ytPlayerRef.current.pauseVideo?.();
           setIsPlaying(false);
