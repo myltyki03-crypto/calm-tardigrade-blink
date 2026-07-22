@@ -122,6 +122,7 @@ create table public.direct_messages (
   sender_avatar text,
   receiver_id text not null,
   receiver_name text not null,
+  receiver_avatar text,
   message text not null,
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
@@ -181,7 +182,7 @@ export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClos
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen} onClose={onClose}>
       <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
         <DialogHeader>
           <DialogTitle className="text-xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-400 flex items-center justify-between">

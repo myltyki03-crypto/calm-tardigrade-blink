@@ -344,14 +344,12 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const grouped: Record<string, RoomMember[]> = {};
       data.forEach((mem: any) => {
         if (!grouped[mem.room_id]) grouped[mem.room_id] = [];
-        // Избегаем дубликатов по user_id
         if (!grouped[mem.room_id].some((m) => m.user_id === mem.user_id)) {
           grouped[mem.room_id].push(mem as RoomMember);
         }
       });
       setActiveMembersByRoom((prev) => ({ ...prev, ...grouped }));
 
-      // Синхронизируем счетчик зрителей для карточек комнат
       setRooms((prev) =>
         prev.map((r) => {
           const count = grouped[r.id]?.length || r.member_count || 1;
@@ -364,27 +362,27 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const fetchFriendData = useCallback(async () => {
     if (!isSupabaseConfigured || !supabase || !currentUser.username || currentUser.username === 'Гость') return;
     
-    // Загрузка заявок по ID и по имени
-    const { data: reqData } = await supabase
-      .from('friend_requests')
-      .select('*')
-      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id},sender_name.ilike.${currentUser.username},receiver_name.ilike.${currentUser.username}`);
+    try {
+      const { data: reqData, error: reqErr } = await supabase
+        .from('friend_requests')
+        .select('*');
 
-    if (reqData) {
-      setFriendRequests(reqData as FriendRequest[]);
+      if (!reqErr && reqData) {
+        setFriendRequests(reqData as FriendRequest[]);
+      }
+
+      const { data: dmData, error: dmErr } = await supabase
+        .from('direct_messages')
+        .select('*')
+        .order('created_at', { ascending: true });
+
+      if (!dmErr && dmData) {
+        setDirectMessages(dmData as DirectMessage[]);
+      }
+    } catch (e) {
+      console.error('Error fetching friends/DM:', e);
     }
-
-    // Загрузка ЛС по ID и по имени
-    const { data: dmData } = await supabase
-      .from('direct_messages')
-      .select('*')
-      .or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id},sender_name.ilike.${currentUser.username},receiver_name.ilike.${currentUser.username}`)
-      .order('created_at', { ascending: true });
-
-    if (dmData) {
-      setDirectMessages(dmData as DirectMessage[]);
-    }
-  }, [currentUser.id, currentUser.username]);
+  }, [currentUser.username]);
 
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
@@ -560,7 +558,21 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDirectMessages((prev) => [...prev, newDm]);
 
     if (isSupabaseConfigured && supabase) {
-      await supabase.from('direct_messages').insert([newDm]);
+      const { error } = await supabase.from('direct_messages').insert([{
+        id: newDm.id,
+        sender_id: newDm.sender_id,
+        sender_name: newDm.sender_name,
+        sender_avatar: newDm.sender_avatar,
+        receiver_id: newDm.receiver_id,
+        receiver_name: newDm.receiver_name,
+        receiver_avatar: newDm.receiver_avatar,
+        message: newDm.message,
+        created_at: newDm.created_at,
+      }]);
+
+      if (error) {
+        console.error('Failed to insert DM into Supabase:', error);
+      }
     }
   };
 
@@ -568,18 +580,26 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!currentUser.username || currentUser.username === 'Гость') return [];
 
     const myName = currentUser.username.toLowerCase();
+    const myId = currentUser.id;
     const tName = (targetUsername || '').toLowerCase();
+    const tId = targetUserId;
 
     return directMessages
       .filter((m) => {
-        const sName = m.sender_name.toLowerCase();
-        const rName = m.receiver_name.toLowerCase();
+        const sName = (m.sender_name || '').toLowerCase();
+        const rName = (m.receiver_name || '').toLowerCase();
+        const sId = m.sender_id;
+        const rId = m.receiver_id;
 
-        if (m.sender_id === currentUser.id && m.receiver_id === targetUserId) return true;
-        if (m.sender_id === targetUserId && m.receiver_id === currentUser.id) return true;
-        if (tName && ((sName === myName && rName === tName) || (sName === tName && rName === myName))) return true;
+        const isFromMeToTarget =
+          (sId === myId || sName === myName) &&
+          (rId === tId || (tName && rName === tName));
 
-        return false;
+        const isFromTargetToMe =
+          (sId === tId || (tName && sName === tName)) &&
+          (rId === myId || rName === myName);
+
+        return isFromMeToTarget || isFromTargetToMe;
       })
       .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
   };
