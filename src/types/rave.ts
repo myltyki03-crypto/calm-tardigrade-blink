@@ -78,3 +78,26 @@ export interface Room {
   created_at: string;
   skip_votes?: string[];
 }
+
+export interface FriendRequest {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_avatar?: string;
+  receiver_id: string;
+  receiver_name: string;
+  status: 'pending' | 'accepted' | 'rejected';
+  created_at: string;
+}
+
+export interface DirectMessage {
+  id: string;
+  sender_id: string;
+  sender_name: string;
+  sender_avatar?: string;
+  receiver_id: string;
+  receiver_name: string;
+  receiver_avatar?: string;
+  message: string;
+  created_at: string;
+}

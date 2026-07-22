@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Plus, LogIn } from 'lucide-react';
+import { Play, Plus, LogIn, MessageSquare } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRooms } from '@/context/RoomContext';
 import { AuthModal } from '@/components/AuthModal';
+import { DirectMessagesModal } from '@/components/DirectMessagesModal';
 
 interface NavbarProps {
   onOpenCreateModal: () => void;
@@ -15,8 +16,13 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateModal,
 }) => {
   const navigate = useNavigate();
-  const { currentUser, isLoggedIn } = useRooms();
+  const { currentUser, isLoggedIn, friendRequests } = useRooms();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isDmModalOpen, setIsDmModalOpen] = useState(false);
+
+  const pendingCount = friendRequests.filter(
+    (r) => r.receiver_id === currentUser.id && r.status === 'pending'
+  ).length;
 
   return (
     <>
@@ -43,6 +49,24 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Кнопки действий */}
           <div className="flex items-center gap-1.5 md:gap-3">
+            {isLoggedIn && (
+              <Button
+                onClick={() => setIsDmModalOpen(true)}
+                size="sm"
+                variant="outline"
+                className="relative border-purple-800 text-purple-200 hover:bg-purple-950/80 h-8 px-2.5 rounded-xl gap-1.5"
+                title="Личные сообщения и друзья"
+              >
+                <MessageSquare className="h-4 w-4 text-pink-400" />
+                <span className="hidden sm:inline text-xs font-semibold">ЛС</span>
+                {pendingCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center border-2 border-slate-950">
+                    {pendingCount}
+                  </span>
+                )}
+              </Button>
+            )}
+
             <Button
               onClick={onOpenCreateModal}
               size="sm"
@@ -80,6 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <DirectMessagesModal isOpen={isDmModalOpen} onClose={() => setIsDmModalOpen(false)} />
     </>
   );
 };
