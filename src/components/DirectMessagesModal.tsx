@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, UserPlus, Check, X, Send, Users, Sparkles, UserX } from 'lucide-react';
+import { MessageSquare, UserPlus, Check, X, Send, Users, Sparkles, UserX, ArrowLeft } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +30,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     acceptFriendRequest,
     rejectFriendRequest,
     removeFriend,
+    directMessages,
     getDirectMessagesWith,
     sendDirectMessage,
     activeDmUserId,
@@ -38,14 +39,56 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
 
   const [activeTab, setActiveTab] = useState<'chats' | 'requests'>('chats');
   const [inputText, setInputText] = useState('');
+  const [mobileShowChat, setMobileShowChat] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Выбираем чат
-  const selectedUser = initialTargetUser || friendsList.find((f) => f.id === activeDmUserId) || friendsList[0] || null;
+  // Формируем уникальный список собеседников (из ЛС + друзья + открытый профиль)
+  const conversationUsersMap = new Map<string, UserProfile>();
+
+  // 1. Добавляем тех, с кем есть переписка
+  directMessages.forEach((msg) => {
+    if (msg.sender_id === currentUser.id && msg.receiver_id) {
+      conversationUsersMap.set(msg.receiver_id, {
+        id: msg.receiver_id,
+        username: msg.receiver_name || 'Пользователь',
+        avatar_url: msg.receiver_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.receiver_name || 'user')}`,
+        is_online: true,
+      });
+    } else if (msg.receiver_id === currentUser.id && msg.sender_id) {
+      conversationUsersMap.set(msg.sender_id, {
+        id: msg.sender_id,
+        username: msg.sender_name || 'Пользователь',
+        avatar_url: msg.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(msg.sender_name || 'user')}`,
+        is_online: true,
+      });
+    }
+  });
+
+  // 2. Добавляем принятых друзей
+  friendsList.forEach((f) => {
+    if (!conversationUsersMap.has(f.id)) {
+      conversationUsersMap.set(f.id, f);
+    }
+  });
+
+  // 3. Если перешли из карточки профиля конкретного юзера
+  if (initialTargetUser && initialTargetUser.id !== currentUser.id) {
+    conversationUsersMap.set(initialTargetUser.id, initialTargetUser);
+  }
+
+  const allConversations = Array.from(conversationUsersMap.values());
+
+  // Определяем текущего выбранного собеседника
+  const selectedUser =
+    allConversations.find((u) => u.id === activeDmUserId) ||
+    initialTargetUser ||
+    allConversations[0] ||
+    null;
 
   useEffect(() => {
     if (initialTargetUser) {
       setActiveDmUserId(initialTargetUser.id);
+      setMobileShowChat(true);
     }
   }, [initialTargetUser]);
 
@@ -53,7 +96,12 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [activeMessages.length]);
+  }, [activeMessages.length, mobileShowChat]);
+
+  const handleSelectUser = (user: UserProfile) => {
+    setActiveDmUserId(user.id);
+    setMobileShowChat(true);
+  };
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,19 +110,37 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     setInputText('');
   };
 
-  const pendingRequests = friendRequests.filter((r) => r.receiver_id === currentUser.id && r.status === 'pending');
+  const pendingRequests = friendRequests.filter(
+    (r) => r.receiver_id === currentUser.id && r.status === 'pending'
+  );
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-2xl h-[85vh] sm:h-[600px] p-0 flex flex-col overflow-hidden">
         <DialogHeader className="p-3 border-b border-purple-900/40 bg-slate-950 flex flex-row items-center justify-between shrink-0">
-          <DialogTitle className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-300 flex items-center gap-2">
-            <MessageSquare className="h-4 w-4 text-pink-400" /> Личные сообщения и друзья
-          </DialogTitle>
+          <div className="flex items-center gap-2">
+            {/* Кнопка Назад на мобильных при открытом чате */}
+            {mobileShowChat && (
+              <Button
+                onClick={() => setMobileShowChat(false)}
+                size="sm"
+                variant="ghost"
+                className="sm:hidden p-1 h-7 w-7 text-slate-300 hover:text-white"
+              >
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            )}
+            <DialogTitle className="text-xs sm:text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 via-pink-400 to-cyan-300 flex items-center gap-1.5">
+              <MessageSquare className="h-4 w-4 text-pink-400" /> Сообщения и друзья
+            </DialogTitle>
+          </div>
 
           <div className="flex items-center gap-1.5 mr-6">
             <button
-              onClick={() => setActiveTab('chats')}
+              onClick={() => {
+                setActiveTab('chats');
+                setMobileShowChat(false);
+              }}
               className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
                 activeTab === 'chats'
                   ? 'bg-purple-800 text-white shadow-md'
@@ -84,7 +150,10 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
               Чаты
             </button>
             <button
-              onClick={() => setActiveTab('requests')}
+              onClick={() => {
+                setActiveTab('requests');
+                setMobileShowChat(false);
+              }}
               className={`relative px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
                 activeTab === 'requests'
                   ? 'bg-purple-800 text-white shadow-md'
@@ -153,58 +222,70 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
             )}
           </ScrollArea>
         ) : (
-          <div className="flex-1 flex min-h-0">
-            {/* Список друзей слева */}
-            <div className="w-1/3 border-r border-purple-900/40 bg-slate-950/50 flex flex-col shrink-0">
-              <div className="p-2 border-b border-purple-900/30 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 flex items-center justify-between">
+          <div className="flex-1 flex min-h-0 w-full overflow-hidden">
+            {/* Список диалогов (скрываем на мобильных, если открыт чат) */}
+            <div
+              className={`w-full sm:w-1/3 sm:min-w-[200px] border-r border-purple-900/40 bg-slate-950/50 flex flex-col shrink-0 ${
+                mobileShowChat ? 'hidden sm:flex' : 'flex'
+              }`}
+            >
+              <div className="p-2.5 border-b border-purple-900/30 bg-slate-950 text-[10px] uppercase font-bold text-slate-400 flex items-center justify-between">
                 <span className="flex items-center gap-1">
-                  <Users className="h-3 w-3 text-pink-400" /> Друзья ({friendsList.length})
+                  <Users className="h-3 w-3 text-pink-400" /> Диалоги ({allConversations.length})
                 </span>
               </div>
 
               <ScrollArea className="flex-1">
-                {friendsList.length === 0 ? (
+                {allConversations.length === 0 ? (
                   <div className="p-4 text-center text-[11px] text-slate-500">
-                    У вас пока нет друзей. Нажмите на профиль любого участника в чате комнаты!
+                    У вас пока нет переписок. Нажмите «Написать ЛС» в карточке любого участника!
                   </div>
                 ) : (
-                  friendsList.map((friend) => {
-                    const isSelected = selectedUser?.id === friend.id;
-                    const avatar = friend.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friend.username)}`;
+                  allConversations.map((user) => {
+                    const isSelected = selectedUser?.id === user.id;
+                    const isFriend = friendsList.some((f) => f.id === user.id);
+                    const avatar = user.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.username)}`;
 
                     return (
                       <div
-                        key={friend.id}
-                        onClick={() => setActiveDmUserId(friend.id)}
-                        className={`flex items-center justify-between p-2.5 border-b border-purple-950/50 cursor-pointer transition-all ${
+                        key={user.id}
+                        onClick={() => handleSelectUser(user)}
+                        className={`flex items-center justify-between p-3 border-b border-purple-950/50 cursor-pointer transition-all ${
                           isSelected
-                            ? 'bg-purple-950/80 border-pink-500/50'
+                            ? 'bg-purple-950/90 border-pink-500/50'
                             : 'hover:bg-purple-950/30'
                         }`}
                       >
-                        <div className="flex items-center gap-2 min-w-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
                           <img
                             src={avatar}
-                            alt={friend.username}
+                            alt={user.username}
                             className="h-8 w-8 rounded-full object-cover shrink-0 ring-1 ring-purple-500/40"
                           />
-                          <span className="text-xs font-semibold text-slate-200 truncate">
-                            {friend.username}
-                          </span>
+                          <div className="min-w-0">
+                            <span className="text-xs font-bold text-slate-200 truncate block">
+                              {user.username}
+                            </span>
+                            <span className="text-[9px] text-slate-400">
+                              {isFriend ? 'Друг' : 'Диалог'}
+                            </span>
+                          </div>
                         </div>
 
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (window.confirm(`Удалить ${friend.username} из друзей?`)) {
-                              removeFriend(friend.id);
-                            }
-                          }}
-                          className="text-slate-600 hover:text-red-400 transition-colors p-1"
-                          title="Удалить из друзей"
-                        >
-                          <UserX className="h-3.5 w-3.5" />
-                        </button>
+                        {isFriend && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (window.confirm(`Удалить ${user.username} из друзей?`)) {
+                                removeFriend(user.id);
+                              }
+                            }}
+                            className="text-slate-600 hover:text-red-400 transition-colors p-1 shrink-0"
+                            title="Удалить из друзей"
+                          >
+                            <UserX className="h-3.5 w-3.5" />
+                          </button>
+                        )}
                       </div>
                     );
                   })
@@ -212,23 +293,34 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
               </ScrollArea>
             </div>
 
-            {/* Окно сообщений справа */}
-            <div className="flex-1 flex flex-col bg-slate-900 min-w-0">
+            {/* Окно сообщений (показываем на мобильных только если выбран чат) */}
+            <div
+              className={`flex-1 flex flex-col bg-slate-900 min-w-0 ${
+                !mobileShowChat ? 'hidden sm:flex' : 'flex'
+              }`}
+            >
               {selectedUser ? (
                 <>
-                  <div className="p-2.5 px-3 border-b border-purple-900/40 bg-slate-950 flex items-center gap-2 shrink-0">
-                    <img
-                      src={selectedUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(selectedUser.username)}`}
-                      alt={selectedUser.username}
-                      className="h-7 w-7 rounded-full object-cover ring-1 ring-pink-500/50"
-                    />
-                    <span className="text-xs font-bold text-slate-100">{selectedUser.username}</span>
+                  <div className="p-2.5 px-3 border-b border-purple-900/40 bg-slate-950 flex items-center justify-between shrink-0">
+                    <div className="flex items-center gap-2">
+                      <img
+                        src={selectedUser.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(selectedUser.username)}`}
+                        alt={selectedUser.username}
+                        className="h-7 w-7 rounded-full object-cover ring-1 ring-pink-500/50"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-slate-100 block">{selectedUser.username}</span>
+                        <span className="text-[9px] text-emerald-400 flex items-center gap-1">
+                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" /> В сети
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="flex-1 overflow-y-auto p-3 space-y-2.5">
                     {activeMessages.length === 0 ? (
                       <div className="text-center py-12 text-slate-500 text-xs">
-                        Нет сообщений. Напишите первое сообщение!
+                        Нет сообщений с {selectedUser.username}. Напишите первое сообщение!
                       </div>
                     ) : (
                       activeMessages.map((msg) => {
@@ -239,7 +331,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                             className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}
                           >
                             <div
-                              className={`max-w-[80%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
+                              className={`max-w-[85%] rounded-2xl px-3.5 py-2 text-xs leading-relaxed ${
                                 isMe
                                   ? 'bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-tr-none shadow-md'
                                   : 'bg-slate-950 border border-purple-900/60 text-slate-200 rounded-tl-none'
@@ -273,7 +365,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
               ) : (
                 <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-slate-500 text-xs">
                   <Sparkles className="h-8 w-8 text-purple-500/40 mb-2" />
-                  Выберите друга из списка слева, чтобы начать переписку
+                  Выберите диалог из списка, чтобы начать переписку
                 </div>
               )}
             </div>
