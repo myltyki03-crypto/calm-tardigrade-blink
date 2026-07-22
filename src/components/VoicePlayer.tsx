@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, Mic } from 'lucide-react';
+import { Play, Pause, Volume2 } from 'lucide-react';
 
 interface VoicePlayerProps {
   src: string;
@@ -97,32 +97,48 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+
   return (
-    <div className="flex items-center gap-2.5 py-1 min-w-[180px] sm:min-w-[220px]">
+    <div className="flex items-center gap-3 py-1.5 px-1 min-w-[210px] sm:min-w-[240px]">
       <audio ref={audioRef} src={src} preload="auto" />
 
+      {/* Кнопка Play / Pause */}
       <button
         type="button"
         onClick={togglePlay}
-        className={`h-8 w-8 rounded-full flex items-center justify-center shrink-0 transition-transform active:scale-95 shadow-md ${
+        className={`relative h-10 w-10 rounded-full flex items-center justify-center shrink-0 transition-all duration-200 shadow-lg active:scale-95 ${
           isMe
-            ? 'bg-white text-purple-900 hover:bg-slate-100'
-            : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white'
+            ? 'bg-white text-pink-600 hover:bg-slate-100 shadow-pink-900/30'
+            : 'bg-gradient-to-r from-pink-500 to-purple-600 text-white hover:opacity-90 shadow-purple-950/50'
         }`}
       >
-        {isPlaying ? <Pause className="h-4 w-4 fill-current" /> : <Play className="h-4 w-4 fill-current ml-0.5" />}
+        {isPlaying ? (
+          <Pause className="h-4 w-4 fill-current" />
+        ) : (
+          <Play className="h-4 w-4 fill-current ml-0.5" />
+        )}
+        {isPlaying && (
+          <span className="absolute -inset-1 rounded-full border border-pink-400/60 animate-ping pointer-events-none" />
+        )}
       </button>
 
       <div className="flex-1 flex flex-col justify-center min-w-0">
-        <div className="flex items-center gap-1.5 mb-1">
-          <Mic className={`h-3 w-3 shrink-0 ${isMe ? 'text-pink-200' : 'text-pink-400'}`} />
-          <span className={`text-[10px] font-semibold ${isMe ? 'text-pink-100' : 'text-slate-300'}`}>
-            Голосовое сообщение
+        <div className="flex items-center justify-between mb-1.5">
+          <span className={`text-[11px] font-bold flex items-center gap-1 ${isMe ? 'text-white' : 'text-pink-300'}`}>
+            <Volume2 className="h-3 w-3 text-cyan-400" /> Голосовое
+          </span>
+          <span className={`text-[10px] font-mono font-semibold ${isMe ? 'text-pink-100' : 'text-slate-300'}`}>
+            {isPlaying ? formatTime(currentTime) : formatTime(duration)}
           </span>
         </div>
 
-        {/* Шкала воспроизведения */}
-        <div className="relative flex items-center w-full">
+        {/* Шкала воспроизведения с высоким контрастом */}
+        <div className="relative flex items-center w-full h-2 rounded-full bg-slate-950/60 p-0.5 border border-purple-800/40 overflow-hidden">
+          <div
+            className="h-full rounded-full bg-gradient-to-r from-pink-500 via-purple-400 to-cyan-400 transition-all duration-75"
+            style={{ width: `${progressPercent}%` }}
+          />
           <input
             type="range"
             min="0"
@@ -130,13 +146,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({ src, isMe = false }) =
             step="0.01"
             value={currentTime}
             onChange={handleSeek}
-            className="w-full h-1.5 rounded-lg appearance-none cursor-pointer bg-black/20 accent-pink-400"
+            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
           />
-        </div>
-
-        <div className="flex justify-between items-center mt-1 text-[9px] font-mono opacity-80">
-          <span>{formatTime(currentTime)}</span>
-          <span>{formatTime(duration)}</span>
         </div>
       </div>
     </div>
