@@ -35,7 +35,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
   };
 
   return (
-    <div className="flex flex-col h-full w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden">
+    <div className="flex flex-col h-full w-full rounded-2xl md:rounded-3xl border border-purple-900/40 bg-slate-900/95 overflow-hidden shadow-xl">
       {/* Шапка очереди */}
       <div className="p-3 border-b border-purple-900/40 flex items-center justify-between bg-slate-950/60">
         <h4 className="text-xs font-bold uppercase tracking-wider text-purple-300 flex items-center gap-1.5">
@@ -46,7 +46,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
       {/* Форма добавления */}
       <form onSubmit={handleAdd} className="p-2 border-b border-purple-900/30 bg-slate-950/40 flex items-center gap-1.5 w-full" autoComplete="off">
         <div className="relative flex-1">
-          <LinkIcon className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+          <LinkIcon className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-500" />
           <Input
             name="queue_link_no_autofill"
             autoComplete="off"
@@ -54,13 +54,13 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
             placeholder="Ссылка на YouTube, Twitch, MP4..."
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
-            className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-8 w-full"
+            className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-9 w-full rounded-full"
           />
         </div>
         <Button
           type="submit"
           size="sm"
-          className="h-8 bg-purple-700 hover:bg-purple-600 text-white text-xs px-2.5 rounded-lg shrink-0"
+          className="h-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white text-xs px-3 rounded-full shrink-0 font-bold shadow-md"
         >
           <Plus className="h-3.5 w-3.5 mr-1" /> Добавить
         </Button>
@@ -80,7 +80,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
               return (
                 <div
                   key={item.id}
-                  className={`group flex items-center gap-2 p-2 rounded-xl border transition-all text-xs w-full ${
+                  className={`group flex items-center gap-2 p-2 rounded-2xl border transition-all text-xs w-full ${
                     isCurrent
                       ? 'bg-purple-950/70 border-pink-500/60 ring-1 ring-pink-500/30'
                       : 'bg-slate-950/60 border-purple-950 hover:border-purple-800/60'
@@ -94,10 +94,10 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
                     <img
                       src={item.thumbnail_url || 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=150&auto=format&fit=crop&q=80'}
                       alt={item.title}
-                      className="h-10 w-14 rounded-lg object-cover"
+                      className="h-10 w-14 rounded-xl object-cover"
                     />
                     {isCurrent && (
-                      <div className="absolute inset-0 bg-purple-950/60 backdrop-blur-[1px] rounded-lg flex items-center justify-center">
+                      <div className="absolute inset-0 bg-purple-950/60 backdrop-blur-[1px] rounded-xl flex items-center justify-center">
                         <Music2 className="h-4 w-4 text-pink-400 animate-bounce" />
                       </div>
                     )}
@@ -112,7 +112,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
                     <div className="flex items-center gap-1.5 mt-0.5">
                       <p className="text-[10px] text-slate-400 truncate">Добавил: {item.added_by_name}</p>
                       {isCurrent && (
-                        <Badge className="bg-pink-600/90 text-white text-[9px] px-1 py-0 h-3.5 uppercase font-bold tracking-wider shrink-0">
+                        <Badge className="bg-pink-600/90 text-white text-[9px] px-1 py-0 h-3.5 uppercase font-bold tracking-wider shrink-0 rounded-md">
                           ИГРАЕТ
                         </Badge>
                       )}
@@ -124,7 +124,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
                       <Button
                         onClick={() => onPlayNow(item)}
                         size="sm"
-                        className={`h-7 px-2 text-[10px] text-white gap-1 rounded-lg ${
+                        className={`h-7 px-2 text-[10px] text-white gap-1 rounded-xl ${
                           isCurrent
                             ? 'bg-purple-800 hover:bg-purple-700'
                             : 'bg-pink-600 hover:bg-pink-500'
@@ -144,7 +144,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
                       onClick={() => onVoteItem(item.id)}
                       size="sm"
                       variant="ghost"
-                      className="h-7 px-2 text-[11px] text-pink-400 hover:bg-pink-950/40 gap-1 border border-pink-900/30 rounded-lg"
+                      className="h-7 px-2 text-[11px] text-pink-400 hover:bg-pink-950/40 gap-1 border border-pink-900/30 rounded-xl"
                     >
                       <ThumbsUp className="h-3 w-3" />
                       <span>{item.votes}</span>
