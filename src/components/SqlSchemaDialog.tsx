@@ -25,7 +25,7 @@ interface SqlSchemaDialogProps {
 }
 
 const FULL_SQL_SCHEMA = `-- ==========================================
--- PULSERAVE COMPLETE SUPABASE DATABASE SETUP & RLS FIX
+-- PULSERAVE COMPLETE SUPABASE DATABASE SETUP
 -- Выполните в Supabase -> SQL Editor -> Run
 -- ==========================================
 
@@ -119,7 +119,7 @@ create table if not exists public.direct_messages (
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
--- ПРИНУДИТЕЛЬНОЕ ОТКЛЮЧЕНИЕ RLS (Убирает ошибку "violates row-level security policy")
+-- ОТКЛЮЧЕНИЕ RLS ДЛЯ ВСЕХ ТАБЛИЦ
 alter table public.profiles disable row level security;
 alter table public.rooms disable row level security;
 alter table public.queue_items disable row level security;
@@ -136,24 +136,6 @@ grant all on table public.chat_messages to anon, authenticated, service_role;
 grant all on table public.room_members to anon, authenticated, service_role;
 grant all on table public.friend_requests to anon, authenticated, service_role;
 grant all on table public.direct_messages to anon, authenticated, service_role;
-
--- Настройка REPLICA IDENTITY для мгновенных сообщений
-alter table public.profiles replica identity full;
-alter table public.rooms replica identity full;
-alter table public.queue_items replica identity full;
-alter table public.chat_messages replica identity full;
-alter table public.room_members replica identity full;
-alter table public.friend_requests replica identity full;
-alter table public.direct_messages replica identity full;
-
--- Добавление в Realtime
-alter publication supabase_realtime add table public.profiles;
-alter publication supabase_realtime add table public.rooms;
-alter publication supabase_realtime add table public.chat_messages;
-alter publication supabase_realtime add table public.queue_items;
-alter publication supabase_realtime add table public.room_members;
-alter publication supabase_realtime add table public.friend_requests;
-alter publication supabase_realtime add table public.direct_messages;
 `;
 
 export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClose }) => {
