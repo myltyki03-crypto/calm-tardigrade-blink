@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { KeyRound, Lock } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -21,7 +22,7 @@ import {
 } from '@/components/ui/select';
 import { CategoryType, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
-import { showSuccess } from '@/utils/toast';
+import { showSuccess, showError } from '@/utils/toast';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
@@ -89,11 +90,17 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   const [mediaUrl, setMediaUrl] = useState('');
   const [category, setCategory] = useState<CategoryType>('music');
   const [isPrivate, setIsPrivate] = useState(false);
+  const [accessCode, setAccessCode] = useState('');
   const [allowGuestQueue, setAllowGuestQueue] = useState(true);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
+
+    if (isPrivate && !accessCode.trim()) {
+      showError('Укажите пароль для приватной комнаты');
+      return;
+    }
 
     const defaultMedia = DEFAULT_CATEGORY_MEDIA[category] || DEFAULT_CATEGORY_MEDIA.music;
 
@@ -116,12 +123,13 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
       host_name: currentUser.username,
       host_avatar: currentUser.avatar_url,
       is_private: isPrivate,
+      access_code: isPrivate ? accessCode.trim() : undefined,
       member_count: 1,
       current_media_url: finalUrl,
       current_media_title: finalTitle,
       current_media_thumbnail: finalThumbnail,
       playback_position_seconds: 0,
-      is_playing: false, // ВИДЕО НА ПАУЗЕ ПО УМОЛЧАНИЮ
+      is_playing: false,
       allow_guest_queue: allowGuestQueue,
       allow_guest_control: false,
       created_at: new Date().toISOString(),
@@ -131,6 +139,8 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     showSuccess('Комната создана! Нажмите Play, чтобы запустить видео.');
     setTitle('');
     setMediaUrl('');
+    setAccessCode('');
+    setIsPrivate(false);
     onClose();
     navigate(`/room/${newRoom.id}`);
   };
@@ -195,11 +205,30 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           <div className="pt-2 space-y-3 border-t border-purple-950">
             <div className="flex items-center justify-between">
               <div>
-                <Label className="text-xs font-medium text-slate-200">Приватная комната</Label>
-                <p className="text-[11px] text-slate-400">Не видна в ленте, вход только по ссылке</p>
+                <Label className="text-xs font-medium text-slate-200 flex items-center gap-1.5">
+                  <Lock className="h-3.5 w-3.5 text-amber-400" /> Приватная комната (по паролю)
+                </Label>
+                <p className="text-[11px] text-slate-400">Вход только по вводу пароля</p>
               </div>
               <Switch checked={isPrivate} onCheckedChange={setIsPrivate} />
             </div>
+
+            {isPrivate && (
+              <div className="space-y-1.5 bg-amber-950/30 p-3 rounded-xl border border-amber-500/30 animate-in fade-in">
+                <Label htmlFor="accessCode" className="text-xs font-semibold text-amber-300 flex items-center gap-1.5">
+                  <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Установите пароль для входа <span className="text-pink-400">*</span>
+                </Label>
+                <Input
+                  id="accessCode"
+                  type="password"
+                  placeholder="Придумайте пароль..."
+                  value={accessCode}
+                  onChange={(e) => setAccessCode(e.target.value)}
+                  className="bg-slate-950 border-amber-500/40 focus:border-amber-400 text-amber-200 text-xs font-mono"
+                  required={isPrivate}
+                />
+              </div>
+            )}
 
             <div className="flex items-center justify-between">
               <div>

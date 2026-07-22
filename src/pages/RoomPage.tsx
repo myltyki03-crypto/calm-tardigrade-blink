@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock } from 'lucide-react';
+import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
 import { Navbar } from '@/components/Navbar';
 import { MediaPlayer } from '@/components/MediaPlayer';
@@ -53,6 +54,8 @@ export const RoomPage = () => {
 
   const [directRoom, setDirectRoom] = useState<Room | null>(null);
   const [isFetchingDirect, setIsFetchingDirect] = useState<boolean>(true);
+  const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
+  const [directPassword, setDirectPassword] = useState('');
 
   const room = (id ? getRoomById(id) : undefined) || directRoom || undefined;
 
@@ -74,15 +77,26 @@ export const RoomPage = () => {
     };
   }, [id, isRoomsLoaded]);
 
+  const isHost = room?.host_id === currentUser.id;
+
+  // Если владелец или не приватная - разблокировано сразу
+  useEffect(() => {
+    if (room) {
+      if (!room.is_private || !room.access_code || isHost) {
+        setIsUnlocked(true);
+      }
+    }
+  }, [room, isHost]);
+
   // Фиксация присутствия пользователя в комнате
   useEffect(() => {
-    if (room?.id) {
+    if (room?.id && isUnlocked) {
       joinRoomPresence(room.id);
       return () => {
         leaveRoomPresence(room.id);
       };
     }
-  }, [room?.id]);
+  }, [room?.id, isUnlocked]);
 
   const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('chat');
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
@@ -104,9 +118,9 @@ export const RoomPage = () => {
     return (
       <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4 text-center">
         <Lock className="h-10 w-10 text-amber-400 mb-2" />
-        <h2 className="text-xl font-bold mb-1">Комната не найдена или приватна</h2>
+        <h2 className="text-xl font-bold mb-1">Комната не найдена</h2>
         <p className="text-slate-400 text-xs mb-4 max-w-sm">
-          Запрошенная комната не существует или вы пытаетесь перейти в приватную комнату без правильной ссылки.
+          Запрошенная комната не существует или была удалена.
         </p>
         <Button onClick={() => navigate('/')} className="bg-purple-600 hover:bg-purple-500 text-xs">
           Вернуться на главную
@@ -115,7 +129,64 @@ export const RoomPage = () => {
     );
   }
 
-  const isHost = room.host_id === currentUser.id;
+  // Запрос пароля при прямом переходе по ссылке
+  if (room.is_private && room.access_code && !isHost && !isUnlocked) {
+    const handleDirectPassSubmit = (e: React.FormEvent) => {
+      e.preventDefault();
+      if (directPassword.trim() === room.access_code?.trim()) {
+        showSuccess('Пароль верный!');
+        setIsUnlocked(true);
+      } else {
+        showError('Неверный пароль!');
+      }
+    };
+
+    return (
+      <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-4">
+        <div className="max-w-md w-full bg-slate-900 border border-amber-500/40 p-6 rounded-3xl shadow-2xl space-y-4 text-center">
+          <div className="h-12 w-12 rounded-2xl bg-amber-950/80 border border-amber-500/40 flex items-center justify-center mx-auto text-amber-400">
+            <Lock className="h-6 w-6" />
+          </div>
+          <h2 className="text-xl font-bold text-white">Приватная комната</h2>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Комната <strong className="text-slate-200">"{room.title}"</strong> защищена паролем.
+          </p>
+
+          <form onSubmit={handleDirectPassSubmit} className="space-y-3 pt-2 text-left">
+            <div>
+              <label className="text-xs font-semibold text-slate-300 flex items-center gap-1 mb-1">
+                <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Введите пароль
+              </label>
+              <Input
+                type="password"
+                placeholder="Пароль..."
+                value={directPassword}
+                onChange={(e) => setDirectPassword(e.target.value)}
+                className="bg-slate-950 border-amber-500/40 text-amber-200 text-xs font-mono"
+                required
+                autoFocus
+              />
+            </div>
+            <Button
+              type="submit"
+              className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs h-9 rounded-xl"
+            >
+              Войти в комнату
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={() => navigate('/')}
+              className="w-full text-slate-400 text-xs h-8"
+            >
+              Вернуться назад
+            </Button>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   const roomMessages = messagesByRoom[room.id] || [];
   const roomQueue = queueByRoom[room.id] || [];
   const roomMembers = activeMembersByRoom[room.id] || [
@@ -205,7 +276,6 @@ export const RoomPage = () => {
       />
 
       <main className="w-full flex-1 p-2 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 max-w-7xl mx-auto">
-        {/* Левая колонка: плеер и инфо */}
         <div className="lg:col-span-8 flex flex-col gap-2 md:gap-4 w-full">
           <div className="flex items-center justify-between px-1 w-full">
             <Button
@@ -230,7 +300,6 @@ export const RoomPage = () => {
                 <Share2 className="h-3 w-3 text-pink-400" /> Поделиться ссылкой
               </Button>
 
-              {/* УДАЛЕНИЕ ТОЛЬКО ДЛЯ ВЛАДЕЛЬЦА */}
               {isHost && (
                 <Button
                   onClick={() => setIsDeleteDialogOpen(true)}
@@ -258,8 +327,8 @@ export const RoomPage = () => {
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-slate-100">{room.title}</h2>
                 {room.is_private && (
-                  <span className="bg-amber-950/80 text-amber-300 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1">
-                    <Lock className="h-3 w-3" /> Приватная
+                  <span className="bg-amber-950/80 text-amber-300 border border-amber-500/40 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1 font-semibold">
+                    <Lock className="h-3 w-3" /> По паролю
                   </span>
                 )}
               </div>
@@ -276,7 +345,6 @@ export const RoomPage = () => {
           </div>
         </div>
 
-        {/* Переключатель вкладок для мобильных */}
         <div className="lg:hidden flex border-b border-purple-900/40 bg-slate-900/80 rounded-xl p-1 gap-1 my-1 w-full">
           <button
             onClick={() => setActiveMobileTab('chat')}
@@ -327,7 +395,6 @@ export const RoomPage = () => {
           </button>
         </div>
 
-        {/* Правая колонка / активная вкладка */}
         <div className="lg:col-span-4 flex flex-col gap-3 h-[480px] lg:h-auto w-full">
           {activeMobileTab === 'info' && (
             <div className="lg:hidden p-4 rounded-2xl border border-purple-900/40 bg-slate-900/90 space-y-3 w-full">
@@ -344,7 +411,6 @@ export const RoomPage = () => {
             </div>
           )}
 
-          {/* ЧАТ */}
           <div className={`h-full w-full flex-1 ${activeMobileTab !== 'chat' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomChat
               messages={roomMessages}
@@ -353,7 +419,6 @@ export const RoomPage = () => {
             />
           </div>
 
-          {/* ОЧЕРЕДЬ */}
           <div className={`h-full w-full flex-1 ${activeMobileTab !== 'queue' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomQueue
               queue={roomQueue}
@@ -365,14 +430,12 @@ export const RoomPage = () => {
             />
           </div>
 
-          {/* УЧАСТНИКИ В СЕТИ */}
           <div className={`h-full w-full flex-1 ${activeMobileTab !== 'members' ? 'hidden lg:flex' : 'flex'}`}>
             <RoomMembersList members={roomMembers} hostId={room.host_id} />
           </div>
         </div>
       </main>
 
-      {/* Диалог удаления комнаты */}
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-md">
           <DialogHeader>

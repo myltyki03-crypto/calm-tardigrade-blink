@@ -1,11 +1,11 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { Users, Play, Shield, Volume2 } from 'lucide-react';
+import { Users, Play, Shield, Volume2, Lock } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Room } from '@/types/rave';
 
 interface RoomCardProps {
   room: Room;
+  onClick?: () => void;
 }
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -18,12 +18,10 @@ const CATEGORY_LABELS: Record<string, string> = {
   livestream: 'СТРИМ',
 };
 
-export const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
-  const navigate = useNavigate();
-
+export const RoomCard: React.FC<RoomCardProps> = ({ room, onClick }) => {
   return (
     <div
-      onClick={() => navigate(`/room/${room.id}`)}
+      onClick={onClick}
       className="group relative cursor-pointer overflow-hidden rounded-2xl border border-purple-900/30 bg-slate-900/90 hover:border-pink-500/50 transition-all duration-300 hover:shadow-xl hover:shadow-purple-500/10 hover:-translate-y-1 flex flex-col justify-between"
     >
       {/* Превью медиа */}
@@ -53,7 +51,7 @@ export const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
         {/* Кнопка Play при наведении */}
         <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity bg-purple-950/40 backdrop-blur-[2px]">
           <div className="flex h-12 w-12 items-center justify-center rounded-full bg-pink-500 text-white shadow-lg shadow-pink-500/50 scale-90 group-hover:scale-100 transition-transform">
-            <Play className="h-6 w-6 fill-white ml-0.5" />
+            {room.is_private ? <Lock className="h-5 w-5 fill-white" /> : <Play className="h-6 w-6 fill-white ml-0.5" />}
           </div>
         </div>
 
@@ -88,8 +86,8 @@ export const RoomCard: React.FC<RoomCardProps> = ({ room }) => {
             <span className="font-medium text-slate-300">{room.host_name}</span>
           </div>
           {room.is_private && (
-            <span className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-800/40">
-              <Shield className="h-3 w-3" /> Приватная
+            <span className="flex items-center gap-1 text-[11px] text-amber-400 bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-800/40 font-semibold">
+              <Lock className="h-3 w-3" /> По паролю
             </span>
           )}
         </div>

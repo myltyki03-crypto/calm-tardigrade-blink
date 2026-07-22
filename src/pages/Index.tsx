@@ -1,19 +1,23 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Navbar } from '@/components/Navbar';
 import { RoomCard } from '@/components/RoomCard';
 import { CreateRoomModal } from '@/components/CreateRoomModal';
 import { FriendsDrawer } from '@/components/FriendsDrawer';
 import { SqlSchemaDialog } from '@/components/SqlSchemaDialog';
 import { MobileBottomNav } from '@/components/MobileBottomNav';
-import { CategoryType } from '@/types/rave';
+import { CategoryType, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { Sparkles, Radio, Music, Film, Gamepad2, PlayCircle, Search, WifiOff, RefreshCw } from 'lucide-react';
+import { Sparkles, Radio, Music, Film, Gamepad2, PlayCircle, Search, WifiOff, RefreshCw, Lock, KeyRound } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { showSuccess, showError } from '@/utils/toast';
 
 const Index = () => {
-  const { rooms, refreshRooms } = useRooms();
+  const navigate = useNavigate();
+  const { rooms, refreshRooms, currentUser } = useRooms();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -22,6 +26,10 @@ const Index = () => {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isFriendsDrawerOpen, setIsFriendsDrawerOpen] = useState(false);
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
+
+  // Окно ввода пароля для приватной комнаты
+  const [selectedPrivateRoom, setSelectedPrivateRoom] = useState<Room | null>(null);
+  const [inputPassword, setInputPassword] = useState('');
 
   const categories: { id: CategoryType; label: string; icon: any }[] = [
     { id: 'all', label: 'Все комнаты', icon: Sparkles },
@@ -38,17 +46,38 @@ const Index = () => {
     setTimeout(() => setIsRefreshing(false), 600);
   };
 
-  // ФИЛЬТРАЦИЯ: Приватные комнаты НЕ отображаются в общем списке
+  // Все комнаты отображаются в ленте!
   const filteredRooms = rooms.filter((r) => {
-    if (r.is_private && !searchQuery.trim()) {
-      return false; // Скрывать приватные комнаты из обычной ленты
-    }
     const matchesCategory = activeCategory === 'all' || r.category === activeCategory;
     const matchesSearch =
       r.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
       r.host_name.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesCategory && matchesSearch;
   });
+
+  const handleRoomClick = (room: Room) => {
+    const isOwner = room.host_id === currentUser.id;
+    if (room.is_private && room.access_code && !isOwner) {
+      setSelectedPrivateRoom(room);
+      setInputPassword('');
+    } else {
+      navigate(`/room/${room.id}`);
+    }
+  };
+
+  const handlePasswordSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedPrivateRoom) return;
+
+    if (inputPassword.trim() === selectedPrivateRoom.access_code?.trim()) {
+      showSuccess('Пароль верный!');
+      const targetId = selectedPrivateRoom.id;
+      setSelectedPrivateRoom(null);
+      navigate(`/room/${targetId}`);
+    } else {
+      showError('Неверный пароль!');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans pb-16 md:pb-0">
@@ -58,7 +87,6 @@ const Index = () => {
         onOpenSqlModal={() => setIsSqlModalOpen(true)}
       />
 
-      {/* Уведомление об офлайн-режиме */}
       {!isSupabaseConfigured && (
         <div className="bg-amber-950/80 border-b border-amber-500/40 px-4 py-2 text-center text-xs text-amber-200 flex items-center justify-center gap-2">
           <WifiOff className="h-4 w-4 text-amber-400 shrink-0" />
@@ -95,7 +123,6 @@ const Index = () => {
             Создавайте комнаты, смотрите видео с YouTube, фильм или DJ-сеты вместе с друзьями.
           </p>
 
-          {/* Строка поиска и обновления */}
           <div className="mt-4 md:mt-6 max-w-md mx-auto flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-purple-400" />
@@ -145,15 +172,68 @@ const Index = () => {
         <div className="mt-4 md:mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 md:gap-6">
           {filteredRooms.length === 0 ? (
             <div className="col-span-full text-center py-12 text-slate-400 text-xs">
-              Публичных комнат пока нет. Создайте новую или перейдите по прямой ссылке на приватную комнату!
+              Комнат пока нет. Создайте первую комнату!
             </div>
           ) : (
             filteredRooms.map((room) => (
-              <RoomCard key={room.id} room={room} />
+              <RoomCard
+                key={room.id}
+                room={room}
+                onClick={() => handleRoomClick(room)}
+              />
             ))
           )}
         </div>
       </main>
+
+      {/* Диалог ввода пароля для приватной комнаты */}
+      <Dialog open={Boolean(selectedPrivateRoom)} onOpenChange={(open) => !open && setSelectedPrivateRoom(null)}>
+        <DialogContent className="bg-slate-900 text-slate-100 border-amber-500/40 sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="text-lg font-bold text-amber-400 flex items-center gap-2">
+              <Lock className="h-5 w-5 text-amber-400" /> Приватная комната
+            </DialogTitle>
+            <DialogDescription className="text-slate-300 text-xs mt-1">
+              Введите пароль для доступа к комнате <strong className="text-white">"{selectedPrivateRoom?.title}"</strong>
+            </DialogDescription>
+          </DialogHeader>
+
+          <form onSubmit={handlePasswordSubmit} className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <label htmlFor="privatePass" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
+                <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Пароль комнаты
+              </label>
+              <Input
+                id="privatePass"
+                type="password"
+                placeholder="Введите пароль..."
+                value={inputPassword}
+                onChange={(e) => setInputPassword(e.target.value)}
+                className="bg-slate-950 border-amber-500/40 text-amber-200 text-xs font-mono"
+                autoFocus
+                required
+              />
+            </div>
+
+            <DialogFooter className="pt-2 flex items-center justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setSelectedPrivateRoom(null)}
+                className="border-slate-800 text-slate-300 hover:bg-slate-800 text-xs"
+              >
+                Отмена
+              </Button>
+              <Button
+                type="submit"
+                className="bg-amber-600 hover:bg-amber-500 text-white font-bold text-xs"
+              >
+                Войти в комнату
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <MobileBottomNav
         onOpenCreateModal={() => setIsCreateModalOpen(true)}
