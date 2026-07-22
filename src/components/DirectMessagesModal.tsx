@@ -121,6 +121,8 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     sendDirectMessage,
     activeDmUserId,
     setActiveDmUserId,
+    markDmAsRead,
+    getUnreadCountWith,
   } = useRooms();
 
   const [activeTab, setActiveTab] = useState<'chats' | 'requests'>('chats');
@@ -195,6 +197,12 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     }
   }, [initialTargetUser]);
 
+  useEffect(() => {
+    if (selectedUser) {
+      markDmAsRead(selectedUser.username);
+    }
+  }, [selectedUser?.username, directMessages.length, isOpen]);
+
   const activeMessages = selectedUser ? getDirectMessagesWith(selectedUser.id, selectedUser.username) : [];
 
   useEffect(() => {
@@ -203,6 +211,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
 
   const handleSelectUser = (user: UserProfile) => {
     setActiveDmUserId(user.username);
+    markDmAsRead(user.username);
     setMobileShowChat(true);
   };
 
@@ -431,6 +440,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                       const isSelected = selectedUser?.username.toLowerCase() === user.username.toLowerCase();
                       const isFriend = friendsList.some((f) => f.username.toLowerCase() === user.username.toLowerCase());
                       const avatar = user.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(user.username)}`;
+                      const unreadCount = getUnreadCountWith(user.username);
 
                       return (
                         <div
@@ -443,17 +453,27 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                           }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <img
-                              src={avatar}
-                              alt={user.username}
-                              className="h-8 w-8 rounded-full object-cover shrink-0 ring-1 ring-purple-500/40"
-                            />
+                            <div className="relative shrink-0">
+                              <img
+                                src={avatar}
+                                alt={user.username}
+                                className="h-8 w-8 rounded-full object-cover ring-1 ring-purple-500/40"
+                              />
+                              {unreadCount > 0 && (
+                                <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[9px] font-extrabold h-4 w-4 rounded-full flex items-center justify-center ring-2 ring-slate-950 animate-bounce">
+                                  {unreadCount}
+                                </span>
+                              )}
+                            </div>
                             <div className="min-w-0">
                               <span className="text-xs font-bold text-slate-200 truncate block">
                                 {user.username}
                               </span>
-                              <span className="text-[9px] text-slate-400">
+                              <span className="text-[9px] text-slate-400 flex items-center gap-1">
                                 {isFriend ? 'Друг' : 'Диалог'}
+                                {unreadCount > 0 && (
+                                  <span className="text-pink-400 font-bold">• Новое</span>
+                                )}
                               </span>
                             </div>
                           </div>

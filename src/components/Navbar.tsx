@@ -16,13 +16,15 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateModal,
 }) => {
   const navigate = useNavigate();
-  const { currentUser, isLoggedIn, friendRequests } = useRooms();
+  const { currentUser, isLoggedIn, friendRequests, unreadDmCount } = useRooms();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isDmModalOpen, setIsDmModalOpen] = useState(false);
 
   const pendingCount = friendRequests.filter(
     (r) => r.receiver_id === currentUser.id && r.status === 'pending'
   ).length;
+
+  const totalNotificationCount = unreadDmCount + pendingCount;
 
   return (
     <>
@@ -59,9 +61,9 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <MessageSquare className="h-4 w-4 text-pink-400" />
                 <span className="hidden sm:inline text-xs font-semibold">ЛС</span>
-                {pendingCount > 0 && (
-                  <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center border-2 border-slate-950">
-                    {pendingCount}
+                {totalNotificationCount > 0 && (
+                  <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[9px] font-bold h-4 w-4 rounded-full flex items-center justify-center border-2 border-slate-950 animate-pulse">
+                    {totalNotificationCount}
                   </span>
                 )}
               </Button>

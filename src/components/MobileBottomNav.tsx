@@ -14,16 +14,18 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
 }) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, friendRequests, rooms, unlockedRoomIds } = useRooms();
+  const { currentUser, friendRequests, rooms, unlockedRoomIds, unreadDmCount } = useRooms();
   const [isDmModalOpen, setIsDmModalOpen] = useState(false);
 
   const isHome = location.pathname === '/';
   const isProfile = location.pathname === '/profile';
 
-  // Непрочитанные заявки в друзья для бейджа
+  // Непрочитанные заявки и сообщения
   const pendingCount = friendRequests.filter(
     (r) => r.receiver_id === currentUser.id && r.status === 'pending'
   ).length;
+
+  const totalNotifications = unreadDmCount + pendingCount;
 
   // Быстрый случайный вход в комнату
   const handleRandomRoom = () => {
@@ -61,9 +63,9 @@ export const MobileBottomNav: React.FC<MobileBottomNavProps> = ({
         >
           <div className="relative">
             <MessageSquare className="h-5 w-5 text-purple-300" />
-            {pendingCount > 0 && (
+            {totalNotifications > 0 && (
               <span className="absolute -top-1 -right-1 bg-pink-500 text-white text-[8px] font-bold h-3.5 w-3.5 rounded-full flex items-center justify-center border border-slate-950 animate-pulse">
-                {pendingCount}
+                {totalNotifications}
               </span>
             )}
           </div>

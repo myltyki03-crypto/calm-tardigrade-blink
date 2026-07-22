@@ -48,6 +48,12 @@ interface RoomContextType {
   friendsList: UserProfile[];
   activeDmUserId: string | null;
   setActiveDmUserId: (id: string | null) => void;
+
+  // Система прочитанных ЛС
+  readDmIds: string[];
+  markDmAsRead: (senderUsername: string) => void;
+  unreadDmCount: number;
+  getUnreadCountWith: (senderUsername: string) => number;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
@@ -119,6 +125,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return saved ? JSON.parse(saved) : [];
   });
 
+  const [readDmIds, setReadDmIds] = useState<string[]>(() => {
+    const saved = localStorage.getItem('pulserave_read_dm_ids');
+    return saved ? JSON.parse(saved) : [];
+  });
+
   const [activeDmUserId, setActiveDmUserId] = useState<string | null>(null);
 
   const markRoomUnlocked = (roomId: string) => {
@@ -146,6 +157,10 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [directMessages]);
 
   useEffect(() => {
+    localStorage.setItem('pulserave_read_dm_ids', JSON.stringify(readDmIds));
+  }, [readDmIds]);
+
+  useEffect(() => {
     if (isLoggedIn && currentUser.username && !currentUser.username.startsWith('Гость')) {
       localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
       if (isSupabaseConfigured && supabase) {
@@ -164,11 +179,52 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser, isLoggedIn]);
 
+  const markDmAsRead = (senderUsername: string) => {
+    if (!currentUser.username || !senderUsername) return;
+    const myName = currentUser.username.toLowerCase();
+    const sName = senderUsername.toLowerCase();
+
+    const newReadIds: string[] = [];
+    directMessages.forEach((m) => {
+      const isForMe = m.receiver_name.toLowerCase() === myName || m.receiver_id === currentUser.id;
+      const isFromSender = m.sender_name.toLowerCase() === sName || m.sender_id === senderUsername;
+      if (isForMe && isFromSender) {
+        newReadIds.push(m.id);
+      }
+    });
+
+    if (newReadIds.length > 0) {
+      setReadDmIds((prev) => Array.from(new Set([...prev, ...newReadIds])));
+    }
+  };
+
+  const getUnreadCountWith = (senderUsername: string): number => {
+    if (!currentUser.username || !senderUsername) return 0;
+    const myName = currentUser.username.toLowerCase();
+    const sName = senderUsername.toLowerCase();
+
+    return directMessages.filter((m) => {
+      const isForMe = m.receiver_name.toLowerCase() === myName || m.receiver_id === currentUser.id;
+      const isFromSender = m.sender_name.toLowerCase() === sName || m.sender_id === senderUsername;
+      const isUnread = !readDmIds.includes(m.id);
+      return isForMe && isFromSender && isUnread;
+    }).length;
+  };
+
+  const unreadDmCount = directMessages.filter((m) => {
+    if (!currentUser.username) return false;
+    const myName = currentUser.username.toLowerCase();
+    const isForMe = m.receiver_name.toLowerCase() === myName || m.receiver_id === currentUser.id;
+    const isNotMine = m.sender_name.toLowerCase() !== myName && m.sender_id !== currentUser.id;
+    return isForMe && isNotMine && !readDmIds.includes(m.id);
+  }).length;
+
   const clearAllAccountsAndData = async () => {
     setAccounts([]);
     setIsLoggedIn(false);
     setFriendRequests([]);
     setDirectMessages([]);
+    setReadDmIds([]);
     const guestId = getOrCreateGuestId();
     setCurrentUser({
       id: guestId,
@@ -180,6 +236,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('pulserave_logged_user');
     localStorage.removeItem('pulserave_friend_requests');
     localStorage.removeItem('pulserave_direct_messages');
+    localStorage.removeItem('pulserave_read_dm_ids');
 
     if (isSupabaseConfigured && supabase) {
       try {
@@ -454,6 +511,20 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
               if (prev.some((m) => m.id === newDm.id)) return prev;
               return [...prev, newDm];
             });
+
+            // Уведомление о новом ЛС
+            const myName = (currentUser.username || '').toLowerCase();
+            const isForMe = newDm.receiver_name.toLowerCase() === myName || newDm.receiver_id === currentUser.id;
+            const isNotMine = newDm.sender_name.toLowerCase() !== myName && newDm.sender_id !== currentUser.id;
+
+            if (isForMe && isNotMine) {
+              const preview = newDm.message.startsWith('data:image/')
+                ? '📷 Фотография'
+                : newDm.message.startsWith('data:audio/')
+                ? '🎙️ Голосовое сообщение'
+                : newDm.message;
+              showSuccess(`💬 ${newDm.sender_name}: ${preview}`);
+            }
           }
         }
       )
@@ -510,7 +581,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         supabase.removeChannel(realtimeChannel);
       }
     };
-  }, []);
+  }, [currentUser.username, currentUser.id]);
 
   // Друзья логика
   const sendFriendRequest = async (targetUser: UserProfile) => {
@@ -668,6 +739,9 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (prev.some((m) => m.id === newDm.id)) return prev;
       return [...prev, newDm];
     });
+
+    // Мои сообщения сразу помечаются как прочитанные
+    setReadDmIds((prev) => Array.from(new Set([...prev, newDm.id])));
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('direct_messages').insert([newDm]);
@@ -1015,6 +1089,11 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         friendsList,
         activeDmUserId,
         setActiveDmUserId,
+
+        readDmIds,
+        markDmAsRead,
+        unreadDmCount,
+        getUnreadCountWith,
       }}
     >
       {children}
