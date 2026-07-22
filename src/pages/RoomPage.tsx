@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +35,8 @@ const extractYouTubeDetails = (url: string) => {
 export const RoomPage = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+
   const {
     currentUser,
     getRoomById,
@@ -50,6 +52,8 @@ export const RoomPage = () => {
     activeMembersByRoom,
     joinRoomPresence,
     leaveRoomPresence,
+    unlockedRoomIds,
+    markRoomUnlocked,
   } = useRooms();
 
   const [directRoom, setDirectRoom] = useState<Room | null>(null);
@@ -78,15 +82,16 @@ export const RoomPage = () => {
   }, [id, isRoomsLoaded]);
 
   const isHost = room?.host_id === currentUser.id;
+  const isNavUnlocked = location.state?.unlocked || (room ? unlockedRoomIds.includes(room.id) : false);
 
-  // Если владелец или не приватная - разблокировано сразу
+  // Разблокировка если не приватная, пользователь — хозяин или пароль уже был введен
   useEffect(() => {
     if (room) {
-      if (!room.is_private || !room.access_code || isHost) {
+      if (!room.is_private || !room.access_code || isHost || isNavUnlocked) {
         setIsUnlocked(true);
       }
     }
-  }, [room, isHost]);
+  }, [room, isHost, isNavUnlocked]);
 
   // Фиксация присутствия пользователя в комнате
   useEffect(() => {
@@ -135,6 +140,7 @@ export const RoomPage = () => {
       e.preventDefault();
       if (directPassword.trim() === room.access_code?.trim()) {
         showSuccess('Пароль верный!');
+        markRoomUnlocked(room.id);
         setIsUnlocked(true);
       } else {
         showError('Неверный пароль!');
@@ -152,17 +158,20 @@ export const RoomPage = () => {
             Комната <strong className="text-slate-200">"{room.title}"</strong> защищена паролем.
           </p>
 
-          <form onSubmit={handleDirectPassSubmit} className="space-y-3 pt-2 text-left">
+          <form onSubmit={handleDirectPassSubmit} className="space-y-3 pt-2 text-left" autoComplete="off">
             <div>
               <label className="text-xs font-semibold text-slate-300 flex items-center gap-1 mb-1">
                 <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Введите пароль
               </label>
               <Input
-                type="password"
+                type="text"
+                name="direct_room_pass"
+                autoComplete="off"
+                data-lpignore="true"
                 placeholder="Пароль..."
                 value={directPassword}
                 onChange={(e) => setDirectPassword(e.target.value)}
-                className="bg-slate-950 border-amber-500/40 text-amber-200 text-xs font-mono"
+                className="bg-slate-950 border-amber-500/40 text-amber-200 text-xs font-mono [text-security:disc] [-webkit-text-security:disc]"
                 required
                 autoFocus
               />

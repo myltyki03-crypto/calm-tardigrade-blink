@@ -29,18 +29,18 @@ interface RoomContextType {
   activeMembersByRoom: Record<string, RoomMember[]>;
   joinRoomPresence: (roomId: string) => Promise<void>;
   leaveRoomPresence: (roomId: string) => Promise<void>;
+  unlockedRoomIds: string[];
+  markRoomUnlocked: (roomId: string) => void;
 }
 
 const RoomContext = createContext<RoomContextType | undefined>(undefined);
 
 export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  // Список всех зарегистрированных аккаунтов на устройстве/в БД
   const [accounts, setAccounts] = useState<RegisteredAccount[]>(() => {
     const saved = localStorage.getItem('pulserave_accounts');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Текущий вошедший пользователь
   const [currentUser, setCurrentUser] = useState<UserProfile>(() => {
     const saved = localStorage.getItem('pulserave_logged_user');
     if (saved) {
@@ -78,13 +78,18 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   });
 
   const [activeMembersByRoom, setActiveMembersByRoom] = useState<Record<string, RoomMember[]>>({});
+  
+  // Комнаты, пароль от которых был успешно введен в текущей сессии
+  const [unlockedRoomIds, setUnlockedRoomIds] = useState<string[]>([]);
 
-  // Сохранение списка аккаунтов
+  const markRoomUnlocked = (roomId: string) => {
+    setUnlockedRoomIds((prev) => (prev.includes(roomId) ? prev : [...prev, roomId]));
+  };
+
   useEffect(() => {
     localStorage.setItem('pulserave_accounts', JSON.stringify(accounts));
   }, [accounts]);
 
-  // Сохранение авторизованного пользователя
   useEffect(() => {
     if (isLoggedIn && currentUser.id) {
       localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
@@ -93,7 +98,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [currentUser, isLoggedIn]);
 
-  // ФУНКЦИИ РЕГИСТРАЦИИ И ВХОДА
   const registerUser = (username: string, password_hash: string, avatar_url?: string): boolean => {
     const cleanName = username.trim();
     const existing = accounts.find((a) => a.username.toLowerCase() === cleanName.toLowerCase());
@@ -342,6 +346,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     setRooms((prev) => [roomWithTimestamp, ...prev]);
+    markRoomUnlocked(newRoom.id);
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('rooms').insert([roomWithTimestamp]);
@@ -489,6 +494,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         activeMembersByRoom,
         joinRoomPresence,
         leaveRoomPresence,
+        unlockedRoomIds,
+        markRoomUnlocked,
       }}
     >
       {children}

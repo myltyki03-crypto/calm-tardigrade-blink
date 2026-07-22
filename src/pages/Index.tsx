@@ -18,7 +18,7 @@ import { showSuccess, showError } from '@/utils/toast';
 
 const Index = () => {
   const navigate = useNavigate();
-  const { rooms, refreshRooms, currentUser, isLoggedIn } = useRooms();
+  const { rooms, refreshRooms, currentUser, isLoggedIn, unlockedRoomIds, markRoomUnlocked } = useRooms();
   const [activeCategory, setActiveCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -33,7 +33,6 @@ const Index = () => {
   const [selectedPrivateRoom, setSelectedPrivateRoom] = useState<Room | null>(null);
   const [inputPassword, setInputPassword] = useState('');
 
-  // Открываем форму регистрации/входа если пользователь не авторизован
   useEffect(() => {
     if (!isLoggedIn) {
       setIsAuthModalOpen(true);
@@ -70,11 +69,13 @@ const Index = () => {
     }
 
     const isOwner = room.host_id === currentUser.id;
-    if (room.is_private && !isOwner) {
+    const isAlreadyUnlocked = unlockedRoomIds.includes(room.id);
+
+    if (room.is_private && !isOwner && !isAlreadyUnlocked) {
       setSelectedPrivateRoom(room);
       setInputPassword('');
     } else {
-      navigate(`/room/${room.id}`);
+      navigate(`/room/${room.id}`, { state: { unlocked: true } });
     }
   };
 
@@ -86,8 +87,9 @@ const Index = () => {
     if (inputPassword.trim() === expectedPass) {
       showSuccess('Пароль верный!');
       const targetId = selectedPrivateRoom.id;
+      markRoomUnlocked(targetId);
       setSelectedPrivateRoom(null);
-      navigate(`/room/${targetId}`);
+      navigate(`/room/${targetId}`, { state: { unlocked: true } });
     } else {
       showError('Неверный пароль!');
     }
@@ -220,18 +222,22 @@ const Index = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <form onSubmit={handlePasswordSubmit} className="space-y-4 py-2">
+          <form onSubmit={handlePasswordSubmit} className="space-y-4 py-2" autoComplete="off">
             <div className="space-y-1.5">
               <label htmlFor="privatePass" className="text-xs font-semibold text-slate-300 flex items-center gap-1.5">
                 <KeyRound className="h-3.5 w-3.5 text-amber-400" /> Пароль комнаты
               </label>
               <Input
                 id="privatePass"
-                type="password"
+                type="text"
+                name="room_access_code_input"
+                autoComplete="off"
+                data-lpignore="true"
+                data-form-type="other"
                 placeholder="Введите пароль..."
                 value={inputPassword}
                 onChange={(e) => setInputPassword(e.target.value)}
-                className="bg-slate-950 border-amber-500/40 text-amber-200 text-xs font-mono"
+                className="bg-slate-950 border-amber-500/40 text-amber-200 text-xs font-mono [text-security:disc] [-webkit-text-security:disc]"
                 autoFocus
                 required
               />

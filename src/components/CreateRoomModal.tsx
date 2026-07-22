@@ -142,7 +142,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
     setAccessCode('');
     setIsPrivate(false);
     onClose();
-    navigate(`/room/${newRoom.id}`);
+    navigate(`/room/${newRoom.id}`, { state: { unlocked: true } });
   };
 
   return (
@@ -157,7 +157,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+        <form onSubmit={handleSubmit} className="space-y-4 py-2" autoComplete="off">
           <div className="space-y-1.5">
             <Label htmlFor="title" className="text-xs font-semibold text-slate-300">
               Название комнаты
@@ -220,11 +220,15 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
                 </Label>
                 <Input
                   id="accessCode"
-                  type="password"
+                  type="text"
+                  name="room_access_pass_code"
+                  autoComplete="off"
+                  data-lpignore="true"
+                  data-form-type="other"
                   placeholder="Придумайте пароль..."
                   value={accessCode}
                   onChange={(e) => setAccessCode(e.target.value)}
-                  className="bg-slate-950 border-amber-500/40 focus:border-amber-400 text-amber-200 text-xs font-mono"
+                  className="bg-slate-950 border-amber-500/40 focus:border-amber-400 text-amber-200 text-xs font-mono [text-security:disc] [-webkit-text-security:disc]"
                   required={isPrivate}
                 />
               </div>
