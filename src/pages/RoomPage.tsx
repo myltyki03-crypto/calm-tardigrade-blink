@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Trash2, Loader2, Lock, KeyRound } from 'lucide-react';
+import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock, KeyRound } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
@@ -17,6 +17,8 @@ import { MobileBottomNav } from '@/components/MobileBottomNav';
 import { ChatMessage, QueueItem, Room, RoomMember } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess, showError } from '@/utils/toast';
+
+type MobileTab = 'chat' | 'queue' | 'members' | 'info';
 
 const extractYouTubeDetails = (url: string) => {
   let videoId = '4xDzrJKXOOY';
@@ -59,6 +61,9 @@ export const RoomPage = () => {
   const [isFetchingDirect, setIsFetchingDirect] = useState<boolean>(true);
   const [isUnlocked, setIsUnlocked] = useState<boolean>(false);
   const [directPassword, setDirectPassword] = useState('');
+  
+  // Состояния для вкладок
+  const [activeMobileTab, setActiveMobileTab] = useState<MobileTab>('chat');
   const [sidebarTab, setSidebarTab] = useState<'chat' | 'queue' | 'members'>('chat');
 
   const room = (id ? getRoomById(id) : undefined) || directRoom || undefined;
@@ -370,7 +375,8 @@ export const RoomPage = () => {
             />
           </div>
 
-          <div className="p-3 md:p-4 rounded-2xl border border-purple-900/40 bg-slate-900/80 flex items-center justify-between gap-3 w-full">
+          {/* Панель информации о комнате для ПК */}
+          <div className="hidden lg:flex p-3 md:p-4 rounded-2xl border border-purple-900/40 bg-slate-900/80 items-center justify-between gap-3 w-full">
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base md:text-lg font-bold text-slate-100">{room.title}</h2>
@@ -393,8 +399,100 @@ export const RoomPage = () => {
           </div>
         </div>
 
-        {/* Правая колонка - Боковая панель со вкладками */}
-        <div className="lg:col-span-5 xl:col-span-4 flex flex-col h-[540px] lg:h-[600px] w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden shadow-2xl">
+        {/* 📱 МОБИЛЬНЫЙ ИНТЕРФЕЙС (Переключатель 4 вкладок) */}
+        <div className="lg:hidden flex border-b border-purple-900/40 bg-slate-900/80 rounded-xl p-1 gap-1 my-1 w-full">
+          <button
+            onClick={() => setActiveMobileTab('chat')}
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
+              activeMobileTab === 'chat'
+                ? 'bg-purple-700 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <MessageSquare className="h-3.5 w-3.5" />
+            <span>Чат ({roomMessages.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveMobileTab('queue')}
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
+              activeMobileTab === 'queue'
+                ? 'bg-purple-700 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <ListMusic className="h-3.5 w-3.5" />
+            <span>Очередь ({roomQueue.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveMobileTab('members')}
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
+              activeMobileTab === 'members'
+                ? 'bg-purple-700 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Users className="h-3.5 w-3.5 text-cyan-400" />
+            <span>Люди ({roomMembers.length})</span>
+          </button>
+
+          <button
+            onClick={() => setActiveMobileTab('info')}
+            className={`flex-1 py-2 text-[11px] font-semibold rounded-lg flex items-center justify-center gap-1 transition-all ${
+              activeMobileTab === 'info'
+                ? 'bg-purple-700 text-white shadow'
+                : 'text-slate-400 hover:text-slate-200'
+            }`}
+          >
+            <Info className="h-3.5 w-3.5" />
+            <span>Инфо</span>
+          </button>
+        </div>
+
+        {/* 📱 МОБИЛЬНЫЙ КОНТЕНТ ВКТАДОК */}
+        <div className="lg:hidden flex flex-col h-[480px] w-full">
+          {activeMobileTab === 'chat' && (
+            <RoomChat
+              messages={roomMessages}
+              onSendMessage={handleSendMessage}
+              floatingReactions={floatingReactions}
+            />
+          )}
+
+          {activeMobileTab === 'queue' && (
+            <RoomQueue
+              queue={roomQueue}
+              currentMediaUrl={room.current_media_url}
+              onAddQueueItem={handleAddQueueItem}
+              onVoteItem={handleVoteItem}
+              onPlayNow={handlePlayQueueItem}
+              isHost={isHost}
+            />
+          )}
+
+          {activeMobileTab === 'members' && (
+            <RoomMembersList members={roomMembers} hostId={room.host_id} />
+          )}
+
+          {activeMobileTab === 'info' && (
+            <div className="p-4 rounded-2xl border border-purple-900/40 bg-slate-900/90 space-y-3 w-full">
+              <div>
+                <h3 className="font-bold text-sm text-slate-100">{room.title}</h3>
+                <p className="text-xs text-slate-400 mt-1">{room.description || 'Описание отсутствует.'}</p>
+              </div>
+              <div className="pt-2 border-t border-purple-950 flex items-center justify-between text-xs text-purple-300">
+                <span className="flex items-center gap-1.5 font-bold">
+                  <Users className="h-3.5 w-3.5 text-cyan-400" /> {roomMembers.length} зрителей онлайн
+                </span>
+                <span className="text-pink-400 font-medium">Владелец: {room.host_name}</span>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* 💻 ИНТЕРФЕЙС ТОЛЬКО ДЛЯ ПК (Правая боковая панель) */}
+        <div className="hidden lg:flex lg:col-span-5 xl:col-span-4 flex-col h-[600px] w-full rounded-2xl border border-purple-900/40 bg-slate-900/95 overflow-hidden shadow-2xl">
           <Tabs value={sidebarTab} onValueChange={(val: any) => setSidebarTab(val)} className="flex flex-col h-full w-full min-h-0">
             <TabsList className="grid grid-cols-3 bg-slate-950 p-1 border-b border-purple-900/40 rounded-none shrink-0 h-11">
               <TabsTrigger
