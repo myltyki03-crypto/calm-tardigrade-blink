@@ -22,56 +22,48 @@ import {
 import { CategoryType, Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { showSuccess } from '@/utils/toast';
-import { Sparkles } from 'lucide-react';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
   onClose: () => void;
 }
 
-const SAMPLE_PRESETS = [
-  {
-    label: '🎧 Synthwave Radio',
-    category: 'music' as CategoryType,
+const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string; thumbnail: string }> = {
+  music: {
     url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
     title: 'SYNTHWAVE Radio - Chill Beats to Relax/Study to',
     thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
   },
-  {
-    label: '☕ Lofi Beats',
-    category: 'youtube' as CategoryType,
+  youtube: {
     url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    title: 'lofi hip hop radio 📚 - beats to relax/study to',
+    title: 'lofi hip hop radio - beats to relax/study to',
     thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
   },
-  {
-    label: '🎮 Esports Highlights',
-    category: 'gaming' as CategoryType,
-    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
-    title: 'Top Gaming & Esports Clutch Moments',
-    thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
-  },
-  {
-    label: '🍿 Anime Music Mix',
-    category: 'anime' as CategoryType,
-    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    title: 'Anime Chill OST & Vibes Session',
-    thumbnail: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop&q=80',
-  },
-];
-
-const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string; thumbnail: string }> = {
-  music: SAMPLE_PRESETS[0],
-  youtube: SAMPLE_PRESETS[1],
   movies: {
     url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
     title: 'Indie Cinema Short Film',
     thumbnail: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop&q=80',
   },
-  gaming: SAMPLE_PRESETS[2],
-  anime: SAMPLE_PRESETS[3],
-  livestream: SAMPLE_PRESETS[0],
-  all: SAMPLE_PRESETS[1],
+  gaming: {
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    title: 'Top Gaming Highlights',
+    thumbnail: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=600&auto=format&fit=crop&q=80',
+  },
+  anime: {
+    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    title: 'Anime Music Mix',
+    thumbnail: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=600&auto=format&fit=crop&q=80',
+  },
+  livestream: {
+    url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
+    title: 'Live DJ Stream',
+    thumbnail: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
+  },
+  all: {
+    url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
+    title: 'Popular Stream',
+    thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
+  },
 };
 
 const extractYouTubeDetails = (url: string) => {
@@ -98,15 +90,6 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
   const [category, setCategory] = useState<CategoryType>('music');
   const [isPrivate, setIsPrivate] = useState(false);
   const [allowGuestQueue, setAllowGuestQueue] = useState(true);
-
-  const handleSelectPreset = (preset: typeof SAMPLE_PRESETS[0]) => {
-    setMediaUrl(preset.url);
-    setCategory(preset.category);
-    if (!title) {
-      setTitle(preset.title);
-    }
-    showSuccess(`Selected ${preset.label}`);
-  };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +162,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             />
           </div>
 
-          <div className="space-y-2">
+          <div className="space-y-1.5">
             <Label htmlFor="mediaUrl" className="text-xs font-semibold text-slate-300">
               Video or Music Link <span className="text-slate-500 font-normal">(optional)</span>
             </Label>
@@ -190,25 +173,6 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
             />
-
-            {/* Presets Chips */}
-            <div className="pt-1">
-              <span className="text-[10px] text-purple-300/80 font-medium flex items-center gap-1 mb-1.5">
-                <Sparkles className="h-3 w-3 text-pink-400" /> Quick Stream Presets:
-              </span>
-              <div className="flex flex-wrap gap-1.5">
-                {SAMPLE_PRESETS.map((preset) => (
-                  <button
-                    key={preset.label}
-                    type="button"
-                    onClick={() => handleSelectPreset(preset)}
-                    className="text-[10px] bg-slate-950 hover:bg-purple-950/80 border border-purple-900/50 hover:border-pink-500/50 text-slate-300 hover:text-white px-2 py-1 rounded-full transition-all"
-                  >
-                    {preset.label}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
 
           <div className="space-y-1.5">
