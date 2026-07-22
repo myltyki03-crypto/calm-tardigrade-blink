@@ -8,8 +8,10 @@ import { useRooms } from '@/context/RoomContext';
 interface RoomChatProps {
   messages: ChatMessage[];
   onSendMessage: (text: string) => void;
-  floatingReactions: { id: string; emoji: string; x: number }[];
+  floatingReactions?: { id: string; emoji: string; x: number }[];
 }
+
+const RAVE_REACTIONS = ['❤️', '🔥', '😂', '🎉', '💩', '😮'];
 
 const formatMsgTime = (timeStr?: string) => {
   if (!timeStr) return '';
@@ -26,14 +28,19 @@ const formatMsgTime = (timeStr?: string) => {
 export const RoomChat: React.FC<RoomChatProps> = ({
   messages,
   onSendMessage,
-  floatingReactions,
 }) => {
   const { currentUser } = useRooms();
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  // Фильтруем сообщения, исключая пустые
-  const validMessages = messages.filter((m) => m && m.message && m.message.trim().length > 0);
+  // Фильтруем сообщения: исключаем пустые, системные реакции и одиночные смайлики-реакции
+  const validMessages = messages.filter((m) => {
+    if (!m || !m.message || m.message.trim().length === 0) return false;
+    if (m.type === 'reaction') return false;
+    // Исключаем сообщения, состоящие только из 1 эмодзи реакции
+    if (RAVE_REACTIONS.includes(m.message.trim())) return false;
+    return true;
+  });
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -52,19 +59,6 @@ export const RoomChat: React.FC<RoomChatProps> = ({
 
   return (
     <div className="relative flex flex-col justify-between h-full w-full bg-slate-900/95 overflow-hidden">
-      {/* Анимация реакций */}
-      <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-        {floatingReactions.map((item) => (
-          <div
-            key={item.id}
-            style={{ left: `${item.x}%` }}
-            className="absolute bottom-12 text-3xl animate-bounce transition-all duration-1000 ease-out opacity-90 scale-125"
-          >
-            {item.emoji}
-          </div>
-        ))}
-      </div>
-
       {/* Подшапка чата */}
       <div className="p-2.5 border-b border-purple-900/30 flex items-center justify-between bg-slate-950/40 shrink-0">
         <span className="text-[11px] text-slate-400 flex items-center gap-1 font-medium">
