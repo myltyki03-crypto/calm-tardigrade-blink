@@ -47,8 +47,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentSpeed, setCurrentSpeed] = useState(1);
   const [showControls, setShowControls] = useState(true);
 
-  // Real video playback state
-  const [currentTime, setCurrentTime] = useState(0);
+  // Real & fallback video playback state
+  const [currentTime, setCurrentTime] = useState(room.playback_position_seconds || 0);
   const [duration, setDuration] = useState(0);
 
   // Извлечение ID видео YouTube
@@ -142,14 +142,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     showSuccess(`Playback Speed: ${speed}x`);
   };
 
-  // Слушаем живые события от YouTube iframe API
+  // 1. Приём сообщений от YouTube iframe API
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       try {
         const data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
 
         if (data && data.event === 'infoDelivery' && data.info) {
-          if (typeof data.info.currentTime === 'number') {
+          if (typeof data.info.currentTime === 'number' && data.info.currentTime > 0) {
             setCurrentTime(data.info.currentTime);
           }
           if (typeof data.info.duration === 'number' && data.info.duration > 0) {
@@ -161,18 +161,17 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           }
         }
       } catch (err) {
-        // Игнорируем не-JSON сообщения
+        // Игнорируем внешние не-JSON сообщения
       }
     };
 
     window.addEventListener('message', handleMessage);
 
-    // Запрашиваем состояние плеера и длительность каждые 500мс
     const pingInterval = setInterval(() => {
       sendPlayerCommand('listening', []);
       sendPlayerCommand('getDuration', []);
       sendPlayerCommand('getCurrentTime', []);
-    }, 500);
+    }, 1000);
 
     return () => {
       window.removeEventListener('message', handleMessage);
@@ -181,15 +180,33 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [videoId]);
 
+  // 2. Гарантированный таймер воспроизведения секунда за секундой
+  useEffect(() => {
+    let playInterval: NodeJS.Timeout | null = null;
+
+    if (isPlaying) {
+      playInterval = setInterval(() => {
+        setCurrentTime((prev) => {
+          const maxDur = duration > 0 ? duration : 240;
+          if (prev >= maxDur) return 0;
+          return prev + 1;
+        });
+      }, 1000);
+    }
+
+    return () => {
+      if (playInterval) clearInterval(playInterval);
+    };
+  }, [isPlaying, duration]);
+
   // Сброс времени при смене видео
   useEffect(() => {
     setCurrentTime(0);
-    setDuration(0);
-    // Сразу запрашиваем длительность нового видео
+    setDuration(240); // 4 мин по умолчанию до ответа API
     setTimeout(() => {
       sendPlayerCommand('listening', []);
       sendPlayerCommand('getDuration', []);
-    }, 300);
+    }, 500);
   }, [videoId]);
 
   // Переключение воспроизведения/паузы
@@ -232,13 +249,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  // Эффективная длительность видео
+  const effectiveDuration = duration > 0 ? duration : 240;
+
   // Промотка видео на точную секунду
   const handleSeek = (newProgressPercent: number) => {
-    if (duration > 0) {
-      const targetSeconds = (newProgressPercent / 100) * duration;
-      setCurrentTime(targetSeconds);
-      sendPlayerCommand('seekTo', [targetSeconds, true]);
-    }
+    const targetSeconds = (newProgressPercent / 100) * effectiveDuration;
+    setCurrentTime(targetSeconds);
+    sendPlayerCommand('seekTo', [targetSeconds, true]);
   };
 
   // Пересинхронизация
@@ -258,7 +276,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progressPercent = (currentTime / effectiveDuration) * 100;
 
   return (
     <div
@@ -344,14 +362,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {formatTime(currentTime)}
           </span>
           <Slider
-            value={[progressPercent]}
+            value={[Math.min(100, Math.max(0, progressPercent))]}
             max={100}
             step={0.1}
             onValueChange={(val) => handleSeek(val[0])}
             className="flex-1 cursor-pointer"
           />
           <span className="text-[10px] font-mono text-slate-400 w-10 text-right">
-            {formatTime(duration)}
+            {formatTime(effectiveDuration)}
           </span>
         </div>
 
