@@ -12,6 +12,7 @@ interface RoomContextType {
   loginUser: (username: string, password_hash: string) => Promise<boolean>;
   logoutUser: () => void;
   updateUserProfile: (updated: Partial<UserProfile>) => Promise<boolean>;
+  clearAllAccountsAndData: () => Promise<void>;
   rooms: Room[];
   isRoomsLoaded: boolean;
   refreshRooms: () => Promise<void>;
@@ -132,7 +133,6 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.setItem('pulserave_direct_messages', JSON.stringify(directMessages));
   }, [directMessages]);
 
-  // Автоматическая синхронизация текущего профиля в Supabase
   useEffect(() => {
     if (isLoggedIn && currentUser.username && currentUser.username !== 'Гость') {
       localStorage.setItem('pulserave_logged_user', JSON.stringify(currentUser));
@@ -151,6 +151,35 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       localStorage.removeItem('pulserave_logged_user');
     }
   }, [currentUser, isLoggedIn]);
+
+  const clearAllAccountsAndData = async () => {
+    setAccounts([]);
+    setFriendRequests([]);
+    setDirectMessages([]);
+    setIsLoggedIn(false);
+    setCurrentUser({
+      id: '',
+      username: 'Гость',
+      avatar_url: 'https://api.dicebear.com/7.x/bottts/svg?seed=guest',
+    });
+
+    localStorage.removeItem('pulserave_accounts');
+    localStorage.removeItem('pulserave_logged_user');
+    localStorage.removeItem('pulserave_friend_requests');
+    localStorage.removeItem('pulserave_direct_messages');
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase.from('friend_requests').delete().neq('id', 'keep_none');
+        await supabase.from('direct_messages').delete().neq('id', 'keep_none');
+        await supabase.from('profiles').delete().neq('id', 'keep_none');
+      } catch (e) {
+        console.error('Supabase cleanup error:', e);
+      }
+    }
+
+    showSuccess('Все аккаунты и истории сообщений успешно удалены!');
+  };
 
   const registerUser = async (username: string, password_hash: string, avatar_url?: string): Promise<boolean> => {
     const cleanName = username.trim();
@@ -481,7 +510,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       targetUser = accounts.find((a) => a.username.toLowerCase() === cleanTarget.toLowerCase()) || null;
     }
 
-    // Если не найден в профилях, создаем дефолтное назначение по имени
+    // Если пользователь пока не найден, все равно генерируем адресата по имени
     const targetId = targetUser?.id || `usr_${cleanTarget}`;
     const targetName = targetUser?.username || cleanTarget;
 
@@ -525,8 +554,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('friend_requests').insert([newReq]);
       if (error) {
-        console.warn('Friend request insert error, retrying without receiver_avatar:', error);
-        // Fallback retry без поля receiver_avatar для старых схем БД
+        console.warn('Friend request insert fallback:', error);
         const fallbackReq = {
           id: newReq.id,
           sender_id: newReq.sender_id,
@@ -610,8 +638,8 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return isSender || isReceiver;
     })
     .map((r) => {
-      const sName = (r.sender_name || '').toLowerCase();
       const sId = r.sender_id || '';
+      const sName = (r.sender_name || '').toLowerCase();
       const isSender = (myId && sId === myId) || (myName && sName === myName);
 
       const friendId = isSender ? r.receiver_id : r.sender_id;
@@ -621,7 +649,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         : (r.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friendName)}`);
 
       return {
-        id: friendId || `usr_${friendName}`,
+        id: friendId,
         username: friendName,
         avatar_url: friendAvatar,
         is_online: true,
@@ -914,6 +942,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         loginUser,
         logoutUser,
         updateUserProfile,
+        clearAllAccountsAndData,
         rooms,
         isRoomsLoaded,
         refreshRooms: fetchRooms,

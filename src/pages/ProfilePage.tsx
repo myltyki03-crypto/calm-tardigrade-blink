@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, Clock, Radio, Edit3, User, Upload, RefreshCw, MessageSquare, Image, LogOut } from 'lucide-react';
+import { ArrowLeft, Clock, Radio, Edit3, User, Upload, RefreshCw, MessageSquare, Image, LogOut, Trash2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
@@ -22,7 +22,7 @@ const getDefaultAvatar = (seed: string) => {
 
 export const ProfilePage = () => {
   const navigate = useNavigate();
-  const { currentUser, updateUserProfile, logoutUser } = useRooms();
+  const { currentUser, updateUserProfile, logoutUser, clearAllAccountsAndData } = useRooms();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -85,6 +85,13 @@ export const ProfilePage = () => {
     navigate('/');
   };
 
+  const handleResetAllAccounts = async () => {
+    if (window.confirm('Вы точно хотите удалить все зарегистрированные аккаунты?')) {
+      await clearAllAccountsAndData();
+      navigate('/');
+    }
+  };
+
   const displayAvatar = currentUser.avatar_url || getDefaultAvatar(currentUser.username);
 
   return (
@@ -100,14 +107,26 @@ export const ProfilePage = () => {
             <ArrowLeft className="h-4 w-4" /> Главная
           </Button>
 
-          <Button
-            onClick={handleLogout}
-            variant="ghost"
-            size="sm"
-            className="text-red-400 hover:text-red-300 hover:bg-red-950/40 text-xs gap-1.5 rounded-xl"
-          >
-            <LogOut className="h-4 w-4" /> Выйти из аккаунта
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              onClick={handleResetAllAccounts}
+              variant="ghost"
+              size="sm"
+              className="text-red-400 hover:text-red-300 hover:bg-red-950/40 text-xs gap-1.5 rounded-xl"
+              title="Удалить все созданные аккаунты"
+            >
+              <Trash2 className="h-4 w-4" /> Очистить все аккаунты
+            </Button>
+
+            <Button
+              onClick={handleLogout}
+              variant="ghost"
+              size="sm"
+              className="text-slate-400 hover:text-slate-200 text-xs gap-1.5 rounded-xl"
+            >
+              <LogOut className="h-4 w-4" /> Выйти
+            </Button>
+          </div>
         </div>
 
         <div className="p-6 rounded-3xl border border-purple-900/50 bg-slate-900/90 text-center relative overflow-hidden shadow-2xl">

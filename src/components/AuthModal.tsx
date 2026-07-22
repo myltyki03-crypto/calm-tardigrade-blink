@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Lock, LogIn, UserPlus, Sparkles, ShieldCheck, Loader2 } from 'lucide-react';
+import { User, Lock, LogIn, UserPlus, Sparkles, ShieldCheck, Loader2, Trash2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -20,7 +20,7 @@ interface AuthModalProps {
 }
 
 export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
-  const { registerUser, loginUser } = useRooms();
+  const { registerUser, loginUser, clearAllAccountsAndData } = useRooms();
   const [activeTab, setActiveTab] = useState<'login' | 'register'>('register');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -83,6 +83,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
       }
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResetAll = async () => {
+    if (window.confirm('Вы уверены, что хотите удалить все зарегистрированные аккаунты и сообщения?')) {
+      await clearAllAccountsAndData();
     }
   };
 
@@ -218,6 +224,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
             </form>
           </TabsContent>
         </Tabs>
+
+        <div className="mt-4 pt-3 border-t border-purple-900/40 text-center">
+          <Button
+            type="button"
+            onClick={handleResetAll}
+            variant="ghost"
+            size="sm"
+            className="text-red-400 hover:text-red-300 hover:bg-red-950/40 text-[11px] h-7 gap-1"
+          >
+            <Trash2 className="h-3.5 w-3.5" /> Удалить все аккаунты и сбросить данные
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );
