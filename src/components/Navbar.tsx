@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Play, Plus, LogIn } from 'lucide-react';
+import { Play, Plus, LogIn, Users } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useRooms } from '@/context/RoomContext';
 import { AuthModal } from '@/components/AuthModal';
+import { FriendsDrawer } from '@/components/FriendsDrawer';
 
 interface NavbarProps {
   onOpenCreateModal: () => void;
@@ -15,8 +16,16 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenCreateModal,
 }) => {
   const navigate = useNavigate();
-  const { currentUser, isLoggedIn } = useRooms();
+  const { currentUser, isLoggedIn, friendRequests } = useRooms();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const [isFriendsOpen, setIsFriendsOpen] = useState(false);
+
+  const pendingIncomingCount = friendRequests.filter(
+    (r) =>
+      r.status === 'pending' &&
+      ((r.receiver_id && r.receiver_id === currentUser.id) ||
+        (r.receiver_name && r.receiver_name.toLowerCase() === currentUser.username.toLowerCase()))
+  ).length;
 
   return (
     <>
@@ -43,6 +52,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
           {/* Кнопки действий */}
           <div className="flex items-center gap-1.5 md:gap-3">
+            {isLoggedIn && (
+              <Button
+                onClick={() => setIsFriendsOpen(true)}
+                size="sm"
+                variant="outline"
+                className="relative border-purple-800 text-purple-200 hover:bg-purple-900/60 text-xs h-8 px-2.5 rounded-xl gap-1.5 font-bold"
+              >
+                <Users className="h-3.5 w-3.5 text-pink-400" />
+                <span className="hidden sm:inline">Друзья</span>
+                {pendingIncomingCount > 0 && (
+                  <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-pink-600 text-white text-[9px] font-black flex items-center justify-center animate-bounce shadow-md">
+                    {pendingIncomingCount}
+                  </span>
+                )}
+              </Button>
+            )}
+
             <Button
               onClick={onOpenCreateModal}
               size="sm"
@@ -80,6 +106,7 @@ export const Navbar: React.FC<NavbarProps> = ({
       </header>
 
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
+      <FriendsDrawer isOpen={isFriendsOpen} onClose={() => setIsFriendsOpen(false)} />
     </>
   );
 };

@@ -29,6 +29,8 @@ const FULL_SQL_SCHEMA = `-- ==========================================
 -- Скопируйте этот код и запустите в Supabase -> SQL Editor -> Run
 -- ==========================================
 
+drop table if exists public.direct_messages cascade;
+drop table if exists public.friend_requests cascade;
 drop table if exists public.room_members cascade;
 drop table if exists public.chat_messages cascade;
 drop table if exists public.queue_items cascade;
@@ -102,23 +104,51 @@ create table public.room_members (
   joined_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
+create table public.friend_requests (
+  id text primary key,
+  sender_id text not null,
+  sender_name text not null,
+  sender_avatar text,
+  receiver_id text not null,
+  receiver_name text not null,
+  status text default 'pending',
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
+create table public.direct_messages (
+  id text primary key,
+  sender_id text not null,
+  sender_name text not null,
+  sender_avatar text,
+  receiver_id text not null,
+  receiver_name text not null,
+  message text not null,
+  created_at timestamp with time zone default timezone('utc'::text, now()) not null
+);
+
 alter table public.profiles enable row level security;
 alter table public.rooms enable row level security;
 alter table public.queue_items enable row level security;
 alter table public.chat_messages enable row level security;
 alter table public.room_members enable row level security;
+alter table public.friend_requests enable row level security;
+alter table public.direct_messages enable row level security;
 
 create policy "Public Profiles Policy" on public.profiles for all using (true) with check (true);
 create policy "Public Rooms Policy" on public.rooms for all using (true) with check (true);
 create policy "Public Queue Policy" on public.queue_items for all using (true) with check (true);
 create policy "Public Chat Policy" on public.chat_messages for all using (true) with check (true);
 create policy "Public Members Policy" on public.room_members for all using (true) with check (true);
+create policy "Public Friend Requests Policy" on public.friend_requests for all using (true) with check (true);
+create policy "Public Direct Messages Policy" on public.direct_messages for all using (true) with check (true);
 
 alter publication supabase_realtime add table public.rooms;
 alter publication supabase_realtime add table public.chat_messages;
 alter publication supabase_realtime add table public.queue_items;
 alter publication supabase_realtime add table public.room_members;
 alter publication supabase_realtime add table public.profiles;
+alter publication supabase_realtime add table public.friend_requests;
+alter publication supabase_realtime add table public.direct_messages;
 `;
 
 export const SqlSchemaDialog: React.FC<SqlSchemaDialogProps> = ({ isOpen, onClose }) => {
