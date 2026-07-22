@@ -49,6 +49,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
+  // Рефы для защиты от частых авто-перемоток у гостей
+  const lastAutoSeekTimeRef = useRef<number>(0);
+  const lastHostSyncSaveRef = useRef<number>(0);
+
   const [isPlaying, setIsPlaying] = useState(room.is_playing);
   const [volume, setVolume] = useState(80);
   const [isMuted, setIsMuted] = useState(false);
@@ -60,11 +64,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
 
+  // Расчет примерного текущего времени с учетом времени изменения у хоста
   const getCalculatedHostTime = () => {
     let startSec = room.playback_position_seconds || 0;
     if (room.is_playing && room.last_updated_at) {
       const elapsed = (Date.now() - new Date(room.last_updated_at).getTime()) / 1000;
-      if (elapsed > 0) {
+      if (elapsed > 0 && elapsed < 86400) {
         startSec += elapsed;
       }
     }
@@ -151,15 +156,30 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
         const cur = ytPlayerRef.current.getCurrentTime();
         const dur = ytPlayerRef.current.getDuration();
+        const now = Date.now();
+
         if (typeof cur === 'number') {
           setCurrentTime(cur);
 
           if (isHost) {
-            const playerState = ytPlayerRef.current.getPlayerState?.();
-            updateRoomProgress(room.id, cur, playerState === 1);
+            // Хост отправляет свой прогресс в базу раз в 8 секунд
+            if (now - lastHostSyncSaveRef.current > 8000) {
+              lastHostSyncSaveRef.current = now;
+              const playerState = ytPlayerRef.current.getPlayerState?.();
+              updateRoomProgress(room.id, cur, playerState === 1);
+            }
           } else {
+            // Умная синхронизация для Гостя:
+            // Корректируем только при сильном отставании (>6 сек) и не чаще чем раз в 8 секунд!
             const targetHostTime = getCalculatedHostTime();
-            if (room.is_playing && Math.abs(cur - targetHostTime) > 2.5) {
+            const timeDiff = Math.abs(cur - targetHostTime);
+
+            if (
+              room.is_playing &&
+              timeDiff > 6 &&
+              now - lastAutoSeekTimeRef.current > 8000
+            ) {
+              lastAutoSeekTimeRef.current = now;
               ytPlayerRef.current.seekTo(targetHostTime, true);
             }
           }
