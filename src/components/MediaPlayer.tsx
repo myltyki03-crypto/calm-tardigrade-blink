@@ -420,7 +420,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         <div
           ref={playerContainerRef}
-          className="absolute -top-[17.5%] -left-[17.5%] w-[135%] h-[135%] pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none"
+          className="absolute inset-0 w-full h-full pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none"
         />
 
         <div
