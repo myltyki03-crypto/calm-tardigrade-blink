@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { ArrowLeft, Users, Share2, MessageSquare, ListMusic, Info, Trash2, Loader2, Lock, KeyRound, Radio } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -113,9 +113,47 @@ export const RoomPage = () => {
   }, [room?.id, isUnlocked]);
 
   const [floatingReactions, setFloatingReactions] = useState<{ id: string; emoji: string; x: number }[]>([]);
+  const processedReactionIdsRef = useRef<Set<string>>(new Set());
+
   const [isSqlModalOpen, setIsSqlModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+
+  const roomMessages = room ? (messagesByRoom[room.id] || []) : [];
+
+  // Помечаем старые реакции при первичном входе в комнату
+  useEffect(() => {
+    if (!room) return;
+    const existingReactions = roomMessages.filter((m) => m.type === 'reaction' || RAVE_REACTIONS.includes(m.message.trim()));
+    existingReactions.forEach((m) => processedReactionIdsRef.current.add(m.id));
+  }, [room?.id]);
+
+  // Слушаем новые входящие реакции для анимации у ВСЕХ участников
+  useEffect(() => {
+    if (!room) return;
+    const reactionMsgs = roomMessages.filter((m) => m.type === 'reaction' || RAVE_REACTIONS.includes(m.message.trim()));
+
+    reactionMsgs.forEach((msg) => {
+      if (!processedReactionIdsRef.current.has(msg.id)) {
+        processedReactionIdsRef.current.add(msg.id);
+
+        const msgTime = new Date(msg.created_at).getTime();
+        if (isNaN(msgTime) || Date.now() - msgTime < 10000) {
+          const reactionObj = {
+            id: msg.id,
+            emoji: msg.message.trim(),
+            x: Math.floor(Math.random() * 80) + 10,
+          };
+
+          setFloatingReactions((prev) => [...prev, reactionObj]);
+
+          setTimeout(() => {
+            setFloatingReactions((prev) => prev.filter((r) => r.id !== reactionObj.id));
+          }, 2200);
+        }
+      }
+    });
+  }, [roomMessages, room?.id]);
 
   if (!isRoomsLoaded || isFetchingDirect) {
     return (
@@ -202,7 +240,6 @@ export const RoomPage = () => {
     );
   }
 
-  const roomMessages = messagesByRoom[room.id] || [];
   const roomQueue = queueByRoom[room.id] || [];
   
   const rawMembers = activeMembersByRoom[room.id] || [];
@@ -269,16 +306,17 @@ export const RoomPage = () => {
   };
 
   const handleSendReaction = (emoji: string) => {
-    const reactionObj = {
-      id: Math.random().toString(),
-      emoji,
-      x: Math.floor(Math.random() * 80) + 10,
+    const reactionMsg: ChatMessage = {
+      id: `react-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      room_id: room.id,
+      user_id: currentUser.id,
+      user_name: currentUser.username,
+      user_avatar: currentUser.avatar_url,
+      message: emoji,
+      type: 'reaction',
+      created_at: new Date().toISOString(),
     };
-    setFloatingReactions((prev) => [...prev, reactionObj]);
-
-    setTimeout(() => {
-      setFloatingReactions((prev) => prev.filter((r) => r.id !== reactionObj.id));
-    }, 2200);
+    sendMessage(room.id, reactionMsg);
   };
 
   const handleSendMessage = (text: string) => {
