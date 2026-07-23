@@ -28,7 +28,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
       .replace(/\?&/g, '?');
 
     const separator = urlWithoutParams.includes('?') ? '&' : '?';
-    return `${urlWithoutParams}${separator}t=${cleanSec}s&autoplay=${autoParam}&js_api=1`;
+    return `${urlWithoutParams}${separator}t=${cleanSec}s&autoplay=${autoParam}&js_api=1&no_stat=1`;
   }
 
   if (mediaInfo.type === 'rutube') {
@@ -103,8 +103,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
 
       if (oid && id) {
         const hashParam = hash ? `&hash=${hash}` : '';
-        // autoplay=0 по умолчанию, чтобы видео не запускалось само по себе
-        embedUrl = `https://${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=0&js_api=1`;
+        embedUrl = `https://${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=0&js_api=1&no_stat=1`;
       }
     } else {
       if (!embedUrl.includes('autoplay=')) {
@@ -113,7 +112,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
         embedUrl = embedUrl.replace(/autoplay=1/gi, 'autoplay=0');
       }
       if (!embedUrl.includes('js_api=')) {
-        embedUrl += '&js_api=1';
+        embedUrl += '&js_api=1&no_stat=1';
       }
     }
 

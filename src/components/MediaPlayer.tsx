@@ -10,9 +10,11 @@ import {
   RotateCcw,
   AlertCircle,
   Zap,
+  Tv,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
+import { Badge } from '@/components/ui/badge';
 import { Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { parseMediaUrl, getEmbedUrlWithTime, MediaInfo } from '@/utils/mediaUtils';
@@ -98,7 +100,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   useEffect(() => {
     setIsEmbedBlocked(false);
     const initialSec = getCalculatedHostTime();
-    // При смене медиа НЕ автозапускаем автоматически
     setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, false));
   }, [mediaInfo.id, mediaInfo.url]);
 
@@ -275,6 +276,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           v.pause();
           setIsPlaying(false);
         }
+      } else if (mediaInfo.type === 'vk') {
+        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime);
+        setIframeSrc(newVkUrl);
       }
     }
   }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
@@ -447,7 +451,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe') {
-        // Перезапускаем плеер ВКонтакте на нужной секунде и с autoplay=1 при нажитии кнопки
         const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
         setIframeSrc(newEmbedUrl);
 
@@ -472,25 +475,33 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       onMouseMove={handleUserActivity}
       onClick={handleUserActivity}
       className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${
-        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video'
+        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20'
       }`}
     >
-      <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКА СИНХРОНИЗАЦИИ ВСЕГДА ВЕРХУ ДЛЯ ВСЕХ УЧАСТНИКОВ */}
-        {!needUserGesture && !isEmbedBlocked && (
-          <div className="absolute top-3 left-3 z-40 pointer-events-auto">
-            <Button
-              onClick={handleSyncClick}
-              size="sm"
-              className="h-8 px-3 bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-black text-xs rounded-full shadow-xl shadow-pink-500/30 backdrop-blur-md flex items-center gap-1.5 border border-white/20 animate-pulse hover:animate-none"
-              title="Синхронизировать VK Видео или эфир с создателем комнаты"
-            >
-              <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
-              <span>Синхронизировать</span>
-            </Button>
-          </div>
-        )}
+      {/* ВЕРХНЯЯ ВНЕШНЯЯ ПАНЕЛЬ ПЛЕЕРА ДЛЯ СИНХРОНИЗАЦИИ (БОЛЬШЕ НЕ ПЕРЕКРЫВАЕТСЯ VK ВИТРИНОЙ) */}
+      <div className="bg-slate-900 border-b border-purple-900/40 p-2 px-3 flex items-center justify-between shrink-0 z-30">
+        <div className="flex items-center gap-2">
+          <Badge className="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-lg flex items-center gap-1">
+            <Tv className="h-3 w-3" />
+            <span className="uppercase">{mediaInfo.type === 'vk' ? 'VK ВИДЕО' : mediaInfo.type}</span>
+          </Badge>
+          <span className="text-xs font-semibold text-slate-200 truncate max-w-[180px] sm:max-w-xs">
+            {mediaInfo.title}
+          </span>
+        </div>
 
+        <Button
+          onClick={handleSyncClick}
+          size="sm"
+          className="h-7 px-3 bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-extrabold text-xs rounded-full shadow-lg shadow-pink-500/20 flex items-center gap-1.5 border border-white/20"
+          title="Нажмите, чтобы синхронизировать кадр с ведущим"
+        >
+          <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300 animate-pulse" />
+          <span>Синхронизировать</span>
+        </Button>
+      </div>
+
+      <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE */}
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
           {floatingReactions.map((e) => (
