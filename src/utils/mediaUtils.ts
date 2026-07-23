@@ -24,6 +24,14 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
       } else {
         urlObj.searchParams.delete('autoplay');
       }
+
+      // Передача времени воспроизведения для VK Видео
+      if (cleanSec > 0) {
+        urlObj.searchParams.set('t', `${cleanSec}s`);
+      } else {
+        urlObj.searchParams.delete('t');
+      }
+
       return urlObj.toString();
     } catch {
       return baseUrl;

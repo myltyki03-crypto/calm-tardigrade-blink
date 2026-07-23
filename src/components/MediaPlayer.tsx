@@ -486,12 +486,15 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       if (command === 'play') {
         win.postMessage({ box_msg: 'play' }, '*');
         win.postMessage({ type: 'play' }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'play' }), '*');
       } else if (command === 'pause') {
         win.postMessage({ box_msg: 'pause' }, '*');
         win.postMessage({ type: 'pause' }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'pause' }), '*');
       } else if (command === 'seek' && typeof value === 'number') {
         win.postMessage({ box_msg: 'seek', value: value }, '*');
         win.postMessage({ type: 'seek', time: value }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'seek', value: value }), '*');
       }
     } catch (e) {
       console.error('Failed to send iframe command:', e);
@@ -706,10 +709,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           v.pause();
           setIsPlaying(false);
         }
-      } else if (mediaInfo.type === 'vk') {
+      } else if (mediaInfo.type === 'vk' || isIframePlayer) {
         const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
         setIframeSrc(newVkUrl);
         setIsPlaying(room.is_playing);
+        setCurrentTime(targetHostTime);
       }
     }
   }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
@@ -868,8 +872,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         videoElementRef.current.currentTime = targetSeconds;
       } else {
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying);
+        setIframeSrc(newEmbedUrl);
         sendIframeCommand('seek', targetSeconds);
-        setIframeSrc(getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying));
       }
 
       updateRoomProgress(room.id, targetSeconds, isPlaying);
@@ -911,8 +916,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (isIframePlayer) {
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, room.is_playing);
         setIframeSrc(newEmbedUrl);
+        setCurrentTime(syncTime);
         sendIframeCommand('play');
         sendIframeCommand('seek', syncTime);
       }
@@ -1122,7 +1128,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>
