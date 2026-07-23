@@ -595,14 +595,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ */}
+        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ / ЧЕРНОГО ЭКРАНА С ВКОНТАКТЕ */}
         {isEmbedBlocked && (
           <div className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
             <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Это видео ограничено автором.
+                Если это видео VK показывает черный экран, скопируйте <strong>«Код вставки» (iframe)</strong> из меню «Поделиться -> Экспорт» ВКонтакте.
               </p>
             </div>
             <a

@@ -15,29 +15,33 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
   if (!baseUrl) return '';
 
   const cleanSec = Math.max(0, Math.floor(startSec));
-  const autoParam = shouldAutoplay ? '1' : '0';
 
   if (mediaInfo.type === 'vk') {
-    let urlWithoutParams = baseUrl
-      .replace(/([?&])autoplay=[^&]*/gi, '')
-      .replace(/([?&])t=[^&]*/gi, '')
-      .replace(/&+/g, '&')
-      .replace(/\?&/g, '?');
-
-    const separator = urlWithoutParams.includes('?') ? '&' : '?';
-    return `${urlWithoutParams}${separator}autoplay=${autoParam}${cleanSec ? `&t=${cleanSec}s` : ''}`;
+    try {
+      const urlObj = new URL(baseUrl);
+      if (shouldAutoplay) {
+        urlObj.searchParams.set('autoplay', '1');
+      } else {
+        urlObj.searchParams.delete('autoplay');
+      }
+      if (cleanSec > 0) {
+        urlObj.searchParams.set('t', `${cleanSec}s`);
+      }
+      return urlObj.toString();
+    } catch {
+      return baseUrl;
+    }
   }
 
   if (mediaInfo.type === 'rutube') {
-    let urlWithoutParams = baseUrl
-      .replace(/([?&])t=[^&]*/gi, '')
-      .replace(/([?&])start=[^&]*/gi, '')
-      .replace(/([?&])autoplay=[^&]*/gi, '')
-      .replace(/&+/g, '&')
-      .replace(/\?&/g, '?');
-
-    const separator = urlWithoutParams.includes('?') ? '&' : '?';
-    return `${urlWithoutParams}${separator}start=${cleanSec}&autoplay=${autoParam}`;
+    try {
+      const urlObj = new URL(baseUrl);
+      urlObj.searchParams.set('start', cleanSec.toString());
+      if (shouldAutoplay) urlObj.searchParams.set('autoplay', '1');
+      return urlObj.toString();
+    } catch {
+      return baseUrl;
+    }
   }
 
   if (mediaInfo.type === 'vimeo') {
@@ -46,12 +50,14 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
   }
 
   if (mediaInfo.type === 'ok') {
-    let urlWithoutParams = baseUrl
-      .replace(/([?&])from=[^&]*/gi, '')
-      .replace(/([?&])autoplay=[^&]*/gi, '')
-      .replace(/&+/g, '&');
-    const separator = urlWithoutParams.includes('?') ? '&' : '?';
-    return `${urlWithoutParams}${separator}from=${cleanSec}&autoplay=${autoParam}`;
+    try {
+      const urlObj = new URL(baseUrl);
+      urlObj.searchParams.set('from', cleanSec.toString());
+      if (shouldAutoplay) urlObj.searchParams.set('autoplay', '1');
+      return urlObj.toString();
+    } catch {
+      return baseUrl;
+    }
   }
 
   return baseUrl;
@@ -60,7 +66,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
 export const parseMediaUrl = (url: string): MediaInfo => {
   let cleanUrl = url.trim();
 
-  // 1. Извлечение ссылки из <iframe>
+  // 1. Извлечение ссылки из <iframe> кодов
   if (cleanUrl.includes('<iframe')) {
     const srcMatch = cleanUrl.match(/src=["']([^"']+)["']/i);
     if (srcMatch && srcMatch[1]) {
@@ -68,11 +74,13 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     }
   }
 
-  // 2. VK ВИДЕО
+  // 2. VK ВИДЕО (vk.com или vkvideo.ru)
   if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/')) {
     let embedUrl = cleanUrl;
     let videoId = '';
+    let hash = '';
 
+    // Если вставлен готовый embed плеера (video_ext.php)
     if (cleanUrl.includes('video_ext.php')) {
       embedUrl = cleanUrl;
       const oidMatch = cleanUrl.match(/oid=(-?\d+)/);
@@ -81,12 +89,20 @@ export const parseMediaUrl = (url: string): MediaInfo => {
         videoId = `${oidMatch[1]}_${idMatch[1]}`;
       }
     } else {
+      // Обычные ссылки вида vk.com/video-211517001_456239103 или vkvideo.ru/video-211517001_456239103
       const match = cleanUrl.match(/video(-?\d+)_(\d+)/);
       if (match) {
         const oid = match[1];
         const id = match[2];
         videoId = `${oid}_${id}`;
-        embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}`;
+
+        try {
+          const parsedUrl = new URL(cleanUrl);
+          hash = parsedUrl.searchParams.get('hash') || '';
+        } catch {}
+
+        const hashQuery = hash ? `&hash=${hash}` : '';
+        embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashQuery}&hd=2`;
       }
     }
 

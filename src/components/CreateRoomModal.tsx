@@ -141,7 +141,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             Создать комнату просмотра
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Поддерживаются ссылки с YouTube, VK Видео, Rutube, Twitch, Vimeo, OK.ru и прямые MP4 файлы.
+            Поддерживаются ссылки с YouTube, VK Видео (или iframe код), Rutube, Twitch, Vimeo, OK.ru и MP4 файлы.
           </DialogDescription>
         </DialogHeader>
 
@@ -176,11 +176,14 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               id="room_media_url_field"
               name="no_autofill_media_url"
               autoComplete="off"
-              placeholder="Вставьте ссылку на YouTube, VK Видео, Rutube или MP4 файл..."
+              placeholder="Ссылка на YouTube, VK Видео (или код <iframe...>), Rutube..."
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
             />
+            <p className="text-[10px] text-slate-400">
+              💡 Для роликов ВК лучше всего копировать <strong>«Код вставки» (iframe)</strong> в меню «Поделиться -> Экспорт».
+            </p>
           </div>
 
           <div className="space-y-1.5">
