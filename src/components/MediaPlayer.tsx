@@ -1,12 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  Play,
-  Pause,
-  Volume2,
-  VolumeX,
-  Maximize,
-  Minimize,
-  Lock,
   RotateCcw,
   AlertCircle,
   Zap,
@@ -15,12 +8,13 @@ import {
   Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Slider } from '@/components/ui/slider';
 import { Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { parseMediaUrl, getEmbedUrlWithTime, MediaInfo } from '@/utils/mediaUtils';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { showSuccess, showError } from '@/utils/toast';
+import { VideoReactionsOverlay } from '@/components/media/VideoReactionsOverlay';
+import { MediaControlsOverlay } from '@/components/media/MediaControlsOverlay';
 
 declare global {
   interface Window {
@@ -83,7 +77,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // Демонстрация экрана ведущего
+  // Демонстрация экрана
   const handleToggleScreenShare = async () => {
     if (!isHost) {
       showError('Только ведущий комнаты может запускать трансляцию экрана');
@@ -676,22 +670,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : (currentTime % 3600) / 36;
   const currentHostname = window.location.hostname || 'localhost';
 
-  // Выносим формируемые строки из JSX для предотвращения синтаксических ошибок в SWC
   const twitchParamKey = mediaInfo.twitchType === 'video' ? 'video=' : 'channel=';
   const twitchAutoplay = room.is_playing ? 'true' : 'false';
-  const twitchSrc = 'https://player.twitch.tv/?' + twitchParamKey + mediaInfo.id + '&parent=' + currentHostname + '&autoplay=' + twitchAutoplay + '&muted=false';
+  const twitchSrc = `https://player.twitch.tv/?${twitchParamKey}${mediaInfo.id}&parent=${currentHostname}&autoplay=${twitchAutoplay}&muted=false`;
 
-  const fullscreenClass = isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video';
-  const playButtonTitle = isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только ведущий может запускать видео';
-  const fullscreenTitle = isFullscreen ? 'Свернуть' : 'На весь экран';
-  const screenShareTitle = isScreenSharingActive ? 'Остановить трансляцию экрана' : 'Поделиться экраном компьютера';
+  const fullscreenClass = isFullscreen
+    ? 'w-screen h-screen justify-between z-50'
+    : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video';
 
   return (
     <div
       ref={containerRef}
       onMouseMove={handleUserActivity}
       onClick={handleUserActivity}
-      className={'relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ' + fullscreenClass}
+      className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${fullscreenClass}`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
@@ -711,13 +703,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <Button
                 onClick={handleToggleScreenShare}
                 size="sm"
-                className={
-                  'h-7 px-3 font-bold text-[11px] rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ' +
-                  (isScreenSharingActive
+                className={`h-7 px-3 font-bold text-[11px] rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
+                  isScreenSharingActive
                     ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 animate-pulse'
-                    : 'bg-purple-800/90 hover:bg-purple-700 text-purple-100 border-purple-500/50')
-                }
-                title={screenShareTitle}
+                    : 'bg-purple-800/90 hover:bg-purple-700 text-purple-100 border-purple-500/50'
+                }`}
+                title={isScreenSharingActive ? 'Остановить трансляцию экрана' : 'Поделиться экраном компьютера'}
               >
                 {isScreenSharingActive ? (
                   <>
@@ -744,17 +735,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         {/* АНИМАЦИЯ СМАЙЛОВ */}
-        <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
-          {floatingReactions.map((e) => (
-            <div
-              key={e.id}
-              style={{ left: `${e.x}%` }}
-              className="absolute bottom-12 text-4xl sm:text-5xl animate-[bounce_1.5s_ease-out_infinite] transition-all duration-1000 ease-out drop-shadow-[0_0_15px_rgba(236,72,153,0.8)]"
-            >
-              {e.emoji}
-            </div>
-          ))}
-        </div>
+        <VideoReactionsOverlay reactions={floatingReactions} />
 
         {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА */}
         {isScreenSharingActive && (
@@ -846,91 +827,24 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
       {/* КАСТОМНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ПЛЕЕРОМ */}
       {(!isIframePlayer && mediaInfo.type !== 'twitch') || isScreenSharingActive ? (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className={
-            'absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ' +
-            (showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none')
-          }
-        >
-          {!isScreenSharingActive && (
-            <div className="flex items-center gap-2 px-1">
-              <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
-                {formatTime(currentTime)}
-              </span>
-              <Slider
-                value={[progressPercent]}
-                max={100}
-                step={0.1}
-                disabled={!isHost}
-                onValueChange={(val) => handleSeek(val[0])}
-                className={'flex-1 ' + (isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75')}
-              />
-              <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
-                {duration > 0 ? formatTime(duration) : '00:00'}
-              </span>
-            </div>
-          )}
-
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2 sm:gap-3">
-              {!isScreenSharingActive && (
-                <Button
-                  onClick={handleTogglePlay}
-                  size="icon"
-                  title={playButtonTitle}
-                  className={
-                    'h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ' +
-                    (isHost ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30' : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400')
-                  }
-                >
-                  {isPlaying ? (
-                    <Pause className="h-4 w-4" />
-                  ) : isHost ? (
-                    <Play className="h-4 w-4 ml-0.5 fill-white" />
-                  ) : (
-                    <Lock className="h-3.5 w-3.5 text-amber-400" />
-                  )}
-                </Button>
-              )}
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleToggleMute}
-                  className="text-slate-200 hover:text-white transition-colors drop-shadow"
-                >
-                  {isMuted || volume === 0 ? (
-                    <VolumeX className="h-4 w-4 text-red-400" />
-                  ) : (
-                    <Volume2 className="h-4 w-4 text-cyan-400" />
-                  )}
-                </button>
-                <Slider
-                  value={[isMuted ? 0 : volume]}
-                  max={100}
-                  step={1}
-                  onValueChange={(val) => handleVolumeChange(val[0])}
-                  className="w-16 sm:w-24 cursor-pointer"
-                />
-                <span className="text-[10px] font-mono text-slate-300 w-6 hidden sm:inline font-bold drop-shadow">
-                  {isMuted ? '0%' : `${volume}%`}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <Button
-                onClick={toggleFullscreen}
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
-                title={fullscreenTitle}
-              >
-                {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4 />}
-              </Button>
-            </div>
-          </div>
-        </div>
+        <MediaControlsOverlay
+          showControls={showControls}
+          isScreenSharingActive={isScreenSharingActive}
+          currentTime={currentTime}
+          duration={duration}
+          progressPercent={progressPercent}
+          isPlaying={isPlaying}
+          isHost={isHost}
+          isMuted={isMuted}
+          volume={volume}
+          isFullscreen={isFullscreen}
+          formatTime={formatTime}
+          onSeek={handleSeek}
+          onTogglePlay={handleTogglePlay}
+          onToggleMute={handleToggleMute}
+          onVolumeChange={handleVolumeChange}
+          onToggleFullscreen={toggleFullscreen}
+        />
       ) : null}
     </div>
   );
