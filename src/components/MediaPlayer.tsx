@@ -10,13 +10,17 @@ import {
   RotateCcw,
   AlertCircle,
   Zap,
+  Monitor,
+  Square,
+  Radio,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { parseMediaUrl, getEmbedUrlWithTime, MediaInfo } from '@/utils/mediaUtils';
-import { showSuccess } from '@/utils/toast';
+import { supabase, isSupabaseConfigured } from '@/lib/supabase';
+import { showSuccess, showError } from '@/utils/toast';
 
 declare global {
   interface Window {
@@ -36,13 +40,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   isHost,
   floatingReactions = [],
 }) => {
-  const { updateRoomProgress } = useRooms();
+  const { updateRoomProgress, setRoomScreenShareState } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
+  const screenShareVideoRef = useRef<HTMLVideoElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // WebRTC и Демонстрация экрана состояния
+  const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const webrtcChannelRef = useRef<any>(null);
 
   const lastHostSyncSaveRef = useRef<number>(0);
   const prevLastUpdatedRef = useRef<string | undefined>(room.last_updated_at);
@@ -64,7 +74,143 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
-  const isIframePlayer = mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe';
+  const isScreenSharingActive = Boolean(room.is_screen_sharing);
+  const isIframePlayer = !isScreenSharingActive && (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe');
+
+  // ФУНКЦИЯ ДЕМОНСТРАЦИИ ЭКРАНА ВЕДУЩЕГО
+  const handleToggleScreenShare = async () => {
+    if (!isHost) {
+      showError('Только ведущий комнаты может запускать трансляцию экрана');
+      return;
+    }
+
+    if (isScreenSharingActive || screenStream) {
+      stopLocalScreenShare();
+      showSuccess('Трансляция экрана остановлена');
+      return;
+    }
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        showError('Ваш браузер не поддерживает захват экрана');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' } as any,
+        audio: true,
+      });
+
+      setScreenStream(stream);
+      setRoomScreenShareState(room.id, true);
+      showSuccess('💻 Демонстрация экрана запущенa!');
+
+      if (screenShareVideoRef.current) {
+        screenShareVideoRef.current.srcObject = stream;
+        screenShareVideoRef.current.play().catch(() => {});
+      }
+
+      stream.getVideoTracks()[0].onended = () => {
+        stopLocalScreenShare();
+      };
+    } catch (err: any) {
+      if (err.name !== 'NotAllowedError') {
+        showError('Не удалось запустить трансляцию экрана');
+      }
+    }
+  };
+
+  const stopLocalScreenShare = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+      setScreenStream(null);
+    }
+    peerConnectionsRef.current.forEach((pc) => pc.close());
+    peerConnectionsRef.current.clear();
+    setRoomScreenShareState(room.id, false);
+  };
+
+  // WebRTC Сигналинг для передачи потока экрана зрителям
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const channel = supabase.channel(`webrtc-screenshare-${room.id}`, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }) => {
+        if (!isHost && isScreenSharingActive) {
+          const pc = createPeerConnection(payload.senderId);
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-answer',
+            payload: { answer, senderId: room.host_id, targetId: payload.senderId },
+          });
+        }
+      })
+      .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }) => {
+        if (isHost && payload.targetId === room.host_id) {
+          const pc = peerConnectionsRef.current.get(payload.senderId);
+          if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+          }
+        }
+      })
+      .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }) => {
+        const pc = peerConnectionsRef.current.get(payload.senderId);
+        if (pc && payload.candidate) {
+          try {
+            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+          } catch (e) {}
+        }
+      })
+      .subscribe();
+
+    webrtcChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [room.id, isHost, isScreenSharingActive]);
+
+  const createPeerConnection = (peerId: string) => {
+    if (peerConnectionsRef.current.has(peerId)) {
+      return peerConnectionsRef.current.get(peerId)!;
+    }
+
+    const pc = new RTCPeerConnection({
+      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+    });
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate && webrtcChannelRef.current) {
+        webrtcChannelRef.current.send({
+          type: 'broadcast',
+          event: 'webrtc-ice',
+          payload: { candidate: event.candidate, senderId: isHost ? room.host_id : 'viewer', targetId: peerId },
+        });
+      }
+    };
+
+    pc.ontrack = (event) => {
+      if (!isHost && screenShareVideoRef.current && event.streams[0]) {
+        screenShareVideoRef.current.srcObject = event.streams[0];
+        screenShareVideoRef.current.play().catch(() => {});
+      }
+    };
+
+    if (isHost && screenStream) {
+      screenStream.getTracks().forEach((track) => pc.addTrack(track, screenStream));
+    }
+
+    peerConnectionsRef.current.set(peerId, pc);
+    return pc;
+  };
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -157,7 +303,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   }, [mediaInfo.type]);
 
   useEffect(() => {
-    if (mediaInfo.type !== 'youtube') return;
+    if (mediaInfo.type !== 'youtube' || isScreenSharingActive) return;
 
     if (!window.YT) {
       const tag = document.createElement('script');
@@ -277,7 +423,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         } catch (e) {}
       }
     };
-  }, [mediaInfo.type, mediaInfo.id]);
+  }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
   useEffect(() => {
     if (!isHost && room.last_updated_at !== prevLastUpdatedRef.current) {
@@ -415,6 +561,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setVolume(newVolume);
     setIsMuted(newVolume === 0);
 
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.volume = newVolume / 100;
+    }
+
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       if (newVolume === 0) {
         ytPlayerRef.current.mute();
@@ -432,6 +582,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const handleToggleMute = () => {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
+
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.muted = nextMute;
+    }
 
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       if (nextMute) ytPlayerRef.current.mute();
@@ -523,9 +677,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКА СИНХРОНИЗАЦИИ */}
+        {/* КНОПКА КАТЕГОРИИ И СИНХРОНИЗАЦИИ */}
         {!needUserGesture && !isEmbedBlocked && (
-          <div className="absolute top-3 left-3 z-40 pointer-events-auto">
+          <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
             <Button
               onClick={handleSyncClick}
               size="sm"
@@ -535,6 +689,40 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <Zap className="h-3 w-3 fill-amber-300 text-amber-300" />
               <span>Синхронизировать</span>
             </Button>
+
+            {/* КНОПКА ЗАПУСКА ИЛИ ОСТАНОВКИ ДЕМОНСТРАЦИИ ЭКРАНА */}
+            {isHost && (
+              <Button
+                onClick={handleToggleScreenShare}
+                size="sm"
+                className={`h-7 px-3 font-bold text-[11px] rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
+                  isScreenSharingActive
+                    ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 animate-pulse'
+                    : 'bg-purple-800/90 hover:bg-purple-700 text-purple-100 border-purple-500/50'
+                }`}
+                title={isScreenSharingActive ? 'Остановить трансляцию экрана' : 'Поделиться экраном компьютера'}
+              >
+                {isScreenSharingActive ? (
+                  <>
+                    <Square className="h-3 w-3 fill-white" />
+                    <span>Стоп экран</span>
+                  </>
+                ) : (
+                  <>
+                    <Monitor className="h-3 w-3 text-cyan-300" />
+                    <span>Транслировать экран</span>
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* ИНДИКАТОР АКТИВНОЙ ДЕМОНСТРАЦИИ ЭКРАНА */}
+        {isScreenSharingActive && (
+          <div className="absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg">
+            <Radio className="h-3 w-3 text-pink-400 animate-pulse" />
+            <span>{isHost ? 'Вы транслируете экран' : 'Прямая трансляция экрана ведущего'}</span>
           </div>
         )}
 
@@ -551,8 +739,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           ))}
         </div>
 
+        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА */}
+        {isScreenSharingActive && (
+          <video
+            ref={screenShareVideoRef}
+            className="absolute inset-0 w-full h-full object-contain bg-black z-25 pointer-events-auto"
+            autoPlay
+            playsInline
+          />
+        )}
+
         {/* 1. YOUTUBE */}
-        {mediaInfo.type === 'youtube' && (
+        {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
           <div
             ref={playerContainerRef}
             className="absolute inset-0 w-full h-full pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none"
@@ -560,7 +758,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         {/* 2. TWITCH */}
-        {mediaInfo.type === 'twitch' && (
+        {!isScreenSharingActive && mediaInfo.type === 'twitch' && (
           <iframe
             ref={iframeRef}
             src={`https://player.twitch.tv/?${
@@ -574,7 +772,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         {/* 3. RUTUBE, VK, VIMEO, OK И IFRAME */}
-        {isIframePlayer && (
+        {!isScreenSharingActive && isIframePlayer && (
           <iframe
             ref={iframeRef}
             key={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
@@ -586,7 +784,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         {/* 4. DIRECT VIDEO (MP4 / WebM / OGG) */}
-        {mediaInfo.type === 'direct' && (
+        {!isScreenSharingActive && mediaInfo.type === 'direct' && (
           <video
             ref={videoElementRef}
             src={mediaInfo.url}
@@ -595,24 +793,24 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ / ЧЕРНОГО ЭКРАНА С ВКОНТАКТЕ */}
-        {isEmbedBlocked && (
+        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ */}
+        {isEmbedBlocked && !isScreenSharingActive && (
           <div className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
             <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Если это видео VK показывает черный экран, скопируйте <strong>«Код вставки» (iframe)</strong> из меню «Поделиться -> Экспорт» ВКонтакте.
+                Запустите <strong>Трансляцию экрана</strong> кнопкой сверху, чтобы показать это видео всем зрителям!
               </p>
             </div>
-            <a
-              href={mediaInfo.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg hover:opacity-90 transition-opacity"
-            >
-              Открыть на источнике
-            </a>
+            {isHost && (
+              <Button
+                onClick={handleToggleScreenShare}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg"
+              >
+                <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
+              </Button>
+            )}
           </div>
         )}
 
@@ -630,51 +828,55 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
       </div>
 
-      {/* КАСТОМНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ПЛЕЕРОМ (Отображается только для YouTube и прямых MP4 видео) */}
-      {!isIframePlayer && mediaInfo.type !== 'twitch' && (
+      {/* КАСТОМНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ПЛЕЕРОМ */}
+      {(!isIframePlayer && mediaInfo.type !== 'twitch') || isScreenSharingActive ? (
         <div
           onClick={(e) => e.stopPropagation()}
           className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ${
             showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
           }`}
         >
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
-              {formatTime(currentTime)}
-            </span>
-            <Slider
-              value={[progressPercent]}
-              max={100}
-              step={0.1}
-              disabled={!isHost}
-              onValueChange={(val) => handleSeek(val[0])}
-              className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
-            />
-            <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
-              {duration > 0 ? formatTime(duration) : '00:00'}
-            </span>
-          </div>
+          {!isScreenSharingActive && (
+            <div className="flex items-center gap-2 px-1">
+              <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
+                {formatTime(currentTime)}
+              </span>
+              <Slider
+                value={[progressPercent]}
+                max={100}
+                step={0.1}
+                disabled={!isHost}
+                onValueChange={(val) => handleSeek(val[0])}
+                className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
+              />
+              <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
+                {duration > 0 ? formatTime(duration) : '00:00'}
+              </span>
+            </div>
+          )}
 
           <div className="flex items-center justify-between pt-1">
             <div className="flex items-center gap-2 sm:gap-3">
-              <Button
-                onClick={handleTogglePlay}
-                size="icon"
-                title={isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только владелец комнаты может запускать видео'}
-                className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
-                  isHost
-                    ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
-                    : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400'
-                }`}
-              >
-                {isPlaying ? (
-                  <Pause className="h-4 w-4" />
-                ) : isHost ? (
-                  <Play className="h-4 w-4 ml-0.5 fill-white" />
-                ) : (
-                  <Lock className="h-3.5 w-3.5 text-amber-400" />
-                )}
-              </Button>
+              {!isScreenSharingActive && (
+                <Button
+                  onClick={handleTogglePlay}
+                  size="icon"
+                  title={isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только владелец комнаты может запускать видео'}
+                  className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
+                    isHost
+                      ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
+                      : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400'
+                  }`}
+                >
+                  {isPlaying ? (
+                    <Pause className="h-4 w-4" />
+                  ) : isHost ? (
+                    <Play className="h-4 w-4 ml-0.5 fill-white" />
+                  ) : (
+                    <Lock className="h-3.5 w-3.5 text-amber-400" />
+                  )}
+                </Button>
+              )}
 
               <div className="flex items-center gap-2">
                 <button
@@ -708,12 +910,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
                 title={isFullscreen ? 'Свернуть' : 'На весь экран'}
               >
-                {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+                {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4 />}
               </Button>
             </div>
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 };

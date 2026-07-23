@@ -72,6 +72,7 @@ export interface Room {
   playback_position_seconds: number;
   last_updated_at?: string;
   is_playing: boolean;
+  is_screen_sharing?: boolean;
   member_count: number;
   allow_guest_queue: boolean;
   allow_guest_control: boolean;

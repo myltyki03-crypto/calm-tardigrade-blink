@@ -27,6 +27,7 @@ interface RoomContextType {
   voteQueueItem: (roomId: string, itemId: string) => void;
   changeRoomMedia: (roomId: string, url: string, title?: string, thumbnail?: string) => void;
   updateRoomProgress: (roomId: string, seconds: number, isPlaying?: boolean) => void;
+  setRoomScreenShareState: (roomId: string, isSharing: boolean) => void;
   removeQueueItem: (roomId: string, itemId: string) => void;
   activeMembersByRoom: Record<string, RoomMember[]>;
   joinRoomPresence: (roomId: string) => Promise<void>;
@@ -799,7 +800,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const senderIsMe = (myId && sId === myId) || (myName && sName === myName);
         const senderIsTarget = (tId && sId === tId) || (tName && sName === tName);
 
-        const receiverIsMe = (myId && rId === myId) || (myName && rName === myName);
+        const receiverIsMe = (myId && rId === myId) || (myName && rId === myName);
         const receiverIsTarget = (tId && rId === tId) || (tName && rName === tName);
 
         return (senderIsMe && receiverIsTarget) || (senderIsTarget && receiverIsMe);
@@ -1024,6 +1025,26 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       playback_position_seconds: 0,
       last_updated_at: new Date().toISOString(),
       is_playing: true,
+      is_screen_sharing: false,
+    };
+
+    setRooms((prev) =>
+      prev.map((r) => (r.id === roomId ? { ...r, ...updatePayload } : r))
+    );
+
+    if (isSupabaseConfigured && supabase) {
+      await supabase.from('rooms').update(updatePayload).eq('id', roomId);
+    }
+  };
+
+  const setRoomScreenShareState = async (roomId: string, isSharing: boolean) => {
+    const room = rooms.find((r) => r.id === roomId);
+    const updatePayload = {
+      is_screen_sharing: isSharing,
+      ...(isSharing && {
+        current_media_title: `💻 Трансляция экрана (${room?.host_name || 'Ведущего'})`,
+      }),
+      last_updated_at: new Date().toISOString(),
     };
 
     setRooms((prev) =>
@@ -1141,6 +1162,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         voteQueueItem,
         changeRoomMedia,
         updateRoomProgress,
+        setRoomScreenShareState,
         removeQueueItem,
         activeMembersByRoom,
         joinRoomPresence,
