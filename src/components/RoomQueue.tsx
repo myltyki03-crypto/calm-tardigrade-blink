@@ -51,7 +51,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
             name="queue_link_no_autofill"
             autoComplete="off"
             aria-autocomplete="none"
-            placeholder="Ссылка на YouTube, Twitch, MP4..."
+            placeholder="Ссылка на YouTube, Rutube, VK, Twitch, MP4..."
             value={urlInput}
             onChange={(e) => setUrlInput(e.target.value)}
             className="pl-8 bg-slate-900 border-purple-900/50 text-xs text-slate-100 placeholder:text-slate-500 h-9 w-full rounded-full"
@@ -71,7 +71,7 @@ export const RoomQueue: React.FC<RoomQueueProps> = ({
         <div className="space-y-2">
           {queue.length === 0 ? (
             <div className="text-center py-8 text-xs text-slate-500">
-              Очередь пуста. Вставьте ссылку на YouTube или Twitch выше!
+              Очередь пуста. Вставьте ссылку на YouTube, Rutube, VK, Twitch или MP4 выше!
             </div>
           ) : (
             queue.map((item, idx) => {

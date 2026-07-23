@@ -12,6 +12,7 @@ import {
   RotateCcw,
   ExternalLink,
   AlertCircle,
+  Video,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -61,6 +62,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
+  const isInteractivePlayer = mediaInfo.type === 'youtube' || mediaInfo.type === 'direct';
+
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
       try {
@@ -84,7 +87,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   useEffect(() => {
     setIsEmbedBlocked(false);
-  }, [mediaInfo.id]);
+  }, [mediaInfo.id, mediaInfo.url]);
 
   useEffect(() => {
     if (mediaInfo.type === 'direct' && videoElementRef.current) {
@@ -178,7 +181,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             }
           },
           onError: (event: any) => {
-            // Коды 101, 150, 2 означает что автор запретил встраивать видео или оно удалено
             if (event.data === 101 || event.data === 150 || event.data === 2) {
               setIsEmbedBlocked(true);
             } else {
@@ -341,7 +343,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         setIsPlaying(true);
         updateRoomProgress(room.id, videoElementRef.current.currentTime, true);
       }
-    } else if (mediaInfo.type === 'twitch') {
+    } else {
       const nextPlaying = !isPlaying;
       setIsPlaying(nextPlaying);
       updateRoomProgress(room.id, currentTime, nextPlaying);
@@ -428,6 +430,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const currentHostname = window.location.hostname || 'localhost';
 
+  const getPlatformLabel = () => {
+    switch (mediaInfo.type) {
+      case 'rutube': return 'Rutube';
+      case 'vk': return 'VK Видео';
+      case 'twitch': return 'Twitch';
+      case 'vimeo': return 'Vimeo';
+      case 'ok': return 'OK.ru';
+      case 'direct': return 'MP4 / Прямой поток';
+      case 'youtube': return 'YouTube';
+      default: return 'Веб Плеер';
+    }
+  };
+
   return (
     <div
       ref={containerRef}
@@ -451,7 +466,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           ))}
         </div>
 
-        {/* РЕНДЕР YOUTUBE */}
+        {/* 1. YOUTUBE */}
         {mediaInfo.type === 'youtube' && (
           <div
             ref={playerContainerRef}
@@ -459,18 +474,33 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* РЕНДЕР TWITCH */}
+        {/* 2. TWITCH */}
         {mediaInfo.type === 'twitch' && (
           <iframe
             src={`https://player.twitch.tv/?${
               mediaInfo.twitchType === 'video' ? `video=${mediaInfo.id}` : `channel=${mediaInfo.id}`
             }&parent=${currentHostname}&autoplay=${room.is_playing ? 'true' : 'false'}&muted=false`}
             className="absolute inset-0 w-full h-full border-0"
+            allow="autoplay; fullscreen"
             allowFullScreen
           />
         )}
 
-        {/* РЕНДЕР DIRECT VIDEO (MP4) */}
+        {/* 3. RUTUBE, VK, VIMEO, OK И УНИВЕРСАЛЬНЫЕ IFRAME ССЫЛКИ */}
+        {(mediaInfo.type === 'rutube' ||
+          mediaInfo.type === 'vk' ||
+          mediaInfo.type === 'vimeo' ||
+          mediaInfo.type === 'ok' ||
+          mediaInfo.type === 'iframe') && (
+          <iframe
+            src={mediaInfo.embedUrl || mediaInfo.url}
+            className="absolute inset-0 w-full h-full border-0 bg-black"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allowFullScreen
+          />
+        )}
+
+        {/* 4. DIRECT VIDEO (MP4 / WebM / OGG) */}
         {mediaInfo.type === 'direct' && (
           <video
             ref={videoElementRef}
@@ -480,70 +510,70 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        <div
-          onClick={() => {
-            if (needUserGesture) {
-              handleMobileUnlockClick();
-            } else {
-              setShowControls((prev) => !prev);
-            }
-          }}
-          className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
-        />
+        {isInteractivePlayer && (
+          <div
+            onClick={() => {
+              if (needUserGesture) {
+                handleMobileUnlockClick();
+              } else {
+                setShowControls((prev) => !prev);
+              }
+            }}
+            className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
+          />
+        )}
 
-        {/* ОВЕРЛЕЙ ПРИ ОШИБКЕ ВСТРАИВАНИЯ (Автор запретил плеер на других сайтах) */}
+        {/* ОВЕРЛЕЙ ПРИ ОШИБКЕ ВСТРАИВАНИЯ */}
         {isEmbedBlocked && (
           <div className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
             <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Это видео на YouTube защищено авторскими правами и не разрешает воспроизведение на сторонних сайтах.
+                Это видео защищено авторскими правами и не разрешает воспроизведение на сторонних сайтах.
               </p>
             </div>
             <a
-              href={`https://www.youtube.com/watch?v=${mediaInfo.id}`}
+              href={mediaInfo.url}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg hover:opacity-90 transition-opacity"
             >
-              <ExternalLink className="h-4 w-4" /> Открыть на YouTube
+              <ExternalLink className="h-4 w-4" /> Открыть в новом окне
             </a>
           </div>
         )}
 
-        {/* Левый верхний блок синхронизации */}
-        {!isFullscreen && !needUserGesture && !isEmbedBlocked && (
+        {/* Кнопка синхронизации */}
+        {!isFullscreen && !needUserGesture && !isEmbedBlocked && isInteractivePlayer && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
               showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
-            {mediaInfo.type !== 'twitch' && (
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleSyncClick();
-                }}
-                size="sm"
-                variant="outline"
-                className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
-              >
-                <RefreshCw className="h-3 w-3 mr-1" />
-                Синхронизировать
-              </Button>
-            )}
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSyncClick();
+              }}
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Синхронизировать
+            </Button>
           </div>
         )}
 
-        {/* Бейдж Twitch */}
-        {mediaInfo.type === 'twitch' && (
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs font-bold backdrop-blur-md">
-            <Tv className="h-3.5 w-3.5 text-pink-400" /> Twitch Стрим
+        {/* Бейдж платформы для не-YouTube сервисов */}
+        {mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs font-bold backdrop-blur-md shadow-lg">
+            <Video className="h-3.5 w-3.5 text-pink-400" /> {getPlatformLabel()}
           </div>
         )}
 
-        {(needUserGesture || (!isPlaying && room.is_playing && !isHost && mediaInfo.type !== 'twitch')) && !isEmbedBlocked && (
+        {(needUserGesture || (!isPlaying && room.is_playing && !isHost && isInteractivePlayer)) && !isEmbedBlocked && (
           <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
             <Button
               onClick={handleMobileUnlockClick}
@@ -557,8 +587,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
       </div>
 
-      {/* Панель управления плером */}
-      {mediaInfo.type !== 'twitch' && (
+      {/* Панель управления для интерактивных источников (YouTube / MP4) */}
+      {isInteractivePlayer && (
         <div
           onClick={(e) => e.stopPropagation()}
           className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent flex flex-col gap-2 transition-all duration-300 ${
