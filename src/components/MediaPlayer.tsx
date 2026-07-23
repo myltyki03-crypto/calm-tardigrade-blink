@@ -6,6 +6,7 @@ import {
   Monitor,
   Square,
   Radio,
+  Loader2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Room } from '@/types/rave';
@@ -70,7 +71,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
-  // Мгновенный локальный статус трансляции экрана без задержек базы данных
+  // Мгновенный статус трансляции экрана
   const isScreenSharingActive =
     Boolean(room.is_screen_sharing) || Boolean(screenStream) || Boolean(remoteStream);
 
@@ -82,7 +83,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // Закрепление потока видео трансляции экрана на HTML-элементе
+  // Закрепление видеопотока трансляции на HTML-теге
   useEffect(() => {
     const video = screenShareVideoRef.current;
     if (!video) return;
@@ -103,7 +104,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           console.log('Screen share autoplay catch:', err);
         });
     } else {
-      if (video.srcObject) {
+      if (!isScreenSharingActive && video.srcObject) {
         video.srcObject = null;
       }
     }
@@ -112,7 +113,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   // Демонстрация экрана ведущего
   const handleToggleScreenShare = async () => {
     if (!isHost) {
-      showError('Только ведущий комнаты может запускать трансляцию экрана');
+      showError('Только владелец комнаты может запускать трансляцию экрана');
       return;
     }
 
@@ -140,7 +141,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       setRoomScreenShareState(room.id, true);
       showSuccess('Демонстрация экрана запущена!');
 
-      // Привязываем локальный поток к видеоплееру напрямую
+      // Привязываем локальный поток напрямую
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
         screenShareVideoRef.current
@@ -191,7 +192,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // WebRTC Сигналинг (Передача видеопотока между ведущим и зрителями)
+  // WebRTC Сигналинг (Запрос и передача видеопотока между владельцем и зрителями)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
@@ -268,6 +269,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           pc.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
               setRemoteStream(event.streams[0]);
+              setIsEmbedBlocked(false);
             }
           };
 
@@ -332,6 +334,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       supabase.removeChannel(channel);
     };
   }, [room.id, isHost, isScreenSharingActive, screenStream, currentUser.id]);
+
+  // Периодический запрос трансляции для новых зрителей, пока нет видео
+  useEffect(() => {
+    if (!isHost && isScreenSharingActive && !remoteStream && webrtcChannelRef.current) {
+      const myUserId = currentUser.id || 'guest';
+      const pollTimer = setInterval(() => {
+        webrtcChannelRef.current.send({
+          type: 'broadcast',
+          event: 'webrtc-request-offer',
+          payload: { viewerId: myUserId },
+        });
+      }, 2500);
+
+      return () => clearInterval(pollTimer);
+    }
+  }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -827,6 +845,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <span>Синхронизировать</span>
             </Button>
 
+            {/* Только создатель комнаты может запускать демонстрацию своего экрана */}
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
@@ -865,16 +884,28 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {/* АНИМАЦИЯ СМАЙЛОВ */}
         <VideoReactionsOverlay reactions={floatingReactions} />
 
-        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА (ПОСТОЯННЫЙ УЗЕЛ) */}
-        <video
-          ref={screenShareVideoRef}
-          className={`absolute inset-0 w-full h-full object-contain bg-black pointer-events-auto transition-opacity ${
-            isScreenSharingActive ? 'z-30 opacity-100' : 'z-0 opacity-0 pointer-events-none'
+        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА */}
+        <div
+          className={`absolute inset-0 w-full h-full bg-black transition-opacity ${
+            isScreenSharingActive ? 'z-30 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'
           }`}
-          autoPlay
-          playsInline
-          muted={isHost}
-        />
+        >
+          <video
+            ref={screenShareVideoRef}
+            className="w-full h-full object-contain bg-black"
+            autoPlay
+            playsInline
+            muted={isHost}
+          />
+
+          {!isHost && !remoteStream && (
+            <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-40">
+              <Loader2 className="h-8 w-8 text-pink-500 animate-spin mb-2" />
+              <p className="text-xs font-bold text-white">Подключение к прямому эфиру ведущего ({room.host_name})...</p>
+              <p className="text-[10px] text-slate-400 mt-1">Ожидайте передачу кадров экрана</p>
+            </div>
+          )}
+        </div>
 
         {/* 1. YOUTUBE */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
@@ -918,20 +949,28 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ (СКРЫВАЕТСЯ ПРИ ТРАНСЛЯЦИИ ЭКРАНА) */}
+        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ (ПОКАЗЫВАЕТСЯ ТОЛЬКО ЕСЛИ НЕ ВКЛЮЧЕНА ТРАНСЛЯЦИЯ) */}
         {isEmbedBlocked && !isScreenSharingActive && (
-          <div className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
+          <div className="absolute inset-0 z-40 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
             <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Запустите <strong>Трансляцию экрана</strong> кнопкой сверху, чтобы показать это видео всем зрителям!
+                {isHost ? (
+                  <>
+                    Запустите <strong>Трансляцию экрана</strong> кнопкой ниже, чтобы показать это видео всем зрителям!
+                  </>
+                ) : (
+                  <>
+                    Ожидайте, пока владелец комнаты (<strong>{room.host_name}</strong>) запустит трансляцию своего экрана или выберите другое видео.
+                  </>
+                )}
               </p>
             </div>
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>
