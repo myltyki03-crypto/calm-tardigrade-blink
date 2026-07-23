@@ -32,13 +32,13 @@ interface CreateRoomModalProps {
 
 const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string; thumbnail: string }> = {
   music: {
-    url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
-    title: 'SYNTHWAVE Radio - Chill Beats to Relax/Study to',
-    thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
+    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
+    title: 'Lofi Hip Hop Radio - Beats to relax/study to',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
   },
   youtube: {
     url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
-    title: 'Lofi Hip Hop Radio - beats to relax/study to',
+    title: 'Lofi Hip Hop Radio - Beats to relax/study to',
     thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
   },
   movies: {
@@ -62,9 +62,9 @@ const DEFAULT_CATEGORY_MEDIA: Record<CategoryType, { url: string; title: string;
     thumbnail: 'https://images.unsplash.com/photo-1516450360452-9312f5e86fc7?w=600&auto=format&fit=crop&q=80',
   },
   all: {
-    url: 'https://www.youtube.com/watch?v=4xDzrJKXOOY',
+    url: 'https://www.youtube.com/watch?v=jfKfPfyJRdk',
     title: 'Популярная трансляция',
-    thumbnail: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=600&auto=format&fit=crop&q=80',
+    thumbnail: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600&auto=format&fit=crop&q=80',
   },
 };
 
@@ -176,7 +176,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               id="room_media_url_field"
               name="no_autofill_media_url"
               autoComplete="off"
-              placeholder="https://twitch.tv/имя или YouTube / MP4..."
+              placeholder="https://youtube.com/watch?v=... или Twitch / MP4"
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"

@@ -10,6 +10,8 @@ import {
   Lock,
   Tv,
   RotateCcw,
+  ExternalLink,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -57,6 +59,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
+  const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -78,6 +81,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
     return Math.max(0, startSec);
   };
+
+  useEffect(() => {
+    setIsEmbedBlocked(false);
+  }, [mediaInfo.id]);
 
   useEffect(() => {
     if (mediaInfo.type === 'direct' && videoElementRef.current) {
@@ -119,6 +126,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       } catch (e) {}
 
       ytPlayerRef.current = new window.YT.Player(playerContainerRef.current, {
+        host: 'https://www.youtube-nocookie.com',
         videoId: mediaInfo.id,
         playerVars: {
           autoplay: room.is_playing ? 1 : 0,
@@ -133,7 +141,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           playsinline: 1,
           enablejsapi: 1,
           start: Math.floor(startSec),
-          origin: window.location.origin,
         },
         events: {
           onReady: (event: any) => {
@@ -163,14 +170,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             if (event.data === 1) { // PLAYING
               setIsPlaying(true);
               setNeedUserGesture(false);
+              setIsEmbedBlocked(false);
             } else if (event.data === 2) { // PAUSED
               setIsPlaying(false);
             } else if (event.data === 0) { // ENDED
               setIsPlaying(false);
             }
           },
-          onError: () => {
-            setNeedUserGesture(true);
+          onError: (event: any) => {
+            // Коды 101, 150, 2 означает что автор запретил встраивать видео или оно удалено
+            if (event.data === 101 || event.data === 150 || event.data === 2) {
+              setIsEmbedBlocked(true);
+            } else {
+              setNeedUserGesture(true);
+            }
           }
         },
       });
@@ -276,7 +289,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setIsPlaying(true);
     setNeedUserGesture(false);
     forceDisableCaptions();
-    showSuccess('Воспроизведение запущенно!');
+    showSuccess('Воспроизведение запущено!');
   };
 
   const toggleFullscreen = () => {
@@ -478,8 +491,29 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
         />
 
+        {/* ОВЕРЛЕЙ ПРИ ОШИБКЕ ВСТРАИВАНИЯ (Автор запретил плеер на других сайтах) */}
+        {isEmbedBlocked && (
+          <div className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
+            <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                Это видео на YouTube защищено авторскими правами и не разрешает воспроизведение на сторонних сайтах.
+              </p>
+            </div>
+            <a
+              href={`https://www.youtube.com/watch?v=${mediaInfo.id}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg hover:opacity-90 transition-opacity"
+            >
+              <ExternalLink className="h-4 w-4" /> Открыть на YouTube
+            </a>
+          </div>
+        )}
+
         {/* Левый верхний блок синхронизации */}
-        {!isFullscreen && !needUserGesture && (
+        {!isFullscreen && !needUserGesture && !isEmbedBlocked && (
           <div
             className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
               showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
@@ -509,7 +543,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {(needUserGesture || (!isPlaying && room.is_playing && !isHost && mediaInfo.type !== 'twitch')) && (
+        {(needUserGesture || (!isPlaying && room.is_playing && !isHost && mediaInfo.type !== 'twitch')) && !isEmbedBlocked && (
           <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
             <Button
               onClick={handleMobileUnlockClick}

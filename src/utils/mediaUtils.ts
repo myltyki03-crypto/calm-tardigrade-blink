@@ -51,8 +51,8 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // YouTube по умолчанию
-  let videoId = '4xDzrJKXOOY';
+  // YouTube по умолчанию (Lofi Girl live)
+  let videoId = 'jfKfPfyJRdk';
   if (cleanUrl.includes('youtube.com/watch?v=')) {
     videoId = cleanUrl.split('v=')[1]?.split('&')[0] || videoId;
   } else if (cleanUrl.includes('youtu.be/')) {
