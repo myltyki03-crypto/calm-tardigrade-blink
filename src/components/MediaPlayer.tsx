@@ -65,15 +65,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const viewerPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const webrtcChannelRef = useRef<any>(null);
-  const syncChannelRef = useRef<any>(null);
-  const broadcastChannelRef = useRef<BroadcastChannel | null>(null);
   const canvasIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastHostSyncSaveRef = useRef<number>(0);
   const prevLastUpdatedRef = useRef<string | undefined>(room.last_updated_at);
-
-  // Сохраненные параметры вещания владельца
-  const latestHostTimeRef = useRef<{ time: number; isPlaying: boolean; timestamp: number } | null>(null);
 
   const mediaInfo: MediaInfo = parseMediaUrl(room.current_media_url || '');
 
@@ -83,32 +78,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
-  const [currentTime, setCurrentTime] = useState(room.playback_position_seconds || 0);
+  const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  // Ключ пересборки iframe для мгновенной отмотки
+  // Ключ пересборки iframe для мгновенного применения таймкодов
   const [iframeKey, setIframeKey] = useState<number>(Date.now());
 
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
-  // Получить реальное текущее время с плеера владельца
-  const getHostLiveTime = (): number => {
-    if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.getCurrentTime) {
-      try {
-        const cur = ytPlayerRef.current.getCurrentTime();
-        if (typeof cur === 'number' && !isNaN(cur)) return cur;
-      } catch {}
-    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-      return videoElementRef.current.currentTime || currentTime;
-    }
-    return currentTime;
-  };
-
-  // Автоматическое скрытие органов управления
+  // Автоматическое скрытие органов управления через 2.5 секунды при старте видео
   useEffect(() => {
     if (isPlaying) {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
@@ -124,6 +106,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [isPlaying]);
 
+  // Мгновенный статус трансляции экрана
   const isScreenSharingActive =
     Boolean(room.is_screen_sharing) || Boolean(screenStream) || Boolean(remoteStream) || Boolean(fallbackFrame);
 
@@ -135,135 +118,426 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // ДВУХКАНАЛЬНАЯ СИНХРОНИЗАЦИЯ (BroadcastChannel API + Supabase Realtime)
+  // Перехват PostMessage сообщений от VK Видео и сторонних плееров
   useEffect(() => {
-    // 1. Межвкладочный радиоканал BroadcastChannel (работает в любом браузере)
-    try {
-      const bc = new BroadcastChannel('pulserave_sync_' + room.id);
-      broadcastChannelRef.current = bc;
+    const handleWindowMessage = (event: MessageEvent) => {
+      try {
+        let data = event.data;
+        if (typeof data === 'string') {
+          try {
+            data = JSON.parse(data);
+          } catch {}
+        }
 
-      bc.onmessage = (event) => {
-        const data = event.data;
         if (!data) return;
 
-        if (data.type === 'REQUEST_HOST_TIME' && isHost) {
-          const liveTime = getHostLiveTime();
-          bc.postMessage({
-            type: 'HOST_TIME_REPLY',
-            time: liveTime,
-            isPlaying: isPlaying,
-            timestamp: Date.now(),
-          });
-        } else if (data.type === 'HOST_TIME_REPLY' && !isHost) {
-          latestHostTimeRef.current = {
-            time: data.time,
-            isPlaying: data.isPlaying,
-            timestamp: data.timestamp || Date.now(),
-          };
-          applyHostTime(data.time, data.isPlaying, data.timestamp);
+        const eventType = data.event || data.type || data.box_msg;
+        const timeVal = data.time ?? data.currentTime ?? data.value;
+
+        if (typeof timeVal === 'number' && timeVal >= 0) {
+          setCurrentTime(timeVal);
+          if (isHost && isPlaying) {
+            const now = Date.now();
+            if (now - lastHostSyncSaveRef.current > 3000) {
+              lastHostSyncSaveRef.current = now;
+              updateRoomProgress(room.id, timeVal, true);
+            }
+          }
         }
-      };
-    } catch (e) {
-      console.error('BroadcastChannel unsupported:', e);
+
+        if (eventType === 'play' || eventType === 'video_play') {
+          setIsPlaying(true);
+          if (isHost) updateRoomProgress(room.id, currentTime, true);
+        } else if (eventType === 'pause' || eventType === 'video_pause') {
+          setIsPlaying(false);
+          if (isHost) updateRoomProgress(room.id, currentTime, false);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [isHost, isPlaying, currentTime, room.id]);
+
+  // Закрепление видеопотока трансляции на HTML-теге
+  useEffect(() => {
+    const video = screenShareVideoRef.current;
+    if (!video) return;
+
+    const activeStream = isHost ? screenStream : remoteStream;
+
+    if (isScreenSharingActive && activeStream) {
+      if (video.srcObject !== activeStream) {
+        video.srcObject = activeStream;
+      }
+
+      video.muted = isHost || isMuted;
+
+      video
+        .play()
+        .then(() => {
+          setIsEmbedBlocked(false);
+          setNeedUserGesture(false);
+        })
+        .catch(() => {
+          video.muted = true;
+          video
+            .play()
+            .then(() => {
+              if (!isHost) setNeedAudioClick(true);
+              setIsEmbedBlocked(false);
+            })
+            .catch((e) => console.error('Even muted screen play failed:', e));
+        });
+    } else {
+      if (!isScreenSharingActive && video.srcObject) {
+        video.srcObject = null;
+      }
+    }
+  }, [isScreenSharingActive, screenStream, remoteStream, isHost, isMuted]);
+
+  // Демонстрация экрана ведущего
+  const handleToggleScreenShare = async () => {
+    if (!isHost) {
+      showError('Только владелец комнаты может запускать трансляцию экрана');
+      return;
     }
 
-    // 2. Supabase Realtime Канал (если подключен Supabase)
-    if (isSupabaseConfigured && supabase) {
-      const channelName = 'room-playback-sync-' + room.id;
-      const channel = supabase.channel(channelName, {
-        config: { broadcast: { self: false } },
+    if (isScreenSharingActive || screenStream) {
+      stopLocalScreenShare();
+      showSuccess('Трансляция экрана остановлена');
+      return;
+    }
+
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia) {
+        showError('Ваш браузер не поддерживает захват экрана');
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always', frameRate: { ideal: 30 } } as any,
+        audio: true,
       });
 
-      channel
-        .on('broadcast', { event: 'request_host_time' }, () => {
-          if (isHost) {
-            const liveTime = getHostLiveTime();
-            channel.send({
-              type: 'broadcast',
-              event: 'host_time_update',
-              payload: { time: liveTime, isPlaying: isPlaying, timestamp: Date.now() },
-            });
-          }
-        })
-        .on('broadcast', { event: 'host_time_update' }, ({ payload }) => {
-          if (!isHost && payload) {
-            latestHostTimeRef.current = {
-              time: payload.time,
-              isPlaying: payload.isPlaying,
-              timestamp: payload.timestamp || Date.now(),
-            };
-            applyHostTime(payload.time, payload.isPlaying, payload.timestamp);
-          }
-        })
-        .subscribe();
+      setIsEmbedBlocked(false);
+      setNeedUserGesture(false);
 
-      syncChannelRef.current = channel;
-    }
+      setScreenStream(stream);
+      setRoomScreenShareState(room.id, true);
+      showSuccess('Демонстрация экрана запущена!');
 
-    // Ведущий постоянно отправляет отбивки времени
-    let hostTimer: NodeJS.Timeout | null = null;
-    if (isHost) {
-      hostTimer = setInterval(() => {
-        const liveTime = getHostLiveTime();
-        if (broadcastChannelRef.current) {
-          broadcastChannelRef.current.postMessage({
-            type: 'HOST_TIME_REPLY',
-            time: liveTime,
-            isPlaying: isPlaying,
-            timestamp: Date.now(),
-          });
-        }
-        if (syncChannelRef.current) {
-          syncChannelRef.current.send({
-            type: 'broadcast',
-            event: 'host_time_update',
-            payload: { time: liveTime, isPlaying: isPlaying, timestamp: Date.now() },
-          });
-        }
-      }, 2000);
-    }
-
-    return () => {
-      if (hostTimer) clearInterval(hostTimer);
-      if (broadcastChannelRef.current) broadcastChannelRef.current.close();
-      if (syncChannelRef.current && supabase) supabase.removeChannel(syncChannelRef.current);
-    };
-  }, [room.id, isHost, isPlaying, currentTime, mediaInfo.type]);
-
-  // Применение полученного времени ведущего к плееру зрителя
-  const applyHostTime = (targetTime: number, hostIsPlaying: boolean, msgTimestamp?: number) => {
-    let exactTime = targetTime;
-    if (hostIsPlaying && msgTimestamp) {
-      const elapsed = (Date.now() - msgTimestamp) / 1000;
-      if (elapsed > 0 && elapsed < 300) exactTime += elapsed;
-    }
-
-    setCurrentTime(exactTime);
-    setIsPlaying(hostIsPlaying);
-
-    if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
-      ytPlayerRef.current.seekTo(exactTime, true);
-      if (hostIsPlaying) {
-        ytPlayerRef.current.playVideo();
-      } else {
-        ytPlayerRef.current.pauseVideo();
+      if (screenShareVideoRef.current) {
+        screenShareVideoRef.current.srcObject = stream;
+        screenShareVideoRef.current.muted = true;
+        screenShareVideoRef.current
+          .play()
+          .then(() => {
+            setIsEmbedBlocked(false);
+          })
+          .catch(() => {});
       }
-      forceDisableCaptions();
-    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-      videoElementRef.current.currentTime = exactTime;
-      if (hostIsPlaying) {
-        videoElementRef.current.play().catch(() => setNeedUserGesture(true));
-      } else {
-        videoElementRef.current.pause();
+
+      if (webrtcChannelRef.current) {
+        webrtcChannelRef.current.send({
+          type: 'broadcast',
+          event: 'screenshare-started',
+          payload: { hostId: room.host_id },
+        });
       }
-    } else if (isIframePlayer) {
-      const newUrl = getEmbedUrlWithTime(mediaInfo, exactTime, hostIsPlaying);
-      setIframeSrc(newUrl);
-      setIframeKey(Date.now());
+
+      if (canvasIntervalRef.current) clearInterval(canvasIntervalRef.current);
+      canvasIntervalRef.current = setInterval(() => {
+        const video = screenShareVideoRef.current;
+        const canvas = hiddenCanvasRef.current;
+        if (video && canvas && video.videoWidth > 0 && video.videoHeight > 0) {
+          canvas.width = Math.min(video.videoWidth, 854);
+          canvas.height = Math.min(video.videoHeight, 480);
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+            if (webrtcChannelRef.current) {
+              webrtcChannelRef.current.send({
+                type: 'broadcast',
+                event: 'screenshare-frame',
+                payload: { frame: dataUrl },
+              });
+            }
+          }
+        }
+      }, 350);
+
+      stream.getVideoTracks()[0].onended = () => {
+        stopLocalScreenShare();
+      };
+    } catch (err: any) {
+      if (err.name !== 'NotAllowedError') {
+        showError('Не удалось запустить трансляцию экрана');
+      }
     }
   };
 
-  // Местный таймер тиков для iframe плеера ведущего
+  const stopLocalScreenShare = () => {
+    if (canvasIntervalRef.current) {
+      clearInterval(canvasIntervalRef.current);
+      canvasIntervalRef.current = null;
+    }
+
+    if (screenStream) {
+      screenStream.getTracks().forEach((track) => track.stop());
+      setScreenStream(null);
+    }
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.srcObject = null;
+    }
+    peerConnectionsRef.current.forEach((pc) => pc.close());
+    peerConnectionsRef.current.clear();
+    setRoomScreenShareState(room.id, false);
+
+    if (webrtcChannelRef.current) {
+      webrtcChannelRef.current.send({
+        type: 'broadcast',
+        event: 'screenshare-stopped',
+        payload: { hostId: room.host_id },
+      });
+    }
+  };
+
+  const handleRequestStreamAgain = () => {
+    if (!webrtcChannelRef.current) return;
+    const myUserId = currentUser.id || 'guest';
+    webrtcChannelRef.current.send({
+      type: 'broadcast',
+      event: 'webrtc-request-offer',
+      payload: { viewerId: myUserId },
+    });
+    showSuccess('Перезапрос видеопотока...');
+  };
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const channelName = 'webrtc-screenshare-' + room.id;
+    const channel = supabase.channel(channelName, {
+      config: { broadcast: { self: false } },
+    });
+
+    const myUserId = currentUser.id || 'guest';
+
+    channel
+      .on('broadcast', { event: 'screenshare-started' }, () => {
+        if (!isHost) {
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-request-offer',
+            payload: { viewerId: myUserId },
+          });
+        }
+      })
+      .on('broadcast', { event: 'screenshare-stopped' }, () => {
+        if (!isHost) {
+          if (viewerPeerConnectionRef.current) {
+            viewerPeerConnectionRef.current.close();
+            viewerPeerConnectionRef.current = null;
+          }
+          setRemoteStream(null);
+          setFallbackFrame(null);
+          pendingIceCandidatesRef.current = [];
+        }
+      })
+      .on('broadcast', { event: 'screenshare-frame' }, ({ payload }) => {
+        if (!isHost && payload?.frame) {
+          setFallbackFrame(payload.frame);
+          setIsEmbedBlocked(false);
+        }
+      })
+      .on('broadcast', { event: 'webrtc-request-offer' }, async ({ payload }) => {
+        if (isHost && screenStream) {
+          const viewerId = payload.viewerId;
+          const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+
+          peerConnectionsRef.current.set(viewerId, pc);
+
+          screenStream.getTracks().forEach((track) => {
+            pc.addTrack(track, screenStream);
+          });
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: 'broadcast',
+                event: 'webrtc-ice',
+                payload: { candidate: event.candidate, senderId: myUserId, targetId: viewerId },
+              });
+            }
+          };
+
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-offer',
+            payload: { offer, senderId: myUserId, targetId: viewerId },
+          });
+        }
+      })
+      .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }) => {
+        if (!isHost && payload.targetId === myUserId) {
+          if (viewerPeerConnectionRef.current) {
+            viewerPeerConnectionRef.current.close();
+          }
+
+          const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+          viewerPeerConnectionRef.current = pc;
+          pendingIceCandidatesRef.current = [];
+
+          pc.ontrack = (event) => {
+            if (event.streams && event.streams[0]) {
+              setRemoteStream(event.streams[0]);
+            } else if (event.track) {
+              setRemoteStream(new MediaStream([event.track]));
+            }
+            setIsEmbedBlocked(false);
+          };
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: 'broadcast',
+                event: 'webrtc-ice',
+                payload: { candidate: event.candidate, senderId: myUserId, targetId: payload.senderId },
+              });
+            }
+          };
+
+          await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+
+          while (pendingIceCandidatesRef.current.length > 0) {
+            const candidate = pendingIceCandidatesRef.current.shift();
+            if (candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+              } catch (e) {}
+            }
+          }
+
+          const answer = await pc.createAnswer();
+          await pc.setLocalDescription(answer);
+
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-answer',
+            payload: { answer, senderId: myUserId, targetId: payload.senderId },
+          });
+        }
+      })
+      .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }) => {
+        if (isHost && payload.targetId === myUserId) {
+          const pc = peerConnectionsRef.current.get(payload.senderId);
+          if (pc) {
+            await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
+          }
+        }
+      })
+      .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }) => {
+        if (payload.targetId === myUserId) {
+          if (isHost) {
+            const pc = peerConnectionsRef.current.get(payload.senderId);
+            if (pc && payload.candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              } catch (e) {}
+            }
+          } else {
+            const pc = viewerPeerConnectionRef.current;
+            if (pc && pc.remoteDescription) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              } catch (e) {}
+            } else if (payload.candidate) {
+              pendingIceCandidatesRef.current.push(payload.candidate);
+            }
+          }
+        }
+      })
+      .subscribe();
+
+    webrtcChannelRef.current = channel;
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [room.id, isHost, isScreenSharingActive, screenStream, currentUser.id]);
+
+  useEffect(() => {
+    if (!isHost && isScreenSharingActive && !remoteStream && webrtcChannelRef.current) {
+      const myUserId = currentUser.id || 'guest';
+      const pollTimer = setInterval(() => {
+        webrtcChannelRef.current.send({
+          type: 'broadcast',
+          event: 'webrtc-request-offer',
+          payload: { viewerId: myUserId },
+        });
+      }, 2000);
+
+      return () => clearInterval(pollTimer);
+    }
+  }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
+
+  const forceDisableCaptions = () => {
+    if (ytPlayerRef.current) {
+      try {
+        ytPlayerRef.current.unloadModule?.('captions');
+        ytPlayerRef.current.setOption?.('captions', 'track', {});
+        ytPlayerRef.current.setOption?.('cc', 'track', {});
+      } catch (e) {}
+    }
+  };
+
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const getCalculatedHostTime = () => {
+    let startSec = room.playback_position_seconds || 0;
+    if (room.is_playing && room.last_updated_at) {
+      const elapsed = (Date.now() - new Date(room.last_updated_at).getTime()) / 1000;
+      if (elapsed > 0 && elapsed < 86400) {
+        startSec += elapsed;
+      }
+    }
+    return Math.max(0, startSec);
+  };
+
+  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume', value?: number) => {
+    if (!iframeRef.current?.contentWindow) return;
+    const win = iframeRef.current.contentWindow;
+
+    try {
+      if (command === 'play') {
+        win.postMessage({ box_msg: 'play' }, '*');
+        win.postMessage({ type: 'play' }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'play' }), '*');
+      } else if (command === 'pause') {
+        win.postMessage({ box_msg: 'pause' }, '*');
+        win.postMessage({ type: 'pause' }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'pause' }), '*');
+      } else if (command === 'seek' && typeof value === 'number') {
+        win.postMessage({ box_msg: 'seek', value: value }, '*');
+        win.postMessage({ type: 'seek', time: value }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'seek', value: value }), '*');
+      }
+    } catch (e) {
+      console.error('Failed to send iframe command:', e);
+    }
+  };
+
+  // Автоматический локальный счётчик для сторонних iframe (VK, Rutube)
   useEffect(() => {
     if (isIframePlayer) {
       let interval: NodeJS.Timeout | null = null;
@@ -287,7 +561,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   useEffect(() => {
     setIsEmbedBlocked(false);
-    const initialSec = room.playback_position_seconds || 0;
+    const initialSec = getCalculatedHostTime();
     setCurrentTime(initialSec);
     setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, false));
     setIframeKey(Date.now());
@@ -328,7 +602,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       const targetElement = document.createElement('div');
       playerContainerRef.current.appendChild(targetElement);
 
-      const startSec = room.playback_position_seconds || 0;
+      const startSec = getCalculatedHostTime();
 
       try {
         if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
@@ -439,75 +713,91 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
-  const forceDisableCaptions = () => {
-    if (ytPlayerRef.current) {
+  useEffect(() => {
+    if (!isHost && room.last_updated_at !== prevLastUpdatedRef.current) {
+      prevLastUpdatedRef.current = room.last_updated_at;
+      const targetHostTime = getCalculatedHostTime();
+
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
+        let localTime = 0;
+        try {
+          localTime = ytPlayerRef.current.getCurrentTime?.() || 0;
+        } catch (err) {}
+
+        if (Math.abs(localTime - targetHostTime) > 2.5) {
+          ytPlayerRef.current.seekTo(targetHostTime, true);
+        }
+
+        if (room.is_playing) {
+          ytPlayerRef.current.playVideo?.();
+          setIsPlaying(true);
+        } else {
+          ytPlayerRef.current.pauseVideo?.();
+          setIsPlaying(false);
+        }
+      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+        const v = videoElementRef.current;
+        if (Math.abs(v.currentTime - targetHostTime) > 2.5) {
+          v.currentTime = targetHostTime;
+        }
+        if (room.is_playing) {
+          v.play().catch(() => setNeedUserGesture(true));
+          setIsPlaying(true);
+        } else {
+          v.pause();
+          setIsPlaying(false);
+        }
+      } else if (isIframePlayer) {
+        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
+        setIframeSrc(newVkUrl);
+        setIframeKey(Date.now()); // Перезапуск кадра на актуальной секунде
+        setIsPlaying(room.is_playing);
+        setCurrentTime(targetHostTime);
+      }
+    }
+  }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(Boolean(document.fullscreenElement));
+    };
+    document.addEventListener('fullscreenchange', handleFullscreenChange);
+    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
+  }, []);
+
+  const handleMobileUnlockClick = () => {
+    if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
+      const syncTime = getCalculatedHostTime();
       try {
-        ytPlayerRef.current.unloadModule?.('captions');
-        ytPlayerRef.current.setOption?.('captions', 'track', {});
-        ytPlayerRef.current.setOption?.('cc', 'track', {});
+        ytPlayerRef.current.unMute();
+        ytPlayerRef.current.setVolume(volume || 80);
+        ytPlayerRef.current.seekTo(syncTime, true);
+        ytPlayerRef.current.playVideo();
       } catch (e) {}
+    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+      videoElementRef.current.muted = false;
+      videoElementRef.current.play();
+    } else if (isIframePlayer) {
+      const syncTime = getCalculatedHostTime();
+      setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
+      setIframeKey(Date.now());
+      sendIframeCommand('play');
     }
+
+    setIsMuted(false);
+    setIsPlaying(true);
+    setNeedUserGesture(false);
+    forceDisableCaptions();
   };
 
-  const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
-  };
-
-  // КНОПКА СИНХРОНИЗАЦИИ ПО ВЛАДЕЛЬЦУ
-  const handleSyncClick = (e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-
-    if (isHost) {
-      const curSec = getHostLiveTime();
-      updateRoomProgress(room.id, curSec, isPlaying);
-
-      if (broadcastChannelRef.current) {
-        broadcastChannelRef.current.postMessage({
-          type: 'HOST_TIME_REPLY',
-          time: curSec,
-          isPlaying: isPlaying,
-          timestamp: Date.now(),
-        });
-      }
-      if (syncChannelRef.current) {
-        syncChannelRef.current.send({
-          type: 'broadcast',
-          event: 'host_time_update',
-          payload: { time: curSec, isPlaying: isPlaying, timestamp: Date.now() },
-        });
-      }
-
-      showSuccess('Вы опубликовали свою точную секунду всем!');
-    } else {
-      // 1. Отправляем радиозапрос
-      if (broadcastChannelRef.current) {
-        broadcastChannelRef.current.postMessage({ type: 'REQUEST_HOST_TIME' });
-      }
-      if (syncChannelRef.current) {
-        syncChannelRef.current.send({
-          type: 'broadcast',
-          event: 'request_host_time',
-        });
-      }
-
-      // 2. Если у нас уже есть данные от владельца
-      if (latestHostTimeRef.current) {
-        applyHostTime(
-          latestHostTimeRef.current.time,
-          latestHostTimeRef.current.isPlaying,
-          latestHostTimeRef.current.timestamp
-        );
-        showSuccess(`Подстроено под владельца (${formatTime(latestHostTimeRef.current.time)})`);
-      } else {
-        // Запасной вариант из общей памяти
-        const fallbackTime = room.playback_position_seconds || 0;
-        applyHostTime(fallbackTime, room.is_playing);
-        showSuccess(`Синхронизировано (${formatTime(fallbackTime)})`);
-      }
+  const handleEnableAudioClick = () => {
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.muted = false;
+      screenShareVideoRef.current.volume = (volume || 80) / 100;
     }
+    setIsMuted(false);
+    setNeedAudioClick(false);
+    showSuccess('Звук трансляции включен');
   };
 
   const toggleFullscreen = () => {
@@ -528,20 +818,44 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   const handleTogglePlay = () => {
-    if (!isHost) return;
-
-    const nextPlaying = !isPlaying;
-    setIsPlaying(nextPlaying);
-
-    if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
-      if (nextPlaying) ytPlayerRef.current.playVideo();
-      else ytPlayerRef.current.pauseVideo();
-    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-      if (nextPlaying) videoElementRef.current.play();
-      else videoElementRef.current.pause();
+    if (needUserGesture) {
+      handleMobileUnlockClick();
+      return;
     }
 
-    updateRoomProgress(room.id, currentTime, nextPlaying);
+    if (!isHost) return;
+
+    if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
+      if (isPlaying) {
+        ytPlayerRef.current.pauseVideo();
+        setIsPlaying(false);
+        updateRoomProgress(room.id, currentTime, false);
+      } else {
+        ytPlayerRef.current.playVideo();
+        setIsPlaying(true);
+        updateRoomProgress(room.id, currentTime, true);
+        forceDisableCaptions();
+      }
+    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+      if (isPlaying) {
+        videoElementRef.current.pause();
+        setIsPlaying(false);
+        updateRoomProgress(room.id, videoElementRef.current.currentTime, false);
+      } else {
+        videoElementRef.current.play();
+        setIsPlaying(true);
+        updateRoomProgress(room.id, videoElementRef.current.currentTime, true);
+      }
+    } else {
+      const nextPlaying = !isPlaying;
+      setIsPlaying(nextPlaying);
+      if (nextPlaying) {
+        sendIframeCommand('play');
+      } else {
+        sendIframeCommand('pause');
+      }
+      updateRoomProgress(room.id, currentTime, nextPlaying);
+    }
   };
 
   const handleVolumeChange = (newVolume: number) => {
@@ -553,7 +867,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
 
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
-      ytPlayerRef.current.setVolume(newVolume);
+      if (newVolume === 0) {
+        ytPlayerRef.current.mute();
+      } else {
+        if (isMuted) {
+          ytPlayerRef.current.unMute();
+        }
+        ytPlayerRef.current.setVolume(newVolume);
+      }
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.volume = newVolume / 100;
     }
@@ -563,9 +884,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     const nextMute = !isMuted;
     setIsMuted(nextMute);
 
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.muted = isHost ? true : nextMute;
+    }
+
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       if (nextMute) ytPlayerRef.current.mute();
-      else ytPlayerRef.current.unMute();
+      else {
+        ytPlayerRef.current.unMute();
+        ytPlayerRef.current.setVolume(volume || 50);
+      }
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.muted = nextMute;
     }
@@ -574,21 +902,76 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) return;
 
-    const maxSec = duration > 0 ? duration : 3600;
-    const targetSeconds = (newProgressPercent / 100) * maxSec;
-    setCurrentTime(targetSeconds);
+    if (duration > 0 || mediaInfo.type === 'vk') {
+      const maxSec = duration > 0 ? duration : 3600;
+      const targetSeconds = (newProgressPercent / 100) * maxSec;
+      setCurrentTime(targetSeconds);
 
-    if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
-      ytPlayerRef.current.seekTo(targetSeconds, true);
-    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-      videoElementRef.current.currentTime = targetSeconds;
-    } else {
-      const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying);
-      setIframeSrc(newEmbedUrl);
-      setIframeKey(Date.now());
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
+        ytPlayerRef.current.seekTo(targetSeconds, true);
+      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+        videoElementRef.current.currentTime = targetSeconds;
+      } else {
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying);
+        setIframeSrc(newEmbedUrl);
+        setIframeKey(Date.now());
+        sendIframeCommand('seek', targetSeconds);
+      }
+
+      updateRoomProgress(room.id, targetSeconds, isPlaying);
     }
+  };
 
-    updateRoomProgress(room.id, targetSeconds, isPlaying);
+  const handleSyncClick = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+
+    const syncTime = getCalculatedHostTime();
+
+    if (isHost) {
+      let curSec = currentTime;
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.getCurrentTime) {
+        curSec = ytPlayerRef.current.getCurrentTime() || currentTime;
+      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+        curSec = videoElementRef.current.currentTime || currentTime;
+      }
+      updateRoomProgress(room.id, curSec, isPlaying);
+      showSuccess('Время трансляции синхронизировано!');
+    } else {
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
+        ytPlayerRef.current.seekTo(syncTime, true);
+        if (room.is_playing) {
+          ytPlayerRef.current.playVideo();
+          setIsPlaying(true);
+        } else {
+          ytPlayerRef.current.pauseVideo();
+          setIsPlaying(false);
+        }
+        forceDisableCaptions();
+      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+        videoElementRef.current.currentTime = syncTime;
+        if (room.is_playing) {
+          videoElementRef.current.play().catch(() => setNeedUserGesture(true));
+          setIsPlaying(true);
+        } else {
+          videoElementRef.current.pause();
+          setIsPlaying(false);
+        }
+      } else if (isIframePlayer) {
+        // Принудительная перезагрузка iframe кадра VK/Rutube с обновлённым таймкодом
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
+        setIframeSrc(newEmbedUrl);
+        setIframeKey(Date.now());
+        setCurrentTime(syncTime);
+        setIsPlaying(true);
+
+        setTimeout(() => {
+          sendIframeCommand('seek', syncTime);
+          sendIframeCommand('play');
+        }, 200);
+      }
+
+      showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
+    }
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : (currentTime % 3600) / 36;
@@ -614,26 +997,119 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       onClick={handleUserActivity}
       className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${fullscreenClass}`}
     >
+      {/* Скрытый холст для снимков экрана */}
       <canvas ref={hiddenCanvasRef} className="hidden" />
 
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКА СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
-        {!isEmbedBlocked && (
-          <div className={`absolute top-3 left-3 z-40 flex items-center gap-2 ${controlsVisibilityClass}`}>
+        {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
+        {(!needUserGesture || isScreenSharingActive) && !isEmbedBlocked && (
+          <div
+            className={`absolute top-3 left-3 z-40 flex items-center gap-2 ${controlsVisibilityClass}`}
+          >
             <Button
               onClick={handleSyncClick}
               size="sm"
-              className="h-7 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-[11px] rounded-full shadow-lg shadow-cyan-500/30 backdrop-blur-md flex items-center gap-1.5 border border-white/20 opacity-90 hover:opacity-100 transition-opacity"
-              title="Синхронизировать видео под владельца"
+              className="h-7 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-[11px] rounded-full shadow-lg shadow-cyan-500/30 backdrop-blur-md flex items-center gap-1.5 border border-white/20 opacity-80 hover:opacity-100 transition-opacity"
+              title="Синхронизировать видео с создателем комнаты"
             >
               <Zap className="h-3 w-3 fill-amber-300 text-amber-300" />
               <span>Синхронизировать</span>
             </Button>
+
+            {isHost && (
+              <Button
+                onClick={handleToggleScreenShare}
+                size="sm"
+                className={`h-7 px-3 font-bold text-[11px] rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
+                  isScreenSharingActive
+                    ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 animate-pulse'
+                    : 'bg-purple-800/90 hover:bg-purple-700 text-purple-100 border-purple-500/50'
+                }`}
+                title={isScreenSharingActive ? 'Остановить трансляцию экрана' : 'Поделиться экраном компьютера'}
+              >
+                {isScreenSharingActive ? (
+                  <>
+                    <Square className="h-3 w-3 fill-white" />
+                    <span>Стоп экран</span>
+                  </>
+                ) : (
+                  <>
+                    <Monitor className="h-3 w-3 text-cyan-300" />
+                    <span>Транслировать экран</span>
+                  </>
+                )}
+              </Button>
+            )}
+          </div>
+        )}
+
+        {/* ИНДИКАТОР ТРАНСЛЯЦИИ */}
+        {isScreenSharingActive && (
+          <div
+            className={`absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg ${controlsVisibilityClass}`}
+          >
+            <Radio className="h-3 w-3 text-pink-400 animate-pulse" />
+            <span>{isHost ? 'Вы транслируете экран' : 'Прямая трансляция экрана ведущего'}</span>
           </div>
         )}
 
         {/* АНИМАЦИЯ СМАЙЛОВ */}
         <VideoReactionsOverlay reactions={floatingReactions} />
+
+        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА */}
+        <div
+          className={`absolute inset-0 w-full h-full bg-black transition-opacity ${
+            isScreenSharingActive ? 'z-30 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'
+          }`}
+        >
+          {/* 0.1 Обычный видеопоток WebRTC */}
+          <video
+            ref={screenShareVideoRef}
+            className="w-full h-full object-contain bg-black"
+            autoPlay
+            playsInline
+            muted={isHost}
+          />
+
+          {/* 0.2 Отрисовка фоллбек кадров (Snapshots) при блокировке WebRTC фаерволами */}
+          {!isHost && !remoteStream && fallbackFrame && (
+            <img
+              src={fallbackFrame}
+              alt="Трансляция экрана"
+              className="absolute inset-0 w-full h-full object-contain bg-black"
+            />
+          )}
+
+          {/* Индикатор загрузки подключения */}
+          {!isHost && !remoteStream && !fallbackFrame && (
+            <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-40 space-y-2">
+              <Loader2 className="h-8 w-8 text-pink-500 animate-spin mb-1" />
+              <p className="text-xs font-bold text-white">Подключение к прямому эфиру ведущего ({room.host_name})...</p>
+              <p className="text-[10px] text-slate-400">Устанавливается соединение трансляции</p>
+              <Button
+                onClick={handleRequestStreamAgain}
+                size="sm"
+                variant="outline"
+                className="mt-2 text-[10px] h-7 border-purple-700 text-purple-300 hover:bg-purple-900/60 rounded-xl gap-1"
+              >
+                <RefreshCw className="h-3 w-3" /> Переподключить
+              </Button>
+            </div>
+          )}
+
+          {/* Подсказка для включения звука трансляции */}
+          {!isHost && needAudioClick && (
+            <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto ${controlsVisibilityClass}`}>
+              <Button
+                onClick={handleEnableAudioClick}
+                size="sm"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs h-9 px-4 rounded-full shadow-2xl animate-pulse gap-1.5 border border-white/20"
+              >
+                <Volume2 className="h-4 w-4 text-cyan-300" /> Включить звук трансляции
+              </Button>
+            </div>
+          )}
+        </div>
 
         {/* 1. YOUTUBE */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
@@ -676,6 +1152,50 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             playsInline
           />
         )}
+
+        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ (СКРЫВАЕТСЯ ПРИ ТРАНСЛЯЦИИ ЭКРАНА) */}
+        {isEmbedBlocked && !isScreenSharingActive && (
+          <div className="absolute inset-0 z-40 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
+            <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
+              <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
+                {isHost ? (
+                  <>
+                    Запустите <strong>Трансляцию экрана</strong> кнопкой ниже, чтобы показать это видео всем зрителям!
+                  </>
+                ) : (
+                  <>
+                    Ожидайте, пока владелец комнаты (<strong>{room.host_name}</strong>) запустит трансляцию своего экрана или выберите другое видео.
+                  </>
+                )}
+              </p>
+            </div>
+            {isHost && (
+              <Button
+                onClick={handleToggleScreenShare}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+              >
+                <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
+              </Button>
+            )}
+          </div>
+        )}
+
+        {(needUserGesture || (!isPlaying && room.is_playing && !isHost && mediaInfo.type === 'youtube')) &&
+          !isEmbedBlocked &&
+          !isScreenSharingActive && (
+            <div className="absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
+              <Button
+                onClick={handleMobileUnlockClick}
+                size="lg"
+                className="bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs sm:text-sm h-11 px-6 rounded-2xl shadow-xl shadow-pink-500/40 animate-bounce gap-2"
+              >
+                <RotateCcw className="h-5 w-5 fill-white" />
+                <span>Нажмите для запуска видео и звука</span>
+              </Button>
+            </div>
+          )}
       </div>
 
       {/* КАСТОМНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ПЛЕЕРОМ */}
