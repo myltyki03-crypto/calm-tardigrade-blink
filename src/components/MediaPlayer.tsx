@@ -65,10 +65,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const viewerPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const webrtcChannelRef = useRef<any>(null);
+  const syncChannelRef = useRef<any>(null);
   const canvasIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastHostSyncSaveRef = useRef<number>(0);
   const prevLastUpdatedRef = useRef<string | undefined>(room.last_updated_at);
+
+  // Хранение последнего полученного от владельца времени
+  const latestHostTimeRef = useRef<{ time: number; isPlaying: boolean; timestamp: number } | null>(null);
 
   const mediaInfo: MediaInfo = parseMediaUrl(room.current_media_url || '');
 
@@ -83,14 +87,27 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  // Ключ пересборки iframe для мгновенного применения таймкодов
+  // Ключ пересборки iframe для VK / Rutube
   const [iframeKey, setIframeKey] = useState<number>(Date.now());
 
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
-  // Автоматическое скрытие органов управления через 2.5 секунды при старте видео
+  // Получить текущее точное время с плеера ведущего
+  const getHostLiveTime = (): number => {
+    if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.getCurrentTime) {
+      try {
+        const cur = ytPlayerRef.current.getCurrentTime();
+        if (typeof cur === 'number' && !isNaN(cur)) return cur;
+      } catch {}
+    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+      return videoElementRef.current.currentTime || currentTime;
+    }
+    return currentTime;
+  };
+
+  // Автоматическое скрытие органов управления
   useEffect(() => {
     if (isPlaying) {
       if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
@@ -106,7 +123,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [isPlaying]);
 
-  // Мгновенный статус трансляции экрана
   const isScreenSharingActive =
     Boolean(room.is_screen_sharing) || Boolean(screenStream) || Boolean(remoteStream) || Boolean(fallbackFrame);
 
@@ -118,7 +134,59 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // Перехват PostMessage сообщений от VK Видео и сторонних плееров
+  // Канал прямого вещания точного времени от Ведущего к Зрителям
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const channelName = 'room-playback-sync-' + room.id;
+    const channel = supabase.channel(channelName, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on('broadcast', { event: 'request_host_time' }, () => {
+        if (isHost) {
+          const liveTime = getHostLiveTime();
+          channel.send({
+            type: 'broadcast',
+            event: 'host_time_update',
+            payload: { time: liveTime, isPlaying: isPlaying, timestamp: Date.now() },
+          });
+        }
+      })
+      .on('broadcast', { event: 'host_time_update' }, ({ payload }) => {
+        if (!isHost && payload) {
+          latestHostTimeRef.current = {
+            time: payload.time,
+            isPlaying: payload.isPlaying,
+            timestamp: payload.timestamp || Date.now(),
+          };
+        }
+      })
+      .subscribe();
+
+    syncChannelRef.current = channel;
+
+    // Ведущий регулярно передает точное время по радиоканалу
+    let hostBroadcastInterval: NodeJS.Timeout | null = null;
+    if (isHost) {
+      hostBroadcastInterval = setInterval(() => {
+        const liveTime = getHostLiveTime();
+        channel.send({
+          type: 'broadcast',
+          event: 'host_time_update',
+          payload: { time: liveTime, isPlaying: isPlaying, timestamp: Date.now() },
+        });
+      }, 2000);
+    }
+
+    return () => {
+      if (hostBroadcastInterval) clearInterval(hostBroadcastInterval);
+      supabase.removeChannel(channel);
+    };
+  }, [room.id, isHost, isPlaying, currentTime, mediaInfo.type]);
+
+  // Перехват сообщений от плевра VK
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       try {
@@ -159,7 +227,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return () => window.removeEventListener('message', handleWindowMessage);
   }, [isHost, isPlaying, currentTime, room.id]);
 
-  // Закрепление видеопотока трансляции на HTML-теге
+  // Закрепление видеопотока экрана
   useEffect(() => {
     const video = screenShareVideoRef.current;
     if (!video) return;
@@ -170,9 +238,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       if (video.srcObject !== activeStream) {
         video.srcObject = activeStream;
       }
-
       video.muted = isHost || isMuted;
-
       video
         .play()
         .then(() => {
@@ -181,13 +247,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         })
         .catch(() => {
           video.muted = true;
-          video
-            .play()
-            .then(() => {
-              if (!isHost) setNeedAudioClick(true);
-              setIsEmbedBlocked(false);
-            })
-            .catch((e) => console.error('Even muted screen play failed:', e));
+          video.play().catch(() => {});
         });
     } else {
       if (!isScreenSharingActive && video.srcObject) {
@@ -196,7 +256,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [isScreenSharingActive, screenStream, remoteStream, isHost, isMuted]);
 
-  // Демонстрация экрана ведущего
+  // Демонстрация экрана
   const handleToggleScreenShare = async () => {
     if (!isHost) {
       showError('Только владелец комнаты может запускать трансляцию экрана');
@@ -230,12 +290,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
         screenShareVideoRef.current.muted = true;
-        screenShareVideoRef.current
-          .play()
-          .then(() => {
-            setIsEmbedBlocked(false);
-          })
-          .catch(() => {});
+        screenShareVideoRef.current.play().catch(() => {});
       }
 
       if (webrtcChannelRef.current) {
@@ -462,15 +517,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           }
         }
       })
-      .subscribe((status) => {
-        if (status === 'SUBSCRIBED' && !isHost && isScreenSharingActive) {
-          channel.send({
-            type: 'broadcast',
-            event: 'webrtc-request-offer',
-            payload: { viewerId: myUserId },
-          });
-        }
-      });
+      .subscribe();
 
     webrtcChannelRef.current = channel;
 
@@ -478,21 +525,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       supabase.removeChannel(channel);
     };
   }, [room.id, isHost, isScreenSharingActive, screenStream, currentUser.id]);
-
-  useEffect(() => {
-    if (!isHost && isScreenSharingActive && !remoteStream && webrtcChannelRef.current) {
-      const myUserId = currentUser.id || 'guest';
-      const pollTimer = setInterval(() => {
-        webrtcChannelRef.current.send({
-          type: 'broadcast',
-          event: 'webrtc-request-offer',
-          payload: { viewerId: myUserId },
-        });
-      }, 2000);
-
-      return () => clearInterval(pollTimer);
-    }
-  }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -511,17 +543,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getCalculatedHostTime = () => {
-    let startSec = room.playback_position_seconds || 0;
-    if (room.is_playing && room.last_updated_at) {
-      const elapsed = (Date.now() - new Date(room.last_updated_at).getTime()) / 1000;
-      if (elapsed > 0 && elapsed < 86400) {
-        startSec += elapsed;
-      }
-    }
-    return Math.max(0, startSec);
-  };
-
   const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume', value?: number) => {
     if (!iframeRef.current?.contentWindow) return;
     const win = iframeRef.current.contentWindow;
@@ -530,22 +551,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       if (command === 'play') {
         win.postMessage({ box_msg: 'play' }, '*');
         win.postMessage({ type: 'play' }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'play' }), '*');
       } else if (command === 'pause') {
         win.postMessage({ box_msg: 'pause' }, '*');
         win.postMessage({ type: 'pause' }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'pause' }), '*');
       } else if (command === 'seek' && typeof value === 'number') {
         win.postMessage({ box_msg: 'seek', value: value }, '*');
         win.postMessage({ type: 'seek', time: value }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'seek', value: value }), '*');
       }
     } catch (e) {
       console.error('Failed to send iframe command:', e);
     }
   };
 
-  // Автоматический локальный счётчик для сторонних iframe (VK, Rutube)
   useEffect(() => {
     if (isIframePlayer) {
       let interval: NodeJS.Timeout | null = null;
@@ -569,7 +586,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   useEffect(() => {
     setIsEmbedBlocked(false);
-    const initialSec = getCalculatedHostTime();
+    const initialSec = room.playback_position_seconds || 0;
     setCurrentTime(initialSec);
     setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, false));
     setIframeKey(Date.now());
@@ -610,7 +627,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       const targetElement = document.createElement('div');
       playerContainerRef.current.appendChild(targetElement);
 
-      const startSec = getCalculatedHostTime();
+      const startSec = room.playback_position_seconds || 0;
 
       try {
         if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
@@ -721,74 +738,17 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
-  useEffect(() => {
-    if (!isHost && room.last_updated_at !== prevLastUpdatedRef.current) {
-      prevLastUpdatedRef.current = room.last_updated_at;
-      const targetHostTime = getCalculatedHostTime();
-
-      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
-        let localTime = 0;
-        try {
-          localTime = ytPlayerRef.current.getCurrentTime?.() || 0;
-        } catch (err) {}
-
-        if (Math.abs(localTime - targetHostTime) > 2.5) {
-          ytPlayerRef.current.seekTo(targetHostTime, true);
-        }
-
-        if (room.is_playing) {
-          ytPlayerRef.current.playVideo?.();
-          setIsPlaying(true);
-        } else {
-          ytPlayerRef.current.pauseVideo?.();
-          setIsPlaying(false);
-        }
-      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-        const v = videoElementRef.current;
-        if (Math.abs(v.currentTime - targetHostTime) > 2.5) {
-          v.currentTime = targetHostTime;
-        }
-        if (room.is_playing) {
-          v.play().catch(() => setNeedUserGesture(true));
-          setIsPlaying(true);
-        } else {
-          v.pause();
-          setIsPlaying(false);
-        }
-      } else if (isIframePlayer) {
-        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
-        setIframeSrc(newVkUrl);
-        setIframeKey(Date.now()); // Перезапуск кадра на актуальной секунде
-        setIsPlaying(room.is_playing);
-        setCurrentTime(targetHostTime);
-      }
-    }
-  }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
-
-  useEffect(() => {
-    const handleFullscreenChange = () => {
-      setIsFullscreen(Boolean(document.fullscreenElement));
-    };
-    document.addEventListener('fullscreenchange', handleFullscreenChange);
-    return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
-  }, []);
-
   const handleMobileUnlockClick = () => {
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
-      const syncTime = getCalculatedHostTime();
       try {
         ytPlayerRef.current.unMute();
         ytPlayerRef.current.setVolume(volume || 80);
-        ytPlayerRef.current.seekTo(syncTime, true);
         ytPlayerRef.current.playVideo();
       } catch (e) {}
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.muted = false;
       videoElementRef.current.play();
     } else if (isIframePlayer) {
-      const syncTime = getCalculatedHostTime();
-      setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
-      setIframeKey(Date.now());
       sendIframeCommand('play');
     }
 
@@ -930,24 +890,52 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  // Кнопка «Синхронизировать»
   const handleSyncClick = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
-    const syncTime = getCalculatedHostTime();
-
     if (isHost) {
-      let curSec = currentTime;
-      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.getCurrentTime) {
-        curSec = ytPlayerRef.current.getCurrentTime() || currentTime;
-      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-        curSec = videoElementRef.current.currentTime || currentTime;
-      }
+      // Ведущий обновляет свои данные на сервере и рассылает эфирное время
+      const curSec = getHostLiveTime();
       updateRoomProgress(room.id, curSec, isPlaying);
-      showSuccess('Время трансляции синхронизировано!');
+
+      if (syncChannelRef.current) {
+        syncChannelRef.current.send({
+          type: 'broadcast',
+          event: 'host_time_update',
+          payload: { time: curSec, isPlaying: isPlaying, timestamp: Date.now() },
+        });
+      }
+
+      showSuccess('Вы синхронизировали текущую секунду для всех зрителей!');
     } else {
+      // Зритель делает радио-запрос в браузер ведущего
+      if (syncChannelRef.current) {
+        syncChannelRef.current.send({
+          type: 'broadcast',
+          event: 'request_host_time',
+        });
+      }
+
+      // Если в памяти уже есть последняя отбивка от ведущего
+      let targetTime = room.playback_position_seconds || 0;
+      let targetIsPlaying = room.is_playing;
+
+      if (latestHostTimeRef.current) {
+        targetTime = latestHostTimeRef.current.time;
+        targetIsPlaying = latestHostTimeRef.current.isPlaying;
+        if (targetIsPlaying) {
+          const elapsed = (Date.now() - latestHostTimeRef.current.timestamp) / 1000;
+          if (elapsed > 0 && elapsed < 86400) {
+            targetTime += elapsed;
+          }
+        }
+      }
+
+      // Применяем таймкод ведущего к плееру зрителя
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
-        ytPlayerRef.current.seekTo(syncTime, true);
-        if (room.is_playing) {
+        ytPlayerRef.current.seekTo(targetTime, true);
+        if (targetIsPlaying) {
           ytPlayerRef.current.playVideo();
           setIsPlaying(true);
         } else {
@@ -956,8 +944,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         }
         forceDisableCaptions();
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-        videoElementRef.current.currentTime = syncTime;
-        if (room.is_playing) {
+        videoElementRef.current.currentTime = targetTime;
+        if (targetIsPlaying) {
           videoElementRef.current.play().catch(() => setNeedUserGesture(true));
           setIsPlaying(true);
         } else {
@@ -965,20 +953,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (isIframePlayer) {
-        // Принудительная перезагрузка iframe кадра VK/Rutube с обновлённым таймкодом
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, targetTime, targetIsPlaying);
         setIframeSrc(newEmbedUrl);
         setIframeKey(Date.now());
-        setCurrentTime(syncTime);
-        setIsPlaying(true);
+        setCurrentTime(targetTime);
+        setIsPlaying(targetIsPlaying);
 
         setTimeout(() => {
-          sendIframeCommand('seek', syncTime);
-          sendIframeCommand('play');
-        }, 200);
+          sendIframeCommand('seek', targetTime);
+          if (targetIsPlaying) sendIframeCommand('play');
+        }, 300);
       }
 
-      showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
+      showSuccess(`Синхронизировано под владельца (${formatTime(targetTime)})`);
     }
   };
 
@@ -1005,11 +992,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       onClick={handleUserActivity}
       className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${fullscreenClass}`}
     >
-      {/* Скрытый холст для захвата дублирующих кадров трансляции */}
+      {/* Скрытый холст для снимков экрана */}
       <canvas ref={hiddenCanvasRef} className="hidden" />
 
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
+        {/* КНОПКА СИНХРОНИЗАЦИИ ПО ВЛАДЕЛЬЦУ */}
         {(!needUserGesture || isScreenSharingActive) && !isEmbedBlocked && (
           <div
             className={`absolute top-3 left-3 z-40 flex items-center gap-2 ${controlsVisibilityClass}`}
@@ -1017,8 +1004,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             <Button
               onClick={handleSyncClick}
               size="sm"
-              className="h-7 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-[11px] rounded-full shadow-lg shadow-cyan-500/30 backdrop-blur-md flex items-center gap-1.5 border border-white/20 opacity-80 hover:opacity-100 transition-opacity"
-              title="Синхронизировать видео с создателем комнаты"
+              className="h-7 px-3 bg-gradient-to-r from-blue-600 via-cyan-600 to-blue-500 hover:from-blue-500 hover:to-cyan-400 text-white font-black text-[11px] rounded-full shadow-lg shadow-cyan-500/30 backdrop-blur-md flex items-center gap-1.5 border border-white/20 opacity-90 hover:opacity-100 transition-opacity"
+              title="Синхронизировать видео под точное время владельца"
             >
               <Zap className="h-3 w-3 fill-amber-300 text-amber-300" />
               <span>Синхронизировать</span>
@@ -1051,7 +1038,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* ИНДИКАТОР ТРАНСЛЯЦИИ ЭКРАНА */}
+        {/* ИНДИКАТОР ТРАНСЛЯЦИИ */}
         {isScreenSharingActive && (
           <div
             className={`absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg ${controlsVisibilityClass}`}
@@ -1070,7 +1057,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             isScreenSharingActive ? 'z-30 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'
           }`}
         >
-          {/* 0.1 Обычный видеопоток WebRTC */}
           <video
             ref={screenShareVideoRef}
             className="w-full h-full object-contain bg-black"
@@ -1079,7 +1065,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             muted={isHost}
           />
 
-          {/* 0.2 Отрисовка фоллбек кадров (Snapshots) при блокировке WebRTC фаерволами */}
           {!isHost && !remoteStream && fallbackFrame && (
             <img
               src={fallbackFrame}
@@ -1088,7 +1073,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             />
           )}
 
-          {/* Индикатор загрузки подключения */}
           {!isHost && !remoteStream && !fallbackFrame && (
             <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-40 space-y-2">
               <Loader2 className="h-8 w-8 text-pink-500 animate-spin mb-1" />
@@ -1105,7 +1089,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             </div>
           )}
 
-          {/* Подсказка для включения звука трансляции */}
           {!isHost && needAudioClick && (
             <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto ${controlsVisibilityClass}`}>
               <Button
@@ -1161,7 +1144,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ (СКРЫВАЕТСЯ ПРИ ТРАНСЛЯЦИИ ЭКРАНА) */}
+        {/* ОШИБКА ВСТРАИВАНИЯ */}
         {isEmbedBlocked && !isScreenSharingActive && (
           <div className="absolute inset-0 z-40 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
             <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
@@ -1182,7 +1165,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>
