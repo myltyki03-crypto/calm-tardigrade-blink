@@ -118,6 +118,39 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
+  // Отправка команд в iframe плеера (VK, Rutube)
+  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume', value?: number) => {
+    if (!iframeRef.current?.contentWindow) return;
+    const win = iframeRef.current.contentWindow;
+
+    try {
+      if (command === 'play') {
+        win.postMessage({ box_msg: 'play' }, '*');
+        win.postMessage({ type: 'play' }, '*');
+        win.postMessage({ event: 'play' }, '*');
+        win.postMessage({ method: 'play' }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'play' }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'play' }), '*');
+      } else if (command === 'pause') {
+        win.postMessage({ box_msg: 'pause' }, '*');
+        win.postMessage({ type: 'pause' }, '*');
+        win.postMessage({ event: 'pause' }, '*');
+        win.postMessage({ method: 'pause' }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'pause' }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
+      } else if (command === 'seek' && typeof value === 'number') {
+        win.postMessage({ box_msg: 'seek', value: value }, '*');
+        win.postMessage({ type: 'seek', time: value }, '*');
+        win.postMessage({ event: 'seek', param: value }, '*');
+        win.postMessage({ method: 'seek', param: value }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'seek', value: value }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'seek', value: value }), '*');
+      }
+    } catch (e) {
+      console.error('Failed to send iframe command:', e);
+    }
+  };
+
   // Перехват PostMessage сообщений от VK Видео и сторонних плееров
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
@@ -131,24 +164,31 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         if (!data) return;
 
-        const eventType = data.event || data.type || data.box_msg;
-        const timeVal = data.time ?? data.currentTime ?? data.value;
+        const eventType = data.event || data.type || data.box_msg || (Array.isArray(data) ? data[0] : null);
 
-        if (typeof timeVal === 'number' && timeVal >= 0) {
+        // Извлечение времени воспроизведения из сообщений VK / Rutube
+        let timeVal: number | undefined = undefined;
+        if (typeof data.time === 'number') timeVal = data.time;
+        else if (typeof data.param === 'number') timeVal = data.param;
+        else if (typeof data.value === 'number') timeVal = data.value;
+        else if (typeof data.currentTime === 'number') timeVal = data.currentTime;
+        else if (Array.isArray(data) && typeof data[1] === 'number') timeVal = data[1];
+
+        if (typeof timeVal === 'number' && timeVal >= 0 && !isNaN(timeVal)) {
           setCurrentTime(timeVal);
           if (isHost && isPlaying) {
             const now = Date.now();
-            if (now - lastHostSyncSaveRef.current > 3000) {
+            if (now - lastHostSyncSaveRef.current > 2500) {
               lastHostSyncSaveRef.current = now;
               updateRoomProgress(room.id, timeVal, true);
             }
           }
         }
 
-        if (eventType === 'play' || eventType === 'video_play') {
+        if (eventType === 'play' || eventType === 'video_play' || eventType === 'started' || eventType === 'playing') {
           setIsPlaying(true);
           if (isHost) updateRoomProgress(room.id, currentTime, true);
-        } else if (eventType === 'pause' || eventType === 'video_pause') {
+        } else if (eventType === 'pause' || eventType === 'video_pause' || eventType === 'paused') {
           setIsPlaying(false);
           if (isHost) updateRoomProgress(room.id, currentTime, false);
         }
@@ -514,29 +554,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, startSec);
   };
 
-  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume', value?: number) => {
-    if (!iframeRef.current?.contentWindow) return;
-    const win = iframeRef.current.contentWindow;
-
-    try {
-      if (command === 'play') {
-        win.postMessage({ box_msg: 'play' }, '*');
-        win.postMessage({ type: 'play' }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'play' }), '*');
-      } else if (command === 'pause') {
-        win.postMessage({ box_msg: 'pause' }, '*');
-        win.postMessage({ type: 'pause' }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'pause' }), '*');
-      } else if (command === 'seek' && typeof value === 'number') {
-        win.postMessage({ box_msg: 'seek', value: value }, '*');
-        win.postMessage({ type: 'seek', time: value }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'seek', value: value }), '*');
-      }
-    } catch (e) {
-      console.error('Failed to send iframe command:', e);
-    }
-  };
-
   // Автоматический локальный счётчик для сторонних iframe (VK, Rutube)
   useEffect(() => {
     if (isIframePlayer) {
@@ -545,7 +562,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         interval = setInterval(() => {
           setCurrentTime((prev) => {
             const next = prev + 1;
-            if (isHost && Date.now() - lastHostSyncSaveRef.current > 3000) {
+            if (isHost && Date.now() - lastHostSyncSaveRef.current > 2500) {
               lastHostSyncSaveRef.current = Date.now();
               updateRoomProgress(room.id, next, true);
             }
@@ -689,7 +706,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         if (typeof cur === 'number') {
           setCurrentTime(cur);
-          if (isHost && now - lastHostSyncSaveRef.current > 3000) {
+          if (isHost && now - lastHostSyncSaveRef.current > 2500) {
             lastHostSyncSaveRef.current = now;
             if (ytPlayerRef.current.getPlayerState?.() === 1) {
               updateRoomProgress(room.id, cur, true);
@@ -713,6 +730,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
+  // Реакция на синхронизацию ведущего для зрителей
   useEffect(() => {
     if (!isHost && room.last_updated_at !== prevLastUpdatedRef.current) {
       prevLastUpdatedRef.current = room.last_updated_at;
@@ -748,11 +766,24 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (isIframePlayer) {
-        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
-        setIframeSrc(newVkUrl);
-        setIframeKey(Date.now()); // Перезапуск кадра на актуальной секунде
-        setIsPlaying(room.is_playing);
-        setCurrentTime(targetHostTime);
+        const timeDiff = Math.abs(currentTime - targetHostTime);
+
+        // Отправка postMessage для бесшовного сдвига без перезагрузки кадра
+        if (timeDiff > 2.5) {
+          sendIframeCommand('seek', targetHostTime);
+          setCurrentTime(targetHostTime);
+        }
+
+        if (room.is_playing !== isPlaying) {
+          setIsPlaying(room.is_playing);
+          sendIframeCommand(room.is_playing ? 'play' : 'pause');
+        }
+
+        // В случае критического расхождения (>15 сек) пересобираем плеер с новыми URL параметрами
+        if (timeDiff > 15) {
+          const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
+          setIframeSrc(newVkUrl);
+        }
       }
     }
   }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
@@ -849,11 +880,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     } else {
       const nextPlaying = !isPlaying;
       setIsPlaying(nextPlaying);
-      if (nextPlaying) {
-        sendIframeCommand('play');
-      } else {
-        sendIframeCommand('pause');
-      }
+      sendIframeCommand(nextPlaying ? 'play' : 'pause');
       updateRoomProgress(room.id, currentTime, nextPlaying);
     }
   };
@@ -912,9 +939,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         videoElementRef.current.currentTime = targetSeconds;
       } else {
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying);
-        setIframeSrc(newEmbedUrl);
-        setIframeKey(Date.now());
         sendIframeCommand('seek', targetSeconds);
       }
 
@@ -957,17 +981,15 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (isIframePlayer) {
-        // Принудительная перезагрузка iframe кадра VK/Rutube с обновлённым таймкодом
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
-        setIframeSrc(newEmbedUrl);
-        setIframeKey(Date.now());
         setCurrentTime(syncTime);
         setIsPlaying(true);
 
-        setTimeout(() => {
-          sendIframeCommand('seek', syncTime);
-          sendIframeCommand('play');
-        }, 200);
+        sendIframeCommand('seek', syncTime);
+        sendIframeCommand('play');
+
+        // В случае необходимости пересобираем URL
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
+        setIframeSrc(newEmbedUrl);
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);

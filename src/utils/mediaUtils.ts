@@ -19,6 +19,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
   if (mediaInfo.type === 'vk') {
     try {
       const urlObj = new URL(baseUrl);
+      urlObj.searchParams.set('js_api', '1');
       
       if (shouldAutoplay) {
         urlObj.searchParams.set('autoplay', '1');
@@ -26,7 +27,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
         urlObj.searchParams.delete('autoplay');
       }
 
-      // Передача времени воспроизведения VK Видео (t=Xs)
+      // Передача времени воспроизведения VK Видео (t=Xs или t=seconds)
       if (cleanSec > 0) {
         urlObj.searchParams.set('t', `${cleanSec}s`);
       } else {
@@ -90,7 +91,8 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     if (cleanUrl.includes('video_ext.php')) {
       try {
         const u = new URL(cleanUrl);
-        u.searchParams.delete('js_api'); // Исключаем js_api
+        u.searchParams.set('js_api', '1');
+        if (!u.searchParams.has('hd')) u.searchParams.set('hd', '2');
         embedUrl = u.toString();
         const oid = u.searchParams.get('oid');
         const id = u.searchParams.get('id');
@@ -114,7 +116,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
 
         const hashParam = hash ? `&hash=${hash}` : '';
         const domain = isVkVideoDomain ? 'https://vkvideo.ru' : 'https://vk.com';
-        embedUrl = `${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2`;
+        embedUrl = `${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&js_api=1`;
       }
     }
 
