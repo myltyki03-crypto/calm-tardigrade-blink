@@ -111,7 +111,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         video.srcObject = activeStream;
       }
 
-      // Настройка звука и подстраховка для обхода автозапуска браузера
       video.muted = isHost || isMuted;
 
       video
@@ -121,7 +120,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setNeedUserGesture(false);
         })
         .catch(() => {
-          // Если браузер заблокировал со звуком, запускаем без звука для мгновенной картинки
           video.muted = true;
           video
             .play()
@@ -169,7 +167,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       setRoomScreenShareState(room.id, true);
       showSuccess('Демонстрация экрана запущена!');
 
-      // Привязываем локальный поток напрямую
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
         screenShareVideoRef.current.muted = true;
@@ -181,7 +178,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           .catch(() => {});
       }
 
-      // Уведомляем зрителей через канал трансляции
       if (webrtcChannelRef.current) {
         webrtcChannelRef.current.send({
           type: 'broadcast',
@@ -190,7 +186,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         });
       }
 
-      // Фоллбек кадров (Canvas Snapshot Broadcast) для обхода любых блокировок P2P
       if (canvasIntervalRef.current) clearInterval(canvasIntervalRef.current);
       canvasIntervalRef.current = setInterval(() => {
         const video = screenShareVideoRef.current;
@@ -249,7 +244,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Ручной перезапрос видеопотока зрителям
   const handleRequestStreamAgain = () => {
     if (!webrtcChannelRef.current) return;
     const myUserId = currentUser.id || 'guest';
@@ -261,7 +255,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     showSuccess('Перезапрос видеопотока...');
   };
 
-  // WebRTC Сигналинг + Canvas snapshot fallback
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
@@ -361,7 +354,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
           await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
 
-          // Очередь кандидатов для гарантированного обхода фаерволов
           while (pendingIceCandidatesRef.current.length > 0) {
             const candidate = pendingIceCandidatesRef.current.shift();
             if (candidate) {
@@ -427,7 +419,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [room.id, isHost, isScreenSharingActive, screenStream, currentUser.id]);
 
-  // Запрос трансляции при входе зрителя
   useEffect(() => {
     if (!isHost && isScreenSharingActive && !remoteStream && webrtcChannelRef.current) {
       const myUserId = currentUser.id || 'guest';
@@ -535,7 +526,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [mediaInfo.type]);
 
-  // Загрузка и управление YouTube плеером без разрушения DOM
   useEffect(() => {
     if (mediaInfo.type !== 'youtube' || isScreenSharingActive) return;
 
@@ -926,6 +916,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     ? 'w-screen h-screen justify-between z-50'
     : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video';
 
+  const controlsVisibilityClass = showControls
+    ? 'opacity-100 pointer-events-auto'
+    : 'opacity-0 pointer-events-none';
+
   return (
     <div
       ref={containerRef}
@@ -939,7 +933,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
         {(!needUserGesture || isScreenSharingActive) && !isEmbedBlocked && (
-          <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
+          <div
+            className={`absolute top-3 left-3 z-40 flex items-center gap-2 transition-all duration-300 ${controlsVisibilityClass}`}
+          >
             <Button
               onClick={handleSyncClick}
               size="sm"
@@ -979,7 +975,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         {/* ИНДИКАТОР ТРАНСЛЯЦИИ ЭКРАНА */}
         {isScreenSharingActive && (
-          <div className="absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg">
+          <div
+            className={`absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg transition-all duration-300 ${controlsVisibilityClass}`}
+          >
             <Radio className="h-3 w-3 text-pink-400 animate-pulse" />
             <span>{isHost ? 'Вы транслируете экран' : 'Прямая трансляция экрана ведущего'}</span>
           </div>
@@ -1031,7 +1029,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
           {/* Подсказка для включения звука трансляции */}
           {!isHost && needAudioClick && (
-            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+            <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${controlsVisibilityClass}`}>
               <Button
                 onClick={handleEnableAudioClick}
                 size="sm"
@@ -1106,7 +1104,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>
