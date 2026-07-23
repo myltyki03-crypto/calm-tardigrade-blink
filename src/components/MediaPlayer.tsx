@@ -12,7 +12,9 @@ import {
   ExternalLink,
   AlertCircle,
   Video,
-  ShieldAlert,
+  Settings,
+  Eye,
+  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -57,6 +59,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
+  // Режим прямых кликов по плееру для зрителей (чтобы настроить качество/шестеренку)
+  const [allowIframeClick, setAllowIframeClick] = useState(false);
+
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
@@ -87,6 +92,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   useEffect(() => {
     setIsEmbedBlocked(false);
+    setAllowIframeClick(false);
   }, [mediaInfo.id, mediaInfo.url]);
 
   useEffect(() => {
@@ -485,7 +491,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             src={`https://player.twitch.tv/?${
               mediaInfo.twitchType === 'video' ? `video=${mediaInfo.id}` : `channel=${mediaInfo.id}`
             }&parent=${currentHostname}&autoplay=${room.is_playing ? 'true' : 'false'}&muted=false`}
-            className={`absolute inset-0 w-full h-full border-0 z-10 ${isHost ? 'pointer-events-auto' : 'pointer-events-none'}`}
+            className="absolute inset-0 w-full h-full border-0 z-10 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
@@ -500,7 +506,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           mediaInfo.type === 'iframe') && (
           <iframe
             src={mediaInfo.embedUrl || mediaInfo.url}
-            className={`absolute inset-0 w-full h-full border-0 bg-black z-10 ${isHost ? 'pointer-events-auto' : 'pointer-events-none'}`}
+            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
@@ -517,12 +523,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ЗАЩИТНЫЙ ЩИТ ДЛЯ ЗРИТЕЛЕЙ (!isHost) */}
-        {!isHost && !needUserGesture && !isEmbedBlocked && (
+        {/* ЗАЩИТНЫЙ ЩИТ ДЛЯ ЗРИТЕЛЕЙ (!isHost) С ВОЗМОЖНОСТЬЮ ВКЛЮЧЕНИЯ ИНТЕРАКТИВНОГО РЕЖИМА НАСТРОЙКИ КАЧЕСТВА */}
+        {!isHost && !needUserGesture && !isEmbedBlocked && !allowIframeClick && (
           <div
             onClick={handleViewerShieldClick}
-            className="absolute inset-0 z-20 cursor-not-allowed bg-transparent pointer-events-auto"
-            title="Только ведущий может управлять видео"
+            className="absolute inset-0 z-20 cursor-not-allowed bg-transparent pointer-events-auto flex flex-col justify-between p-3"
+            title="Только ведущий может управлять видео и переключать рекомендации"
           />
         )}
 
@@ -560,55 +566,98 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* Кнопка синхронизации */}
-        {!isFullscreen && !needUserGesture && !isEmbedBlocked && isInteractivePlayer && (
+        {/* ВЕРХНИЕ УНИВЕРСАЛЬНЫЕ КНОПКИ УПРАВЛЕНИЯ (НА ВЕСЬ ЭКРАН, КАЧЕСТВО, ЗВУК) */}
+        {!needUserGesture && !isEmbedBlocked && (
           <div
-            className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
-              showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
+            className={`absolute top-3 left-3 right-3 z-30 flex items-center justify-between gap-2 transition-opacity duration-300 pointer-events-auto ${
+              showControls ? 'opacity-100' : 'opacity-0'
             }`}
           >
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleSyncClick();
-              }}
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
-            >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Синхронизировать
-            </Button>
-          </div>
-        )}
+            {/* Левая группа */}
+            <div className="flex items-center gap-1.5">
+              {isInteractivePlayer && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleSyncClick();
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-[11px] px-2.5 bg-slate-950/85 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/80 rounded-full shadow-lg backdrop-blur-md"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" />
+                  Синхронизировать
+                </Button>
+              )}
 
-        {/* Бейдж платформы и кнопка открытия оригинала для VK / Rutube / Twitch */}
-        {mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-2 pointer-events-auto">
-            {!isHost && (
-              <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/90 border border-amber-500/40 text-amber-300 text-[10px] font-bold backdrop-blur-md shadow-lg">
-                <ShieldAlert className="h-3 w-3 text-amber-400" />
-                <span>Режим зрителя</span>
-              </div>
-            )}
-            <a
-              href={mediaInfo.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/90 border border-purple-500/50 text-purple-200 hover:text-white hover:bg-purple-900/80 text-xs font-bold backdrop-blur-md shadow-lg transition-colors"
-              title="Открыть видео в новом окне"
-            >
-              <ExternalLink className="h-3 w-3 text-pink-400" />
-              <span>Открыть на {getPlatformLabel()}</span>
-            </a>
-            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs font-bold backdrop-blur-md shadow-lg">
-              <Video className="h-3.5 w-3.5 text-pink-400" /> {getPlatformLabel()}
+              {/* Переключатель кликабельности плеера для настройки Качества в VK/Rutube */}
+              {!isHost && mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
+                <Button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setAllowIframeClick(!allowIframeClick);
+                    if (!allowIframeClick) {
+                      showSuccess('Нажмите на шестеренку в видео для выбора качества (1080p, 720p)');
+                    } else {
+                      showSuccess('Защита от переключений восстановлена');
+                    }
+                  }}
+                  size="sm"
+                  variant="outline"
+                  className={`h-7 text-[11px] px-2.5 rounded-full shadow-lg backdrop-blur-md border ${
+                    allowIframeClick
+                      ? 'bg-amber-950/90 border-amber-500/60 text-amber-200'
+                      : 'bg-slate-950/85 border-purple-500/40 text-purple-200 hover:bg-purple-900/60'
+                  }`}
+                  title="Нажмите, чтобы настроить качество внутри плеера"
+                >
+                  {allowIframeClick ? (
+                    <>
+                      <Eye className="h-3 w-3 mr-1 text-amber-400" />
+                      <span>Качество (Нажмите шестеренку)</span>
+                    </>
+                  ) : (
+                    <>
+                      <Settings className="h-3 w-3 mr-1 text-pink-400" />
+                      <span>Настройка качества (1080p)</span>
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+
+            {/* Правая группа */}
+            <div className="flex items-center gap-1.5">
+              <a
+                href={mediaInfo.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/85 border border-purple-500/50 text-purple-200 hover:text-white hover:bg-purple-900/80 text-[11px] font-bold backdrop-blur-md shadow-lg transition-colors"
+                title="Открыть оригинальную ссылку"
+              >
+                <ExternalLink className="h-3 w-3 text-pink-400" />
+                <span>{getPlatformLabel()}</span>
+              </a>
+
+              {/* УНИВЕРСАЛЬНАЯ КНОПКА «НА ВЕСЬ ЭКРАН» ДЛЯ ВСЕХ */}
+              <Button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleFullscreen();
+                }}
+                size="sm"
+                className="h-7 text-[11px] px-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold rounded-full shadow-lg backdrop-blur-md gap-1"
+                title={isFullscreen ? 'Свернуть' : 'Развернуть на весь экран'}
+              >
+                {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
+                <span className="hidden sm:inline">{isFullscreen ? 'Свернуть' : 'На весь экран'}</span>
+              </Button>
             </div>
           </div>
         )}
 
         {(needUserGesture || (!isPlaying && room.is_playing && !isHost && isInteractivePlayer)) && !isEmbedBlocked && (
-          <div className="absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
+          <div className="absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
             <Button
               onClick={handleMobileUnlockClick}
               size="lg"
