@@ -83,7 +83,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // Функция переключения демонстрации экрана
+  // Демонстрация экрана ведущего
   const handleToggleScreenShare = async () => {
     if (!isHost) {
       showError('Только ведущий комнаты может запускать трансляцию экрана');
@@ -109,7 +109,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
       setScreenStream(stream);
       setRoomScreenShareState(room.id, true);
-      showSuccess('💻 Демонстрация экрана запущена!');
+      showSuccess('Демонстрация экрана запущена!');
 
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
@@ -140,7 +140,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
-    const channel = supabase.channel(`webrtc-screenshare-${room.id}`, {
+    const channelName = 'webrtc-screenshare-' + room.id;
+    const channel = supabase.channel(channelName, {
       config: { broadcast: { self: false } },
     });
 
@@ -640,7 +641,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         curSec = videoElementRef.current.currentTime || currentTime;
       }
       updateRoomProgress(room.id, curSec, isPlaying);
-      showSuccess(`⚡ Время VK / эфира (${formatTime(curSec)}) отправлено зрителям!`);
+      showSuccess('Время трансляции синхронизировано!');
     } else {
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
         ytPlayerRef.current.seekTo(syncTime, true);
@@ -668,23 +669,29 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', syncTime);
       }
 
-      showSuccess(`⚡ Синхронизировано с VK / ведущим (${formatTime(syncTime)})`);
+      showSuccess('Видео синхронизировано');
     }
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : (currentTime % 3600) / 36;
   const currentHostname = window.location.hostname || 'localhost';
 
+  // Выносим формируемые строки из JSX для предотвращения синтаксических ошибок в SWC
+  const twitchParamKey = mediaInfo.twitchType === 'video' ? 'video=' : 'channel=';
+  const twitchAutoplay = room.is_playing ? 'true' : 'false';
+  const twitchSrc = 'https://player.twitch.tv/?' + twitchParamKey + mediaInfo.id + '&parent=' + currentHostname + '&autoplay=' + twitchAutoplay + '&muted=false';
+
+  const fullscreenClass = isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video';
+  const playButtonTitle = isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только ведущий может запускать видео';
+  const fullscreenTitle = isFullscreen ? 'Свернуть' : 'На весь экран';
+  const screenShareTitle = isScreenSharingActive ? 'Остановить трансляцию экрана' : 'Поделиться экраном компьютера';
+
   return (
     <div
       ref={containerRef}
       onMouseMove={handleUserActivity}
       onClick={handleUserActivity}
-      className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${
-        isFullscreen
-          ? 'w-screen h-screen justify-between z-50'
-          : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video'
-      }`}
+      className={'relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ' + fullscreenClass}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
@@ -704,12 +711,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <Button
                 onClick={handleToggleScreenShare}
                 size="sm"
-                className={`h-7 px-3 font-bold text-[11px] rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ${
-                  isScreenSharingActive
+                className={
+                  'h-7 px-3 font-bold text-[11px] rounded-full shadow-lg backdrop-blur-md flex items-center gap-1.5 border transition-all ' +
+                  (isScreenSharingActive
                     ? 'bg-red-600 hover:bg-red-500 text-white border-red-400 animate-pulse'
-                    : 'bg-purple-800/90 hover:bg-purple-700 text-purple-100 border-purple-500/50'
-                }`}
-                title={isScreenSharingActive ? 'Остановить трансляцию экрана' : 'Поделиться экраном компьютера'}
+                    : 'bg-purple-800/90 hover:bg-purple-700 text-purple-100 border-purple-500/50')
+                }
+                title={screenShareTitle}
               >
                 {isScreenSharingActive ? (
                   <>
@@ -770,9 +778,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {!isScreenSharingActive && mediaInfo.type === 'twitch' && (
           <iframe
             ref={iframeRef}
-            src={`https://player.twitch.tv/?${
-              mediaInfo.twitchType === 'video' ? `video=${mediaInfo.id}` : `channel=${mediaInfo.id}`
-            }&parent=${currentHostname}&autoplay=${room.is_playing ? 'true' : 'false'}&muted=false`}
+            src={twitchSrc}
             className="absolute inset-0 w-full h-full border-0 z-10 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
             referrerPolicy="no-referrer-when-downgrade"
@@ -842,11 +848,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       {(!isIframePlayer && mediaInfo.type !== 'twitch') || isScreenSharingActive ? (
         <div
           onClick={(e) => e.stopPropagation()}
-          className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ${
-            showControls
-              ? 'opacity-100 translate-y-0 pointer-events-auto'
-              : 'opacity-0 translate-y-4 pointer-events-none'
-          }`}
+          className={
+            'absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ' +
+            (showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none')
+          }
         >
           {!isScreenSharingActive && (
             <div className="flex items-center gap-2 px-1">
@@ -859,7 +864,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 step={0.1}
                 disabled={!isHost}
                 onValueChange={(val) => handleSeek(val[0])}
-                className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
+                className={'flex-1 ' + (isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75')}
               />
               <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
                 {duration > 0 ? formatTime(duration) : '00:00'}
@@ -873,18 +878,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 <Button
                   onClick={handleTogglePlay}
                   size="icon"
-                  title={
-                    isHost
-                      ? isPlaying
-                        ? 'Пауза'
-                        : 'Запустить'
-                      : 'Только владелец комнаты может запускать видео'
+                  title={playButtonTitle}
+                  className={
+                    'h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ' +
+                    (isHost ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30' : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400')
                   }
-                  className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
-                    isHost
-                      ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
-                      : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400'
-                  }`}
                 >
                   {isPlaying ? (
                     <Pause className="h-4 w-4" />
@@ -926,7 +924,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 size="icon"
                 variant="ghost"
                 className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
-                title={isFullscreen ? 'Свернуть' : 'На весь экран'}
+                title={fullscreenTitle}
               >
                 {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4 />}
               </Button>
