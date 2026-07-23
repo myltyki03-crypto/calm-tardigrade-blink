@@ -121,7 +121,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'iframe');
 
   // Отправка команд в iframe плеера (VK, Rutube)
-  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume', value?: number) => {
+  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume' | 'unmute', value?: number) => {
     if (!iframeRef.current?.contentWindow) return;
     const win = iframeRef.current.contentWindow;
 
@@ -131,6 +131,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         win.postMessage({ type: 'play' }, '*');
         win.postMessage({ event: 'play' }, '*');
         win.postMessage({ method: 'play' }, '*');
+        win.postMessage({ box_msg: 'unmute' }, '*');
         win.postMessage(JSON.stringify({ type: 'action', action: 'play' }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'play' }), '*');
       } else if (command === 'pause') {
@@ -147,6 +148,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         win.postMessage({ method: 'seek', param: value }, '*');
         win.postMessage(JSON.stringify({ type: 'action', action: 'seek', value: value }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'seek', value: value }), '*');
+      } else if (command === 'unmute' || command === 'volume') {
+        win.postMessage({ box_msg: 'unmute' }, '*');
+        win.postMessage({ type: 'unmute' }, '*');
+        win.postMessage({ event: 'unmute' }, '*');
+        win.postMessage({ box_msg: 'set_volume', value: value ?? volume }, '*');
+        win.postMessage({ type: 'volume', value: value ?? volume }, '*');
+        win.postMessage(JSON.stringify({ type: 'action', action: 'unmute' }), '*');
       }
     } catch (e) {
       console.error('Failed to send iframe command:', e);
@@ -787,6 +795,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         // Мягкий пост-месседж сдвиг времени без перезагрузок плеера
         if (timeDiff > 3) {
           sendIframeCommand('seek', targetHostTime);
+          sendIframeCommand('unmute');
           setCurrentTime(targetHostTime);
         }
 
@@ -820,9 +829,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       videoElementRef.current.play();
     } else if (isIframePlayer) {
       const syncTime = getCalculatedHostTime();
-      setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
-      setIframeKey(Date.now());
+      sendIframeCommand('seek', syncTime);
       sendIframeCommand('play');
+      sendIframeCommand('unmute');
     }
 
     setIsMuted(false);
@@ -891,6 +900,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       const nextPlaying = !isPlaying;
       setIsPlaying(nextPlaying);
       sendIframeCommand(nextPlaying ? 'play' : 'pause');
+      sendIframeCommand('unmute');
       updateRoomProgress(room.id, currentTime, nextPlaying);
     }
   };
@@ -914,6 +924,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.volume = newVolume / 100;
+    } else if (isIframePlayer) {
+      sendIframeCommand('volume', newVolume);
     }
   };
 
@@ -933,6 +945,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.muted = nextMute;
+    } else if (isIframePlayer) {
+      if (nextMute) sendIframeCommand('volume', 0);
+      else sendIframeCommand('unmute');
     }
   };
 
@@ -999,11 +1014,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         setCurrentTime(syncTime);
         setIsPlaying(true);
 
+        // Отправка команд управления без перезагрузки iframe, предотвращая блокировку звука браузером
         sendIframeCommand('seek', syncTime);
         sendIframeCommand('play');
-
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
-        setIframeSrc(newEmbedUrl);
+        sendIframeCommand('unmute');
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
