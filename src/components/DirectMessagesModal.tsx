@@ -16,6 +16,8 @@ import {
   Search,
   UserCheck,
   Lock,
+  Clock,
+  ArrowUpRight,
 } from 'lucide-react';
 import {
   Dialog,
@@ -361,11 +363,18 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     if (recordingTimerRef.current) clearInterval(recordingTimerRef.current);
   };
 
-  const pendingRequests = friendRequests.filter((r) => {
+  const incomingRequests = friendRequests.filter((r) => {
     const isForMe =
       r.receiver_id === currentUser.id ||
       r.receiver_name.toLowerCase() === myName;
     return isForMe && r.status === 'pending';
+  });
+
+  const outgoingRequests = friendRequests.filter((r) => {
+    const isFromMe =
+      r.sender_id === currentUser.id ||
+      r.sender_name.toLowerCase() === myName;
+    return isFromMe && r.status === 'pending';
   });
 
   const filteredFriends = friendsList.filter((f) =>
@@ -437,9 +446,9 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                 }`}
               >
                 Заявки
-                {pendingRequests.length > 0 && (
+                {incomingRequests.length > 0 && (
                   <span className="ml-1 bg-pink-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold animate-pulse">
-                    {pendingRequests.length}
+                    {incomingRequests.length}
                   </span>
                 )}
               </button>
@@ -573,57 +582,107 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
             </div>
           )}
 
-          {/* ВКЛАДКА 2: ВХОДЯЩИЕ ЗАЯВКИ В ДРУЗЬЯ */}
+          {/* ВКЛАДКА 2: ВХОДЯЩИЕ И ИСХОДЯЩИЕ ЗАЯВКИ В ДРУЗЬЯ */}
           {activeTab === 'requests' && (
             <ScrollArea className="flex-1 p-4">
-              <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-                <UserPlus className="h-4 w-4 text-cyan-400" /> Входящие заявки ({pendingRequests.length})
-              </h4>
+              <div className="space-y-6">
+                {/* 1. Секция входящих заявок */}
+                <div>
+                  <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <UserPlus className="h-4 w-4 text-cyan-400" /> Входящие заявки ({incomingRequests.length})
+                  </h4>
 
-              {pendingRequests.length === 0 ? (
-                <div className="text-center py-12 text-slate-500 text-xs">
-                  Новых заявок в друзья нет
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {pendingRequests.map((req) => (
-                    <div
-                      key={req.id}
-                      className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/70 border border-purple-900/40"
-                    >
-                      <div className="flex items-center gap-3">
-                        <img
-                          src={req.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(req.sender_name)}`}
-                          alt={req.sender_name}
-                          className="h-10 w-10 rounded-full object-cover ring-2 ring-purple-500/30"
-                        />
-                        <div>
-                          <span className="font-bold text-xs text-slate-200">{req.sender_name}</span>
-                          <p className="text-[10px] text-slate-400">Хочет добавиться в друзья</p>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5">
-                        <Button
-                          onClick={() => acceptFriendRequest(req.id)}
-                          size="sm"
-                          className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 px-3 rounded-xl gap-1 font-bold"
-                        >
-                          <Check className="h-3.5 w-3.5" /> Принять
-                        </Button>
-                        <Button
-                          onClick={() => rejectFriendRequest(req.id)}
-                          size="sm"
-                          variant="ghost"
-                          className="text-slate-400 hover:text-red-400 hover:bg-red-950/30 text-xs h-8 px-2 rounded-xl"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
+                  {incomingRequests.length === 0 ? (
+                    <div className="text-slate-500 text-xs bg-slate-950/40 p-3 rounded-2xl border border-purple-950/50 text-center">
+                      Нет новых входящих заявок
                     </div>
-                  ))}
+                  ) : (
+                    <div className="space-y-2">
+                      {incomingRequests.map((req) => (
+                        <div
+                          key={req.id}
+                          className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/70 border border-purple-900/40"
+                        >
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={req.sender_avatar || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(req.sender_name)}`}
+                              alt={req.sender_name}
+                              className="h-10 w-10 rounded-full object-cover ring-2 ring-purple-500/30"
+                            />
+                            <div>
+                              <span className="font-bold text-xs text-slate-200">{req.sender_name}</span>
+                              <p className="text-[10px] text-slate-400">Хочет добавиться в друзья</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5">
+                            <Button
+                              onClick={() => acceptFriendRequest(req.id)}
+                              size="sm"
+                              className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs h-8 px-3 rounded-xl gap-1 font-bold"
+                            >
+                              <Check className="h-3.5 w-3.5" /> Принять
+                            </Button>
+                            <Button
+                              onClick={() => rejectFriendRequest(req.id)}
+                              size="sm"
+                              variant="ghost"
+                              className="text-slate-400 hover:text-red-400 hover:bg-red-950/30 text-xs h-8 px-2 rounded-xl"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
+
+                {/* 2. Секция отправленных (исходящих) заявок */}
+                <div>
+                  <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                    <ArrowUpRight className="h-4 w-4 text-pink-400" /> Отправленные заявки ({outgoingRequests.length})
+                  </h4>
+
+                  {outgoingRequests.length === 0 ? (
+                    <div className="text-slate-500 text-xs bg-slate-950/40 p-3 rounded-2xl border border-purple-950/50 text-center">
+                      У вас нет ожидающих отправленных заявок
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {outgoingRequests.map((req) => (
+                        <div
+                          key={req.id}
+                          className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/70 border border-purple-900/40"
+                        >
+                          <div className="flex items-center gap-3">
+                            <img
+                              src={`https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(req.receiver_name)}`}
+                              alt={req.receiver_name}
+                              className="h-10 w-10 rounded-full object-cover ring-2 ring-pink-500/30"
+                            />
+                            <div>
+                              <span className="font-bold text-xs text-slate-200">{req.receiver_name}</span>
+                              <p className="text-[10px] text-amber-400 font-medium flex items-center gap-1 mt-0.5">
+                                <Clock className="h-3 w-3 animate-spin" /> Ожидает ответа...
+                              </p>
+                            </div>
+                          </div>
+
+                          <Button
+                            onClick={() => rejectFriendRequest(req.id)}
+                            size="sm"
+                            variant="outline"
+                            className="border-red-500/40 text-red-300 hover:bg-red-950/40 text-xs h-8 px-3 rounded-xl gap-1 font-semibold"
+                          >
+                            <X className="h-3.5 w-3.5" /> Отменить
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             </ScrollArea>
           )}
 
