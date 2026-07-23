@@ -141,7 +141,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             Создать комнату просмотра
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Поддерживаются ссылки и код iframe с VK Видео, YouTube, Rutube, Twitch, Vimeo, OK.ru и MP4 файлы.
+            Поддерживаются ссылки с YouTube, Rutube, Twitch, Vimeo, OK.ru и прямые MP4 файлы.
           </DialogDescription>
         </DialogHeader>
 
@@ -169,24 +169,18 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             <Label htmlFor="room_media_url_field" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
               <span>Ссылка или код iframe</span>
               <span className="text-[10px] text-purple-400 font-normal flex items-center gap-1">
-                <Tv className="h-3 w-3" /> VK Видео, YouTube, Rutube, MP4
+                <Tv className="h-3 w-3" /> YouTube, Rutube, Twitch, MP4
               </span>
             </Label>
             <Input
               id="room_media_url_field"
               name="no_autofill_media_url"
               autoComplete="off"
-              placeholder="Вставьте ссылку от VK Видео, YouTube или код iframe..."
+              placeholder="Вставьте ссылку на YouTube, Rutube или MP4 файл..."
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
             />
-            <p className="text-[10px] text-slate-400 flex items-center gap-1 bg-purple-950/40 p-2 rounded-lg border border-purple-900/30">
-              <Info className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
-              <span>
-                <strong>VK Видео:</strong> скопируйте «Код экспорта» в Поделиться ВКонтакте для проигрывания сразу на сайте!
-              </span>
-            </p>
           </div>
 
           <div className="space-y-1.5">
@@ -198,7 +192,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               <SelectContent className="bg-slate-900 border-purple-800 text-slate-200 text-xs">
                 <SelectItem value="music">Музыка и DJ</SelectItem>
                 <SelectItem value="movies">Фильмы и кино</SelectItem>
-                <SelectItem value="youtube">VK Видео / YouTube / Rutube</SelectItem>
+                <SelectItem value="youtube">YouTube / Rutube</SelectItem>
                 <SelectItem value="gaming">Twitch / Игры</SelectItem>
                 <SelectItem value="anime">Аниме и мультфильмы</SelectItem>
                 <SelectItem value="livestream">Прямые стримы</SelectItem>

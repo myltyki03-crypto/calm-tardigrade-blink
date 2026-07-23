@@ -1,4 +1,4 @@
-export type MediaType = 'youtube' | 'twitch' | 'rutube' | 'vk' | 'vimeo' | 'ok' | 'direct' | 'iframe';
+export type MediaType = 'youtube' | 'twitch' | 'rutube' | 'vimeo' | 'ok' | 'direct' | 'iframe';
 
 export interface MediaInfo {
   type: MediaType;
@@ -16,20 +16,6 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
 
   const cleanSec = Math.max(0, Math.floor(startSec));
   const autoParam = shouldAutoplay ? '1' : '0';
-
-  if (mediaInfo.type === 'vk') {
-    // Очищаем старые параметры времени и автозапуска
-    let urlWithoutParams = baseUrl
-      .replace(/([?&])t=[^&]*/gi, '')
-      .replace(/([?&])start=[^&]*/gi, '')
-      .replace(/([?&])time=[^&]*/gi, '')
-      .replace(/([?&])autoplay=[^&]*/gi, '')
-      .replace(/&+/g, '&')
-      .replace(/\?&/g, '?');
-
-    const separator = urlWithoutParams.includes('?') ? '&' : '?';
-    return `${urlWithoutParams}${separator}t=${cleanSec}s&autoplay=${autoParam}&js_api=1&no_stat=1`;
-  }
 
   if (mediaInfo.type === 'rutube') {
     let urlWithoutParams = baseUrl
@@ -63,7 +49,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
 export const parseMediaUrl = (url: string): MediaInfo => {
   let cleanUrl = url.trim();
 
-  // 1. Извлечение ссылки из скопированного кода <iframe> ВКонтакте
+  // 1. Извлечение ссылки из <iframe>
   if (cleanUrl.includes('<iframe')) {
     const srcMatch = cleanUrl.match(/src=["']([^"']+)["']/i);
     if (srcMatch && srcMatch[1]) {
@@ -71,62 +57,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     }
   }
 
-  // 2. VK ВИДЕО (vk.com, vkvideo.ru, vk.ru, video_ext.php, клипы)
-  if (
-    cleanUrl.includes('vk.com') ||
-    cleanUrl.includes('vkvideo.ru') ||
-    cleanUrl.includes('vk.ru') ||
-    cleanUrl.includes('video_ext.php')
-  ) {
-    const domain = cleanUrl.includes('vkvideo.ru') ? 'vkvideo.ru' : 'vk.com';
-
-    let embedUrl = cleanUrl;
-
-    if (!cleanUrl.includes('video_ext.php')) {
-      let oid = '';
-      let id = '';
-      let hash = '';
-
-      const hashMatch = cleanUrl.match(/[?&]hash=([a-f0-9]+)/i);
-      if (hashMatch) hash = hashMatch[1];
-
-      const extMatch = cleanUrl.match(/[?&]oid=(-?\d+)&id=(\d+)/i);
-      const stdMatch = cleanUrl.match(/(?:video|clip)(-?\d+)_(\d+)/i);
-
-      if (extMatch) {
-        oid = extMatch[1];
-        id = extMatch[2];
-      } else if (stdMatch) {
-        oid = stdMatch[1];
-        id = stdMatch[2];
-      }
-
-      if (oid && id) {
-        const hashParam = hash ? `&hash=${hash}` : '';
-        embedUrl = `https://${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=0&js_api=1&no_stat=1`;
-      }
-    } else {
-      if (!embedUrl.includes('autoplay=')) {
-        embedUrl += (embedUrl.includes('?') ? '&' : '?') + 'autoplay=0';
-      } else {
-        embedUrl = embedUrl.replace(/autoplay=1/gi, 'autoplay=0');
-      }
-      if (!embedUrl.includes('js_api=')) {
-        embedUrl += '&js_api=1&no_stat=1';
-      }
-    }
-
-    return {
-      type: 'vk',
-      url: cleanUrl,
-      id: cleanUrl,
-      title: 'VK Видео Трансляция',
-      thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
-      embedUrl: embedUrl,
-    };
-  }
-
-  // 3. RUTUBE
+  // 2. RUTUBE
   if (cleanUrl.includes('rutube.ru/')) {
     let videoId = '';
     const match = cleanUrl.match(/(?:video|embed)\/([a-zA-Z0-9]+)/i);
@@ -147,7 +78,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 4. TWITCH
+  // 3. TWITCH
   if (cleanUrl.includes('twitch.tv/')) {
     if (cleanUrl.includes('twitch.tv/videos/')) {
       const parts = cleanUrl.split('twitch.tv/videos/');
@@ -174,7 +105,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     }
   }
 
-  // 5. VIMEO
+  // 4. VIMEO
   if (cleanUrl.includes('vimeo.com/')) {
     const match = cleanUrl.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
     const videoId = match ? match[1] : '';
@@ -188,7 +119,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 6. OK.RU
+  // 5. OK.RU
   if (cleanUrl.includes('ok.ru/')) {
     const match = cleanUrl.match(/video(?:embed)?\/(\d+)/i);
     const videoId = match ? match[1] : '';
@@ -202,7 +133,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 7. ПРЯМОЙ ВИДЕОФАЙЛ
+  // 6. ПРЯМОЙ ВИДЕОФАЙЛ (MP4 / WebM / OGG)
   if (cleanUrl.match(/\.(mp4|webm|ogg|m3u8)(\?.*)?$/i)) {
     const filename = cleanUrl.split('/').pop()?.split('?')[0] || 'Прямой видеопоток';
     return {
@@ -214,7 +145,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 8. YOUTUBE
+  // 7. YOUTUBE
   if (
     cleanUrl.includes('youtube.com/') ||
     cleanUrl.includes('youtu.be/')
@@ -239,7 +170,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 9. FALLBACK IFRAME
+  // 8. FALLBACK IFRAME
   return {
     type: 'iframe',
     url: cleanUrl,
