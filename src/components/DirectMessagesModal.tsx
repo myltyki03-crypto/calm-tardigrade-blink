@@ -13,6 +13,8 @@ import {
   Mic,
   Trash2,
   User,
+  Search,
+  UserCheck,
 } from 'lucide-react';
 import {
   Dialog,
@@ -125,8 +127,9 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     getUnreadCountWith,
   } = useRooms();
 
-  const [activeTab, setActiveTab] = useState<'chats' | 'requests'>('chats');
+  const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'requests'>('chats');
   const [inputText, setInputText] = useState('');
+  const [friendSearchQuery, setFriendSearchQuery] = useState('');
   const [mobileShowChat, setMobileShowChat] = useState<boolean>(false);
   const [fullImagePreview, setFullImagePreview] = useState<string | null>(null);
 
@@ -310,13 +313,17 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     return isForMe && r.status === 'pending';
   });
 
+  const filteredFriends = friendsList.filter((f) =>
+    f.username.toLowerCase().includes(friendSearchQuery.toLowerCase().trim())
+  );
+
   return (
     <>
       <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
         <DialogContent className="bg-slate-900 text-slate-100 border-purple-900/60 sm:max-w-2xl h-[85vh] sm:h-[600px] p-0 flex flex-col overflow-hidden">
           <DialogHeader className="p-3 border-b border-purple-900/40 bg-slate-950 flex flex-row items-center justify-between shrink-0">
             <div className="flex items-center gap-2">
-              {mobileShowChat && (
+              {mobileShowChat && activeTab === 'chats' && (
                 <Button
                   onClick={() => setMobileShowChat(false)}
                   size="sm"
@@ -331,13 +338,13 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
               </DialogTitle>
             </div>
 
-            <div className="flex items-center gap-1.5 mr-6">
+            <div className="flex items-center gap-1 sm:gap-1.5 mr-6">
               <button
                 onClick={() => {
                   setActiveTab('chats');
                   setMobileShowChat(false);
                 }}
-                className={`px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
                   activeTab === 'chats'
                     ? 'bg-purple-800 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
@@ -345,12 +352,30 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
               >
                 Чаты
               </button>
+
+              <button
+                onClick={() => {
+                  setActiveTab('friends');
+                  setMobileShowChat(false);
+                }}
+                className={`px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-bold transition-all flex items-center gap-1 ${
+                  activeTab === 'friends'
+                    ? 'bg-purple-800 text-white shadow-md'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                <span>Друзья</span>
+                <span className="text-[9px] bg-slate-950/80 px-1.5 py-0.2 rounded-full text-pink-300 font-mono">
+                  {friendsList.length}
+                </span>
+              </button>
+
               <button
                 onClick={() => {
                   setActiveTab('requests');
                   setMobileShowChat(false);
                 }}
-                className={`relative px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
+                className={`relative px-2.5 sm:px-3 py-1 rounded-full text-[11px] font-bold transition-all ${
                   activeTab === 'requests'
                     ? 'bg-purple-800 text-white shadow-md'
                     : 'text-slate-400 hover:text-slate-200'
@@ -358,7 +383,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
               >
                 Заявки
                 {pendingRequests.length > 0 && (
-                  <span className="ml-1 bg-pink-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold">
+                  <span className="ml-1 bg-pink-500 text-white text-[9px] px-1.5 py-0.2 rounded-full font-bold animate-pulse">
                     {pendingRequests.length}
                   </span>
                 )}
@@ -366,7 +391,115 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
             </div>
           </DialogHeader>
 
-          {activeTab === 'requests' ? (
+          {/* ВКЛАДКА 1: СПИСОК ДРУЗЕЙ */}
+          {activeTab === 'friends' && (
+            <div className="flex-1 flex flex-col p-4 overflow-hidden bg-slate-950/40">
+              <div className="flex items-center justify-between mb-3 gap-2">
+                <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
+                  <UserCheck className="h-4 w-4 text-emerald-400" /> Мои друзья ({friendsList.length})
+                </h4>
+
+                <div className="relative flex-1 max-w-xs">
+                  <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+                  <Input
+                    placeholder="Поиск по друзьям..."
+                    value={friendSearchQuery}
+                    onChange={(e) => setFriendSearchQuery(e.target.value)}
+                    className="pl-8 bg-slate-900/90 border-purple-900/50 text-xs h-8 rounded-full text-slate-100 placeholder:text-slate-500 focus:border-pink-500"
+                  />
+                </div>
+              </div>
+
+              <ScrollArea className="flex-1 pr-1">
+                {filteredFriends.length === 0 ? (
+                  <div className="text-center py-12 text-slate-500 text-xs space-y-2">
+                    <Users className="h-8 w-8 text-purple-500/30 mx-auto" />
+                    <p>
+                      {friendsList.length === 0
+                        ? 'У вас пока нет добавленных друзей. Отправляйте заявки участникам в комнатах!'
+                        : 'Друзья по вашему запросу не найдены'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {filteredFriends.map((friend) => {
+                      const avatar =
+                        friend.avatar_url ||
+                        `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(friend.username)}`;
+
+                      return (
+                        <div
+                          key={friend.id || friend.username}
+                          className="flex items-center justify-between p-3 rounded-2xl bg-slate-950/70 border border-purple-900/40 hover:border-purple-800 transition-all"
+                        >
+                          <div
+                            onClick={() => handleOpenUserProfile(friend)}
+                            className="flex items-center gap-3 cursor-pointer group min-w-0"
+                          >
+                            <div className="relative shrink-0">
+                              <img
+                                src={avatar}
+                                alt={friend.username}
+                                className="h-10 w-10 rounded-full object-cover ring-2 ring-purple-500/40 group-hover:ring-pink-500 transition-all"
+                              />
+                              <span className="absolute bottom-0 right-0 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-slate-950" />
+                            </div>
+
+                            <div className="min-w-0">
+                              <span className="font-bold text-xs text-slate-200 group-hover:text-pink-300 transition-colors block truncate">
+                                {friend.username}
+                              </span>
+                              <span className="text-[10px] text-emerald-400 font-medium">В сети</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <Button
+                              onClick={() => {
+                                handleSelectUser(friend);
+                                setActiveTab('chats');
+                              }}
+                              size="sm"
+                              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-[11px] h-8 px-3 rounded-xl gap-1 shadow-md"
+                            >
+                              <MessageSquare className="h-3.5 w-3.5 text-pink-300" /> Написать ЛС
+                            </Button>
+
+                            <Button
+                              onClick={() => handleOpenUserProfile(friend)}
+                              size="sm"
+                              variant="outline"
+                              className="border-purple-800 text-purple-200 hover:bg-purple-950 text-[11px] h-8 px-2.5 rounded-xl"
+                              title="Карточка профиля"
+                            >
+                              <User className="h-3.5 w-3.5 text-cyan-400" />
+                            </Button>
+
+                            <Button
+                              onClick={() => {
+                                if (window.confirm(`Удалить ${friend.username} из друзей?`)) {
+                                  removeFriend(friend.id);
+                                }
+                              }}
+                              size="sm"
+                              variant="ghost"
+                              className="text-slate-500 hover:text-red-400 hover:bg-red-950/30 text-[11px] h-8 px-2 rounded-xl"
+                              title="Удалить из друзей"
+                            >
+                              <UserX className="h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </ScrollArea>
+            </div>
+          )}
+
+          {/* ВКЛАДКА 2: ВХОДЯЩИЕ ЗАЯВКИ В ДРУЗЬЯ */}
+          {activeTab === 'requests' && (
             <ScrollArea className="flex-1 p-4">
               <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider mb-3 flex items-center gap-1.5">
                 <UserPlus className="h-4 w-4 text-cyan-400" /> Входящие заявки ({pendingRequests.length})
@@ -417,7 +550,10 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                 </div>
               )}
             </ScrollArea>
-          ) : (
+          )}
+
+          {/* ВКЛАДКА 3: ДИАЛОГИ / ЧАТЫ */}
+          {activeTab === 'chats' && (
             <div className="flex-1 flex min-h-0 w-full overflow-hidden">
               <div
                 className={`w-full sm:w-1/3 sm:min-w-[200px] border-r border-purple-900/40 bg-slate-950/50 flex flex-col shrink-0 ${
