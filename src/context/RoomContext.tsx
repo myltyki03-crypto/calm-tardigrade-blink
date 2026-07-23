@@ -3,6 +3,7 @@ import { Room, ChatMessage, QueueItem, UserProfile, RoomMember, RegisteredAccoun
 import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE } from '@/data/mockRaveData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
 import { showSuccess, showError } from '@/utils/toast';
+import { parseMediaUrl } from '@/utils/mediaUtils';
 
 interface RoomContextType {
   currentUser: UserProfile;
@@ -108,7 +109,15 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [queueByRoom, setQueueByRoom] = useState<Record<string, QueueItem[]>>(() => {
     const saved = localStorage.getItem('pulserave_queue');
-    return saved ? JSON.parse(saved) : { 'room-1': INITIAL_QUEUE };
+    if (saved) {
+      return JSON.parse(saved);
+    }
+    const initialMap: Record<string, QueueItem[]> = {};
+    INITIAL_QUEUE.forEach((q) => {
+      if (!initialMap[q.room_id]) initialMap[q.room_id] = [];
+      initialMap[q.room_id].push(q);
+    });
+    return initialMap;
   });
 
   const [activeMembersByRoom, setActiveMembersByRoom] = useState<Record<string, RoomMember[]>>({});
@@ -877,9 +886,28 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRooms((prev) => [roomWithTimestamp, ...prev]);
     markRoomUnlocked(newRoom.id);
 
+    // Автоматическое сохранение первичного видео в очереди комнаты
+    const initialQueueItem: QueueItem = {
+      id: `q-${Date.now()}`,
+      room_id: newRoom.id,
+      title: newRoom.current_media_title || 'Заглавный трек',
+      url: newRoom.current_media_url || '',
+      thumbnail_url: newRoom.current_media_thumbnail,
+      duration_seconds: 240,
+      added_by_name: newRoom.host_name,
+      votes: 1,
+      created_at: new Date().toISOString(),
+    };
+
+    setQueueByRoom((prev) => ({
+      ...prev,
+      [newRoom.id]: [initialQueueItem],
+    }));
+
     if (isSupabaseConfigured && supabase) {
       const { skip_votes, ...dbRoom } = roomWithTimestamp;
       await supabase.from('rooms').insert([dbRoom]);
+      await supabase.from('queue_items').insert([initialQueueItem]);
     }
   };
 
@@ -917,6 +945,22 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const addQueueItem = async (roomId: string, item: QueueItem) => {
+    const currentQueue = queueByRoom[roomId] || [];
+    const newItemMedia = parseMediaUrl(item.url);
+
+    // Проверка на дубликаты видео
+    const isDuplicate = currentQueue.some((existingItem) => {
+      const existingMedia = parseMediaUrl(existingItem.url);
+      if (existingItem.url.trim().toLowerCase() === item.url.trim().toLowerCase()) return true;
+      if (newItemMedia.id && existingMedia.id && newItemMedia.id === existingMedia.id) return true;
+      return false;
+    });
+
+    if (isDuplicate) {
+      showError('Это видео уже находится в очереди!');
+      return;
+    }
+
     setQueueByRoom((prev) => ({
       ...prev,
       [roomId]: [...(prev[roomId] || []), item],
@@ -925,6 +969,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (isSupabaseConfigured && supabase) {
       await supabase.from('queue_items').insert([item]);
     }
+    showSuccess('Добавлено в очередь!');
   };
 
   const voteQueueItem = async (roomId: string, itemId: string) => {

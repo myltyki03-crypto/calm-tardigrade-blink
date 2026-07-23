@@ -79,5 +79,16 @@ export const INITIAL_QUEUE: QueueItem[] = [
     added_by_name: 'VibeRaver_99',
     votes: 1,
     created_at: new Date().toISOString(),
+  },
+  {
+    id: 'q2',
+    room_id: 'room-2',
+    title: 'Короткометражный CGI Фильм HD',
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    thumbnail_url: 'https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?w=600&auto=format&fit=crop&q=80',
+    duration_seconds: 180,
+    added_by_name: 'КиноМан',
+    votes: 1,
+    created_at: new Date().toISOString(),
   }
 ];
