@@ -75,9 +75,15 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   });
 
   const isScreenSharingActive = Boolean(room.is_screen_sharing);
-  const isIframePlayer = !isScreenSharingActive && (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe');
+  const isIframePlayer =
+    !isScreenSharingActive &&
+    (mediaInfo.type === 'vk' ||
+      mediaInfo.type === 'rutube' ||
+      mediaInfo.type === 'vimeo' ||
+      mediaInfo.type === 'ok' ||
+      mediaInfo.type === 'iframe');
 
-  // Демонстрация экрана ведущего
+  // Функция переключения демонстрации экрана
   const handleToggleScreenShare = async () => {
     if (!isHost) {
       showError('Только ведущий комнаты может запускать трансляцию экрана');
@@ -130,7 +136,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setRoomScreenShareState(room.id, false);
   };
 
-  // WebRTC Сигналинг для передачи потока экрана зрителям
+  // WebRTC Сигналинг
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
@@ -275,7 +281,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           });
         }, 1000);
       }
-      return () => { if (interval) clearInterval(interval); };
+      return () => {
+        if (interval) clearInterval(interval);
+      };
     }
   }, [isPlaying, isHost, isIframePlayer]);
 
@@ -367,13 +375,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           },
           onStateChange: (event: any) => {
             forceDisableCaptions();
-            if (event.data === 1) { // PLAYING
+            if (event.data === 1) {
               setIsPlaying(true);
               setNeedUserGesture(false);
               setIsEmbedBlocked(false);
-            } else if (event.data === 2) { // PAUSED
+            } else if (event.data === 2) {
               setIsPlaying(false);
-            } else if (event.data === 0) { // ENDED
+            } else if (event.data === 0) {
               setIsPlaying(false);
             }
           },
@@ -383,7 +391,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             } else {
               setNeedUserGesture(true);
             }
-          }
+          },
         },
       });
     };
@@ -673,7 +681,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       onMouseMove={handleUserActivity}
       onClick={handleUserActivity}
       className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${
-        isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video'
+        isFullscreen
+          ? 'w-screen h-screen justify-between z-50'
+          : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video'
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
@@ -813,18 +823,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {(needUserGesture || (!isPlaying && room.is_playing && !isHost && mediaInfo.type === 'youtube')) && !isEmbedBlocked && (
-          <div className="absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
-            <Button
-              onClick={handleMobileUnlockClick}
-              size="lg"
-              className="bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs sm:text-sm h-11 px-6 rounded-2xl shadow-xl shadow-pink-500/40 animate-bounce gap-2"
-            >
-              <RotateCcw className="h-5 w-5 fill-white" />
-              <span>Нажмите для запуска видео и звука</span>
-            </Button>
-          </div>
-        )}
+        {(needUserGesture || (!isPlaying && room.is_playing && !isHost && mediaInfo.type === 'youtube')) &&
+          !isEmbedBlocked && (
+            <div className="absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
+              <Button
+                onClick={handleMobileUnlockClick}
+                size="lg"
+                className="bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-bold text-xs sm:text-sm h-11 px-6 rounded-2xl shadow-xl shadow-pink-500/40 animate-bounce gap-2"
+              >
+                <RotateCcw className="h-5 w-5 fill-white" />
+                <span>Нажмите для запуска видео и звука</span>
+              </Button>
+            </div>
+          )}
       </div>
 
       {/* КАСТОМНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ПЛЕЕРОМ */}
@@ -832,7 +843,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         <div
           onClick={(e) => e.stopPropagation()}
           className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ${
-            showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
+            showControls
+              ? 'opacity-100 translate-y-0 pointer-events-auto'
+              : 'opacity-0 translate-y-4 pointer-events-none'
           }`}
         >
           {!isScreenSharingActive && (
@@ -860,7 +873,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 <Button
                   onClick={handleTogglePlay}
                   size="icon"
-                  title={isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только владелец комнаты может запускать видео'}
+                  title={
+                    isHost
+                      ? isPlaying
+                        ? 'Пауза'
+                        : 'Запустить'
+                      : 'Только владелец комнаты может запускать видео'
+                  }
                   className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
                     isHost
                       ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
