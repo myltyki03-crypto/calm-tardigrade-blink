@@ -391,6 +391,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [mediaInfo.type]);
 
+  // Загрузка и управление YouTube плеером без разрушения DOM
   useEffect(() => {
     if (mediaInfo.type !== 'youtube' || isScreenSharingActive) return;
 
@@ -406,6 +407,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     const initPlayer = () => {
       if (!playerContainerRef.current) return;
 
+      // Очищаем внутренности изоляционного контейнера
+      playerContainerRef.current.innerHTML = '';
+      const targetElement = document.createElement('div');
+      playerContainerRef.current.appendChild(targetElement);
+
       const startSec = getCalculatedHostTime();
 
       try {
@@ -414,7 +420,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         }
       } catch (e) {}
 
-      ytPlayerRef.current = new window.YT.Player(playerContainerRef.current, {
+      ytPlayerRef.current = new window.YT.Player(targetElement, {
         host: 'https://www.youtube-nocookie.com',
         videoId: mediaInfo.id,
         playerVars: {
@@ -510,6 +516,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         try {
           ytPlayerRef.current.destroy();
         } catch (e) {}
+      }
+      if (playerContainerRef.current) {
+        playerContainerRef.current.innerHTML = '';
       }
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
@@ -823,23 +832,23 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {/* АНИМАЦИЯ СМАЙЛОВ */}
         <VideoReactionsOverlay reactions={floatingReactions} />
 
-        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА */}
-        {isScreenSharingActive && (
+        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА (СТАБИЛЬНЫЙ УЗЕЛ DOM) */}
+        <div className={`absolute inset-0 w-full h-full ${isScreenSharingActive ? 'block z-25' : 'hidden'}`}>
           <video
             ref={screenShareVideoRef}
-            className="absolute inset-0 w-full h-full object-contain bg-black z-25 pointer-events-auto"
+            className="w-full h-full object-contain bg-black pointer-events-auto"
             autoPlay
             playsInline
           />
-        )}
+        </div>
 
-        {/* 1. YOUTUBE */}
-        {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
-          <div
-            ref={playerContainerRef}
-            className="absolute inset-0 w-full h-full pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none"
-          />
-        )}
+        {/* 1. YOUTUBE (СТАБИЛЬНЫЙ ИЗОЛИРОВАННЫЙ КОНТЕЙНЕР) */}
+        <div
+          ref={playerContainerRef}
+          className={`absolute inset-0 w-full h-full pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none ${
+            !isScreenSharingActive && mediaInfo.type === 'youtube' ? 'block' : 'hidden'
+          }`}
+        />
 
         {/* 2. TWITCH */}
         {!isScreenSharingActive && mediaInfo.type === 'twitch' && (
