@@ -38,9 +38,15 @@ export const parseMediaUrl = (url: string): MediaInfo => {
   if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/')) {
     let oid = '';
     let id = '';
+    let hash = '';
 
     const extMatch = cleanUrl.match(/oid=(-?\d+)&id=(\d+)/i);
     const stdMatch = cleanUrl.match(/video(-?\d+)_(\d+)/i);
+    const hashMatch = cleanUrl.match(/hash=([a-f0-9]+)/i);
+
+    if (hashMatch) {
+      hash = hashMatch[1];
+    }
 
     if (extMatch) {
       oid = extMatch[1];
@@ -51,13 +57,14 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     }
 
     if (oid && id) {
+      const hashParam = hash ? `&hash=${hash}` : '';
       return {
         type: 'vk',
         url: cleanUrl,
         id: `${oid}_${id}`,
         title: `VK Видео (${oid}_${id})`,
         thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
-        embedUrl: `https://vk.com/video_ext.php?oid=${oid}&id=${id}&autoplay=1`,
+        embedUrl: `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=1`,
       };
     }
   }

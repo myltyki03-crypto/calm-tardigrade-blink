@@ -566,10 +566,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* Бейдж платформы для не-YouTube сервисов */}
+        {/* Бейдж платформы и кнопка открытия оригинала для не-YouTube сервисов */}
         {mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs font-bold backdrop-blur-md shadow-lg">
-            <Video className="h-3.5 w-3.5 text-pink-400" /> {getPlatformLabel()}
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+            <a
+              href={mediaInfo.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/90 border border-purple-500/50 text-purple-200 hover:text-white hover:bg-purple-900/80 text-xs font-bold backdrop-blur-md shadow-lg transition-colors"
+              title="Открыть видео в новом окне"
+            >
+              <ExternalLink className="h-3 w-3 text-pink-400" />
+              <span>Открыть на {getPlatformLabel()}</span>
+            </a>
+            <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-purple-950/90 border border-purple-500/50 text-purple-200 text-xs font-bold backdrop-blur-md shadow-lg">
+              <Video className="h-3.5 w-3.5 text-pink-400" /> {getPlatformLabel()}
+            </div>
           </div>
         )}
 
