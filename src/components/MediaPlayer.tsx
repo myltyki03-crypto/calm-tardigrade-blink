@@ -83,6 +83,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
+  // Ключ пересборки iframe для мгновенного применения таймкодов
+  const [iframeKey, setIframeKey] = useState<number>(Date.now());
+
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
@@ -114,6 +117,47 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'vimeo' ||
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
+
+  // Перехват PostMessage сообщений от VK Видео и сторонних плееров
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      try {
+        let data = event.data;
+        if (typeof data === 'string') {
+          try {
+            data = JSON.parse(data);
+          } catch {}
+        }
+
+        if (!data) return;
+
+        const eventType = data.event || data.type || data.box_msg;
+        const timeVal = data.time ?? data.currentTime ?? data.value;
+
+        if (typeof timeVal === 'number' && timeVal >= 0) {
+          setCurrentTime(timeVal);
+          if (isHost && isPlaying) {
+            const now = Date.now();
+            if (now - lastHostSyncSaveRef.current > 3000) {
+              lastHostSyncSaveRef.current = now;
+              updateRoomProgress(room.id, timeVal, true);
+            }
+          }
+        }
+
+        if (eventType === 'play' || eventType === 'video_play') {
+          setIsPlaying(true);
+          if (isHost) updateRoomProgress(room.id, currentTime, true);
+        } else if (eventType === 'pause' || eventType === 'video_pause') {
+          setIsPlaying(false);
+          if (isHost) updateRoomProgress(room.id, currentTime, false);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, [isHost, isPlaying, currentTime, room.id]);
 
   // Закрепление видеопотока трансляции на HTML-теге
   useEffect(() => {
@@ -501,6 +545,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  // Автоматический локальный счётчик для сторонних iframe (VK, Rutube)
   useEffect(() => {
     if (isIframePlayer) {
       let interval: NodeJS.Timeout | null = null;
@@ -508,7 +553,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         interval = setInterval(() => {
           setCurrentTime((prev) => {
             const next = prev + 1;
-            if (isHost && Date.now() - lastHostSyncSaveRef.current > 4000) {
+            if (isHost && Date.now() - lastHostSyncSaveRef.current > 3000) {
               lastHostSyncSaveRef.current = Date.now();
               updateRoomProgress(room.id, next, true);
             }
@@ -520,13 +565,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         if (interval) clearInterval(interval);
       };
     }
-  }, [isPlaying, isHost, isIframePlayer]);
+  }, [isPlaying, isHost, isIframePlayer, room.id]);
 
   useEffect(() => {
     setIsEmbedBlocked(false);
     const initialSec = getCalculatedHostTime();
     setCurrentTime(initialSec);
     setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, false));
+    setIframeKey(Date.now());
   }, [mediaInfo.id, mediaInfo.url]);
 
   useEffect(() => {
@@ -709,9 +755,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           v.pause();
           setIsPlaying(false);
         }
-      } else if (mediaInfo.type === 'vk' || isIframePlayer) {
+      } else if (isIframePlayer) {
         const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
         setIframeSrc(newVkUrl);
+        setIframeKey(Date.now()); // Перезапуск кадра на актуальной секунде
         setIsPlaying(room.is_playing);
         setCurrentTime(targetHostTime);
       }
@@ -741,6 +788,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     } else if (isIframePlayer) {
       const syncTime = getCalculatedHostTime();
       setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
+      setIframeKey(Date.now());
       sendIframeCommand('play');
     }
 
@@ -874,6 +922,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       } else {
         const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying);
         setIframeSrc(newEmbedUrl);
+        setIframeKey(Date.now());
         sendIframeCommand('seek', targetSeconds);
       }
 
@@ -916,14 +965,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (isIframePlayer) {
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, room.is_playing);
+        // Принудительная перезагрузка iframe кадра VK/Rutube с обновлённым таймкодом
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
         setIframeSrc(newEmbedUrl);
+        setIframeKey(Date.now());
         setCurrentTime(syncTime);
-        sendIframeCommand('play');
-        sendIframeCommand('seek', syncTime);
+        setIsPlaying(true);
+
+        setTimeout(() => {
+          sendIframeCommand('seek', syncTime);
+          sendIframeCommand('play');
+        }, 200);
       }
 
-      showSuccess('Видео синхронизировано');
+      showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
     }
   };
 
@@ -938,7 +993,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     ? 'w-screen h-screen justify-between z-50'
     : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video';
 
-  // Класс полного скрытия органов управления (включая невидимость для тапов)
   const controlsVisibilityClass = showControls
     ? 'opacity-100 pointer-events-auto transition-all duration-300'
     : 'opacity-0 pointer-events-none invisible transition-all duration-300';
@@ -955,7 +1009,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       <canvas ref={hiddenCanvasRef} className="hidden" />
 
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА (Скрываются полностью при showControls = false) */}
+        {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
         {(!needUserGesture || isScreenSharingActive) && !isEmbedBlocked && (
           <div
             className={`absolute top-3 left-3 z-40 flex items-center gap-2 ${controlsVisibilityClass}`}
@@ -1089,7 +1143,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {!isScreenSharingActive && isIframePlayer && (
           <iframe
             ref={iframeRef}
-            key={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
+            key={iframeKey}
             src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
             className="absolute inset-0 w-full h-full border-0 bg-black z-20 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write; microphone; camera"
@@ -1128,7 +1182,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>

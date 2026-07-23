@@ -19,13 +19,14 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
   if (mediaInfo.type === 'vk') {
     try {
       const urlObj = new URL(baseUrl);
+      
       if (shouldAutoplay) {
         urlObj.searchParams.set('autoplay', '1');
       } else {
         urlObj.searchParams.delete('autoplay');
       }
 
-      // Передача времени воспроизведения для VK Видео
+      // Передача времени воспроизведения VK Видео (t=Xs)
       if (cleanSec > 0) {
         urlObj.searchParams.set('t', `${cleanSec}s`);
       } else {
@@ -89,7 +90,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     if (cleanUrl.includes('video_ext.php')) {
       try {
         const u = new URL(cleanUrl);
-        u.searchParams.delete('js_api'); // Удаляем js_api, так как он вызывает черный экран без SDK
+        u.searchParams.delete('js_api'); // Исключаем js_api чтобы избежать черного экрана
         embedUrl = u.toString();
         const oid = u.searchParams.get('oid');
         const id = u.searchParams.get('id');
