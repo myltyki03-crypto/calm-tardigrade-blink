@@ -176,7 +176,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
               id="room_media_url_field"
               name="no_autofill_media_url"
               autoComplete="off"
-              placeholder="Вставьте ссылку или код <iframe...> от VK Видео, YouTube и др."
+              placeholder="Вставьте ссылку от VK Видео, YouTube и др."
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
