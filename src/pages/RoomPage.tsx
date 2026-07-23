@@ -436,7 +436,7 @@ export const RoomPage = () => {
             </div>
           </div>
 
-          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ ПОД ВИДЕО */}
+          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ ПОД ВИДЕО (без рамок и выделений) */}
           <div className="flex items-center justify-center gap-2 p-2 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-purple-900/40 shadow-lg w-full my-0.5">
             <span className="text-[10px] text-purple-300/80 font-semibold uppercase tracking-wider hidden sm:inline mr-1">
               Реакции:
@@ -445,8 +445,9 @@ export const RoomPage = () => {
               {RAVE_REACTIONS.map((emoji) => (
                 <button
                   key={emoji}
+                  type="button"
                   onClick={() => handleSendReaction(emoji)}
-                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-slate-950/90 border border-purple-800/60 hover:bg-pink-600 hover:border-pink-400 hover:scale-125 active:scale-90 text-base sm:text-lg flex items-center justify-center transition-all duration-150 shadow-md shrink-0"
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-slate-950/80 border border-purple-900/50 hover:bg-slate-800/90 hover:scale-125 active:scale-90 text-base sm:text-lg flex items-center justify-center transition-transform duration-150 shadow-md shrink-0 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 select-none"
                   title={`Отправить реакцию ${emoji}`}
                 >
                   {emoji}

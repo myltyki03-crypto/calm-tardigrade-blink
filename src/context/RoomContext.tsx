@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { Room, ChatMessage, QueueItem, UserProfile, RoomMember, RegisteredAccount, FriendRequest, DirectMessage } from '@/types/rave';
 import { INITIAL_ROOMS, INITIAL_MESSAGES, INITIAL_QUEUE } from '@/data/mockRaveData';
 import { supabase, isSupabaseConfigured } from '@/lib/supabase';
@@ -69,6 +69,8 @@ const getOrCreateGuestId = () => {
 };
 
 export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const globalChannelRef = useRef<any>(null);
+
   const [accounts, setAccounts] = useState<RegisteredAccount[]>(() => {
     const saved = localStorage.getItem('pulserave_accounts');
     return saved ? JSON.parse(saved) : [];
@@ -495,7 +497,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, []);
 
-  // Единая подписка Realtime
+  // Единая подписка Realtime + Мгновенный Broadcast
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) {
       setIsRoomsLoaded(true);
@@ -509,7 +511,22 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     fetchFriendData();
 
     const realtimeChannel = supabase
-      .channel('public:pulserave-global-channel')
+      .channel('public:pulserave-global-channel', {
+        config: { broadcast: { self: true } }
+      })
+      .on('broadcast', { event: 'instant_reaction' }, (payload) => {
+        const msg = payload.payload as ChatMessage;
+        if (msg && msg.room_id) {
+          setMessagesByRoom((prev) => {
+            const list = prev[msg.room_id] || [];
+            if (list.some((m) => m.id === msg.id)) return prev;
+            return {
+              ...prev,
+              [msg.room_id]: [...list, msg],
+            };
+          });
+        }
+      })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
@@ -576,13 +593,15 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
       .subscribe();
 
+    globalChannelRef.current = realtimeChannel;
+
     const interval = setInterval(() => {
       fetchRooms();
       fetchMessages();
       fetchQueue();
       fetchRoomMembers();
       fetchFriendData();
-    }, 2500);
+    }, 1000);
 
     return () => {
       clearInterval(interval);
@@ -935,6 +954,15 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       ...prev,
       [roomId]: [...(prev[roomId] || []).filter((m) => m.id !== cleanMsg.id), cleanMsg],
     }));
+
+    // Мгновенная WebSocket отправка реакции всем подключенным зрителям
+    if (cleanMsg.type === 'reaction' && globalChannelRef.current) {
+      globalChannelRef.current.send({
+        type: 'broadcast',
+        event: 'instant_reaction',
+        payload: cleanMsg,
+      });
+    }
 
     if (isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('chat_messages').insert([cleanMsg]);
