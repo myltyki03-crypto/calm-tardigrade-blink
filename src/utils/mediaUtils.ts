@@ -10,34 +10,37 @@ export interface MediaInfo {
   twitchType?: 'channel' | 'video';
 }
 
-export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number): string => {
+export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shouldAutoplay = false): string => {
   let baseUrl = mediaInfo.embedUrl || mediaInfo.url;
   if (!baseUrl) return '';
 
   const cleanSec = Math.max(0, Math.floor(startSec));
+  const autoParam = shouldAutoplay ? '1' : '0';
 
   if (mediaInfo.type === 'vk') {
-    // Удаляем старые параметры времени
-    let urlWithoutTime = baseUrl
+    // Очищаем старые параметры времени и автозапуска
+    let urlWithoutParams = baseUrl
       .replace(/([?&])t=[^&]*/gi, '')
       .replace(/([?&])start=[^&]*/gi, '')
       .replace(/([?&])time=[^&]*/gi, '')
+      .replace(/([?&])autoplay=[^&]*/gi, '')
       .replace(/&+/g, '&')
       .replace(/\?&/g, '?');
 
-    const separator = urlWithoutTime.includes('?') ? '&' : '?';
-    return `${urlWithoutTime}${separator}t=${cleanSec}s&autoplay=1&js_api=1`;
+    const separator = urlWithoutParams.includes('?') ? '&' : '?';
+    return `${urlWithoutParams}${separator}t=${cleanSec}s&autoplay=${autoParam}&js_api=1`;
   }
 
   if (mediaInfo.type === 'rutube') {
-    let urlWithoutTime = baseUrl
+    let urlWithoutParams = baseUrl
       .replace(/([?&])t=[^&]*/gi, '')
       .replace(/([?&])start=[^&]*/gi, '')
+      .replace(/([?&])autoplay=[^&]*/gi, '')
       .replace(/&+/g, '&')
       .replace(/\?&/g, '?');
 
-    const separator = urlWithoutTime.includes('?') ? '&' : '?';
-    return `${urlWithoutTime}${separator}start=${cleanSec}&autoplay=1`;
+    const separator = urlWithoutParams.includes('?') ? '&' : '?';
+    return `${urlWithoutParams}${separator}start=${cleanSec}&autoplay=${autoParam}`;
   }
 
   if (mediaInfo.type === 'vimeo') {
@@ -46,9 +49,12 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number): str
   }
 
   if (mediaInfo.type === 'ok') {
-    let urlWithoutTime = baseUrl.replace(/([?&])from=[^&]*/gi, '').replace(/&+/g, '&');
-    const separator = urlWithoutTime.includes('?') ? '&' : '?';
-    return `${urlWithoutTime}${separator}from=${cleanSec}&autoplay=1`;
+    let urlWithoutParams = baseUrl
+      .replace(/([?&])from=[^&]*/gi, '')
+      .replace(/([?&])autoplay=[^&]*/gi, '')
+      .replace(/&+/g, '&');
+    const separator = urlWithoutParams.includes('?') ? '&' : '?';
+    return `${urlWithoutParams}${separator}from=${cleanSec}&autoplay=${autoParam}`;
   }
 
   return baseUrl;
@@ -97,11 +103,14 @@ export const parseMediaUrl = (url: string): MediaInfo => {
 
       if (oid && id) {
         const hashParam = hash ? `&hash=${hash}` : '';
-        embedUrl = `https://${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=1&js_api=1`;
+        // autoplay=0 по умолчанию, чтобы видео не запускалось само по себе
+        embedUrl = `https://${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=0&js_api=1`;
       }
     } else {
       if (!embedUrl.includes('autoplay=')) {
-        embedUrl += (embedUrl.includes('?') ? '&' : '?') + 'autoplay=1';
+        embedUrl += (embedUrl.includes('?') ? '&' : '?') + 'autoplay=0';
+      } else {
+        embedUrl = embedUrl.replace(/autoplay=1/gi, 'autoplay=0');
       }
       if (!embedUrl.includes('js_api=')) {
         embedUrl += '&js_api=1';
@@ -135,7 +144,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
       id: videoId,
       title: `Rutube Видео (${videoId})`,
       thumbnail: 'https://images.unsplash.com/photo-1574375927938-d5a98e8ffe85?w=600&auto=format&fit=crop&q=80',
-      embedUrl: `https://rutube.ru/play/embed/${videoId}/?autoplay=1`,
+      embedUrl: `https://rutube.ru/play/embed/${videoId}/?autoplay=0`,
     };
   }
 
@@ -176,7 +185,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
       id: videoId,
       title: `Vimeo Видео (${videoId})`,
       thumbnail: 'https://images.unsplash.com/photo-1518173946687-a4c8a383392e?w=600&auto=format&fit=crop&q=80',
-      embedUrl: `https://player.vimeo.com/video/${videoId}?autoplay=1`,
+      embedUrl: `https://player.vimeo.com/video/${videoId}?autoplay=0`,
     };
   }
 
@@ -190,7 +199,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
       id: videoId,
       title: `OK.ru Видео (${videoId})`,
       thumbnail: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?w=600&auto=format&fit=crop&q=80',
-      embedUrl: `https://ok.ru/videoembed/${videoId}?autoplay=1`,
+      embedUrl: `https://ok.ru/videoembed/${videoId}?autoplay=0`,
     };
   }
 

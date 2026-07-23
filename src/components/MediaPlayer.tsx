@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   Play,
   Pause,
-  RefreshCw,
   Volume2,
   VolumeX,
   Maximize,
@@ -61,9 +60,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  // Динамический URL для VK и внешних iframe с поддержкой точной секунды
+  // Динамический URL для VK и внешних iframe (autoplay=0 по умолчанию)
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
-    return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0);
+    return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
   const isInteractivePlayer = mediaInfo.type === 'youtube' || mediaInfo.type === 'direct';
@@ -99,7 +98,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   useEffect(() => {
     setIsEmbedBlocked(false);
     const initialSec = getCalculatedHostTime();
-    setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec));
+    // При смене медиа НЕ автозапускаем автоматически
+    setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, false));
   }, [mediaInfo.id, mediaInfo.url]);
 
   useEffect(() => {
@@ -275,10 +275,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           v.pause();
           setIsPlaying(false);
         }
-      } else if (mediaInfo.type === 'vk') {
-        // Для VK Видео обновляем iframe URL с новым параметром t=...s
-        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime);
-        setIframeSrc(newVkUrl);
       }
     }
   }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
@@ -303,7 +299,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.muted = false;
       videoElementRef.current.play();
+    } else if (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe') {
+      const syncTime = getCalculatedHostTime();
+      setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
     }
+
     setIsMuted(false);
     setIsPlaying(true);
     setNeedUserGesture(false);
@@ -411,7 +411,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // ФУНКЦИЯ МГНОВЕННОЙ СИНХРОНИЗАЦИИ ДЛЯ VK ВИДЕО И ДРУГИХ ИСТОЧНИКОВ
+  // ФУНКЦИЯ МГНОВЕННОЙ СИНХРОНИЗАЦИИ
   const handleSyncClick = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
@@ -447,11 +447,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe') {
-        // Вычисляем новый URL с точным таймкодом t=...s
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime);
+        // Перезапускаем плеер ВКонтакте на нужной секунде и с autoplay=1 при нажитии кнопки
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
         setIframeSrc(newEmbedUrl);
 
-        // Отправка команд VK API через postMessage
         if (iframeRef.current?.contentWindow) {
           try {
             iframeRef.current.contentWindow.postMessage(JSON.stringify({ box_msg: 'seek', value: syncTime }), '*');
@@ -477,7 +476,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКА СИНХРОНИЗАЦИИ ВСЕГДА ВЕРХУ ДЛЯ ВСЕХ УЧАСТНИКОВ (В ВК ВИДЕО И ДРУГИХ) */}
+        {/* КНОПКА СИНХРОНИЗАЦИИ ВСЕГДА ВЕРХУ ДЛЯ ВСЕХ УЧАСТНИКОВ */}
         {!needUserGesture && !isEmbedBlocked && (
           <div className="absolute top-3 left-3 z-40 pointer-events-auto">
             <Button
