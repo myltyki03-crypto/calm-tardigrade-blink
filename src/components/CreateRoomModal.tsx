@@ -141,7 +141,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             Создать комнату просмотра
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Поддерживаются ссылки с YouTube, VK Видео (или iframe код), Rutube, Twitch, Vimeo, OK.ru и MP4 файлы.
+            Поддерживаются прямые ссылки vkvideo.ru, vk.com, YouTube, Rutube, Twitch и MP4 файлы.
           </DialogDescription>
         </DialogHeader>
 
@@ -167,22 +167,22 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
           <div className="space-y-1.5">
             <Label htmlFor="room_media_url_field" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-              <span>Ссылка или код iframe</span>
+              <span>Ссылка на видео</span>
               <span className="text-[10px] text-purple-400 font-normal flex items-center gap-1">
-                <Tv className="h-3 w-3" /> YouTube, VK Видео, Rutube, Twitch, MP4
+                <Tv className="h-3 w-3" /> VK Video, YouTube, Rutube, Twitch
               </span>
             </Label>
             <Input
               id="room_media_url_field"
               name="no_autofill_media_url"
               autoComplete="off"
-              placeholder="Ссылка на YouTube, VK Видео (или код <iframe...>), Rutube..."
+              placeholder="Вставьте ссылку https://vkvideo.ru/video-228893636_456239357..."
               value={mediaUrl}
               onChange={(e) => setMediaUrl(e.target.value)}
               className="bg-slate-950 border-purple-950 focus:border-pink-500 text-slate-100 text-xs"
             />
             <p className="text-[10px] text-slate-400">
-              💡 Для роликов ВК лучше всего копировать <strong>«Код вставки» (iframe)</strong> в меню «Поделиться -> Экспорт».
+              💡 Теперь можно вставлять прямые ссылки <strong>vkvideo.ru/video-...</strong> или <strong>vk.com/video-...</strong>
             </p>
           </div>
 

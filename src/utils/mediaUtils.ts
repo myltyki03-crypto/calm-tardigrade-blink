@@ -21,9 +21,9 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
       const urlObj = new URL(baseUrl);
       if (shouldAutoplay) {
         urlObj.searchParams.set('autoplay', '1');
+      } else {
+        urlObj.searchParams.delete('autoplay');
       }
-      urlObj.searchParams.set('js_api', '1');
-      // Не добавляем параметр 't' со значением 's', так как это ломает плеер VK
       return urlObj.toString();
     } catch {
       return baseUrl;
@@ -75,12 +75,13 @@ export const parseMediaUrl = (url: string): MediaInfo => {
   if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/')) {
     let embedUrl = cleanUrl;
     let videoId = '';
+    const isVkVideoDomain = cleanUrl.includes('vkvideo.ru');
 
     // Если вставлен готовый embed плеера (video_ext.php)
     if (cleanUrl.includes('video_ext.php')) {
       try {
         const u = new URL(cleanUrl);
-        u.searchParams.set('js_api', '1');
+        u.searchParams.delete('js_api'); // Удаляем js_api, так как он вызывает черный экран без SDK
         embedUrl = u.toString();
         const oid = u.searchParams.get('oid');
         const id = u.searchParams.get('id');
@@ -89,8 +90,8 @@ export const parseMediaUrl = (url: string): MediaInfo => {
         embedUrl = cleanUrl;
       }
     } else {
-      // Обычные ссылки вида vk.com/video-211517001_456239103, clip-211517001_456239103 и т.д.
-      const match = cleanUrl.match(/(?:video|clip)(-?\d+)_(\d+)/);
+      // Прямые ссылки вида vkvideo.ru/video-228893636_456239357 или vk.com/video-228893636_456239357
+      const match = cleanUrl.match(/(?:video|clip|wall)(-?\d+)_(\d+)/i);
       if (match) {
         const oid = match[1];
         const id = match[2];
@@ -103,7 +104,8 @@ export const parseMediaUrl = (url: string): MediaInfo => {
         } catch {}
 
         const hashParam = hash ? `&hash=${hash}` : '';
-        embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&js_api=1`;
+        const domain = isVkVideoDomain ? 'https://vkvideo.ru' : 'https://vk.com';
+        embedUrl = `${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2`;
       }
     }
 
