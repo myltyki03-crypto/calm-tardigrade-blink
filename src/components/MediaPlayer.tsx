@@ -126,6 +126,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     const win = iframeRef.current.contentWindow;
 
     try {
+      const val = typeof value === 'number' ? Math.floor(value) : 0;
+
       if (command === 'play') {
         win.postMessage({ box_msg: 'play' }, '*');
         win.postMessage({ type: 'play' }, '*');
@@ -142,12 +144,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         win.postMessage(JSON.stringify({ type: 'action', action: 'pause' }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
       } else if (command === 'seek' && typeof value === 'number') {
-        win.postMessage({ box_msg: 'seek', value: value }, '*');
-        win.postMessage({ type: 'seek', time: value, value: value }, '*');
-        win.postMessage({ event: 'seek', param: value }, '*');
-        win.postMessage({ method: 'seek', param: value }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'seek', value: value }), '*');
-        win.postMessage(JSON.stringify({ box_msg: 'seek', value: value }), '*');
+        win.postMessage({ box_msg: 'seek', value: val }, '*');
+        win.postMessage({ type: 'seek', time: val, value: val }, '*');
+        win.postMessage({ event: 'seek', param: val }, '*');
+        win.postMessage({ method: 'seek', param: val }, '*');
+        win.postMessage(JSON.stringify({ type: 'seek', time: val, value: val }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'seek', value: val }), '*');
+        win.postMessage(JSON.stringify({ event: 'seek', param: val }), '*');
+        win.postMessage(JSON.stringify(['call', 'seek', [val]]), '*');
       } else if (command === 'unmute' || command === 'volume') {
         win.postMessage({ box_msg: 'unmute' }, '*');
         win.postMessage({ type: 'unmute' }, '*');
@@ -792,7 +796,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       } else if (isIframePlayer) {
         const timeDiff = Math.abs(currentTime - targetHostTime);
 
-        // Мягкий пост-месседж сдвиг времени без перезагрузок плеера
+        // Мягкий пост-месседж сдвиг времени
         if (timeDiff > 3) {
           sendIframeCommand('seek', targetHostTime);
           sendIframeCommand('unmute');
@@ -1014,10 +1018,17 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         setCurrentTime(syncTime);
         setIsPlaying(true);
 
-        // Отправка команд управления без перезагрузки iframe, предотвращая блокировку звука браузером
+        // 1. Посылаем postMessage команды
         sendIframeCommand('seek', syncTime);
         sendIframeCommand('play');
         sendIframeCommand('unmute');
+
+        // 2. Для гарантированного сдвига VK плеера обновляем адрес кадра прямой ссылкой с t=...
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
+        if (iframeRef.current) {
+          iframeRef.current.src = newEmbedUrl;
+        }
+        setIframeSrc(newEmbedUrl);
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);

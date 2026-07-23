@@ -27,9 +27,21 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
         urlObj.searchParams.delete('autoplay');
       }
 
-      // Передача времени воспроизведения VK Видео (t=Xs или t=seconds)
       if (cleanSec > 0) {
-        urlObj.searchParams.set('t', `${cleanSec}s`);
+        const hours = Math.floor(cleanSec / 3600);
+        const mins = Math.floor((cleanSec % 3600) / 60);
+        const secs = cleanSec % 60;
+
+        let tStr = '';
+        if (hours > 0) {
+          tStr = `${hours}h${mins}m${secs}s`;
+        } else if (mins > 0) {
+          tStr = `${mins}m${secs}s`;
+        } else {
+          tStr = `${secs}s`;
+        }
+
+        urlObj.searchParams.set('t', tStr);
       } else {
         urlObj.searchParams.delete('t');
       }
