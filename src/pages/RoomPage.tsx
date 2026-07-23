@@ -436,7 +436,7 @@ export const RoomPage = () => {
             </div>
           </div>
 
-          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ ПОД ВИДЕО (без рамок и выделений) */}
+          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ ПОД ВИДЕО (без липкого фонового круга) */}
           <div className="flex items-center justify-center gap-2 p-2 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-purple-900/40 shadow-lg w-full my-0.5">
             <span className="text-[10px] text-purple-300/80 font-semibold uppercase tracking-wider hidden sm:inline mr-1">
               Реакции:
@@ -446,8 +446,11 @@ export const RoomPage = () => {
                 <button
                   key={emoji}
                   type="button"
-                  onClick={() => handleSendReaction(emoji)}
-                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-slate-950/80 border border-purple-900/50 hover:bg-slate-800/90 hover:scale-125 active:scale-90 text-base sm:text-lg flex items-center justify-center transition-transform duration-150 shadow-md shrink-0 outline-none focus:outline-none focus:ring-0 focus-visible:outline-none focus-visible:ring-0 select-none"
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    handleSendReaction(emoji);
+                  }}
+                  className="h-8 w-8 sm:h-9 sm:w-9 rounded-full bg-transparent border-0 hover:bg-transparent hover:scale-125 active:scale-90 text-base sm:text-lg flex items-center justify-center transition-transform duration-150 shrink-0 outline-none focus:outline-none focus:ring-0 focus:bg-transparent active:bg-transparent select-none [-webkit-tap-highlight-color:transparent]"
                   title={`Отправить реакцию ${emoji}`}
                 >
                   {emoji}
