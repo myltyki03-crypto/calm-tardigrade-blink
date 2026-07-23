@@ -10,7 +10,7 @@ export interface MediaInfo {
   twitchType?: 'channel' | 'video';
 }
 
-export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shouldAutoplay = false): string => {
+export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shouldAutoplay = true): string => {
   let baseUrl = mediaInfo.embedUrl || mediaInfo.url;
   if (!baseUrl) return '';
 
@@ -90,7 +90,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     if (cleanUrl.includes('video_ext.php')) {
       try {
         const u = new URL(cleanUrl);
-        u.searchParams.delete('js_api'); // Исключаем js_api чтобы избежать черного экрана
+        u.searchParams.delete('js_api'); // Исключаем js_api
         embedUrl = u.toString();
         const oid = u.searchParams.get('oid');
         const id = u.searchParams.get('id');
