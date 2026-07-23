@@ -121,6 +121,14 @@ export const RoomPage = () => {
 
   const roomMessages = room ? (messagesByRoom[room.id] || []) : [];
 
+  // Фильтруем только текстовые сообщения (без реакций) для точного счетчика в кнопке чата
+  const chatMessagesCount = roomMessages.filter((m) => {
+    if (!m || !m.message || m.message.trim().length === 0) return false;
+    if (m.type === 'reaction') return false;
+    if (RAVE_REACTIONS.includes(m.message.trim())) return false;
+    return true;
+  }).length;
+
   // Помечаем старые реакции при первичном входе в комнату
   useEffect(() => {
     if (!room) return;
@@ -436,7 +444,7 @@ export const RoomPage = () => {
             </div>
           </div>
 
-          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ (с эффектом выделения и мгновенным сбросом) */}
+          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ */}
           <div className="flex items-center justify-center gap-2 p-2 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-purple-900/40 shadow-lg w-full my-0.5">
             <span className="text-[10px] text-purple-300/80 font-semibold uppercase tracking-wider hidden sm:inline mr-1">
               Реакции:
@@ -495,7 +503,7 @@ export const RoomPage = () => {
           >
             <MessageSquare className="h-3.5 w-3.5" />
             <span>Чат</span>
-            <span className="text-[9px] bg-slate-950/60 px-1.5 py-0.2 rounded-full font-mono">{roomMessages.length}</span>
+            <span className="text-[9px] bg-slate-950/60 px-1.5 py-0.2 rounded-full font-mono">{chatMessagesCount}</span>
           </button>
 
           <button
@@ -586,7 +594,7 @@ export const RoomPage = () => {
                 value="chat"
                 className="text-xs font-semibold data-[state=active]:bg-purple-800 data-[state=active]:text-white rounded-lg flex items-center gap-1"
               >
-                <MessageSquare className="h-3.5 w-3.5 text-pink-400" /> Чат ({roomMessages.length})
+                <MessageSquare className="h-3.5 w-3.5 text-pink-400" /> Чат ({chatMessagesCount})
               </TabsTrigger>
               <TabsTrigger
                 value="queue"
