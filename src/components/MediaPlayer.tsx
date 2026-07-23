@@ -10,12 +10,14 @@ import {
   Lock,
   RotateCcw,
   AlertCircle,
+  Zap,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { parseMediaUrl, MediaInfo } from '@/utils/mediaUtils';
+import { showSuccess, showError } from '@/utils/toast';
 
 declare global {
   interface Window {
@@ -39,6 +41,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
+  const iframeRef = useRef<HTMLIFrameElement>(null);
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -68,6 +71,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         ytPlayerRef.current.setOption?.('cc', 'track', {});
       } catch (e) {}
     }
+  };
+
+  const formatTime = (seconds: number) => {
+    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const getCalculatedHostTime = () => {
@@ -390,29 +400,54 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  const handleSyncClick = () => {
-    const syncTime = getCalculatedHostTime();
-    if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
-      ytPlayerRef.current.seekTo(syncTime, true);
-      if (room.is_playing) {
-        ytPlayerRef.current.playVideo();
-        setIsPlaying(true);
-      }
-      forceDisableCaptions();
-    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-      videoElementRef.current.currentTime = syncTime;
-      if (room.is_playing) {
-        videoElementRef.current.play();
-        setIsPlaying(true);
-      }
-    }
-  };
+  // ФУНКЦИЯ МГНОВЕННОЙ СИНХРОНИЗАЦИИ ДЛЯ ЗРИТЕЛЯ И СОЗДАТЕЛЯ
+  const handleSyncClick = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
 
-  const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    if (isHost) {
+      // Ведущий обновляет свою позицию на сервере для всех
+      let curSec = currentTime;
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.getCurrentTime) {
+        curSec = ytPlayerRef.current.getCurrentTime() || currentTime;
+      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+        curSec = videoElementRef.current.currentTime || currentTime;
+      }
+      updateRoomProgress(room.id, curSec, isPlaying);
+      showSuccess(`⚡ Время ведущего (${formatTime(curSec)}) обновлено для всех зрителей!`);
+    } else {
+      // Зритель подтягивает точное время ведущего
+      const syncTime = getCalculatedHostTime();
+
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
+        ytPlayerRef.current.seekTo(syncTime, true);
+        if (room.is_playing) {
+          ytPlayerRef.current.playVideo();
+          setIsPlaying(true);
+        } else {
+          ytPlayerRef.current.pauseVideo();
+          setIsPlaying(false);
+        }
+        forceDisableCaptions();
+      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+        videoElementRef.current.currentTime = syncTime;
+        if (room.is_playing) {
+          videoElementRef.current.play().catch(() => setNeedUserGesture(true));
+          setIsPlaying(true);
+        } else {
+          videoElementRef.current.pause();
+          setIsPlaying(false);
+        }
+      } else if (iframeRef.current) {
+        // Для iframe (VK / Rutube / Twitch) перезагружаем плеер для выравнивания живого эфира
+        const currentSrc = iframeRef.current.src;
+        iframeRef.current.src = '';
+        setTimeout(() => {
+          if (iframeRef.current) iframeRef.current.src = currentSrc;
+        }, 50);
+      }
+
+      showSuccess(`⚡ Синхронизировано с ведущим (${formatTime(syncTime)})`);
+    }
   };
 
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
@@ -428,6 +463,21 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
+        {/* КНОПКА СИНХРОНИЗАЦИИ ВСЕГДА ВЕРХУ ДЛЯ ВСЕХ УЧАСТНИКОВ */}
+        {!needUserGesture && !isEmbedBlocked && (
+          <div className="absolute top-3 left-3 z-40 pointer-events-auto">
+            <Button
+              onClick={handleSyncClick}
+              size="sm"
+              className="h-8 px-3 bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-black text-xs rounded-full shadow-xl shadow-pink-500/30 backdrop-blur-md flex items-center gap-1.5 border border-white/20 animate-pulse hover:animate-none"
+              title="Синхронизировать видео и таймкод с создателем комнаты"
+            >
+              <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
+              <span>Синхронизировать</span>
+            </Button>
+          </div>
+        )}
+
         {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE */}
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
           {floatingReactions.map((e) => (
@@ -452,6 +502,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {/* 2. TWITCH */}
         {mediaInfo.type === 'twitch' && (
           <iframe
+            ref={iframeRef}
             src={`https://player.twitch.tv/?${
               mediaInfo.twitchType === 'video' ? `video=${mediaInfo.id}` : `channel=${mediaInfo.id}`
             }&parent=${currentHostname}&autoplay=${room.is_playing ? 'true' : 'false'}&muted=false`}
@@ -469,6 +520,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           mediaInfo.type === 'ok' ||
           mediaInfo.type === 'iframe') && (
           <iframe
+            ref={iframeRef}
             src={mediaInfo.embedUrl || mediaInfo.url}
             className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write"
@@ -518,28 +570,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             >
               Открыть на источнике
             </a>
-          </div>
-        )}
-
-        {/* Кнопка синхронизации только для YouTube/MP4 */}
-        {!isFullscreen && !needUserGesture && !isEmbedBlocked && isInteractivePlayer && (
-          <div
-            className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
-              showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
-            }`}
-          >
-            <Button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleSyncClick();
-              }}
-              size="sm"
-              variant="outline"
-              className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
-            >
-              <RefreshCw className="h-3 w-3 mr-1" />
-              Синхронизировать
-            </Button>
           </div>
         )}
 
