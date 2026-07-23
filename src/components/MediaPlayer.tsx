@@ -8,7 +8,6 @@ import {
   Maximize,
   Minimize,
   Lock,
-  Tv,
   RotateCcw,
   ExternalLink,
   AlertCircle,
@@ -480,7 +479,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             src={`https://player.twitch.tv/?${
               mediaInfo.twitchType === 'video' ? `video=${mediaInfo.id}` : `channel=${mediaInfo.id}`
             }&parent=${currentHostname}&autoplay=${room.is_playing ? 'true' : 'false'}&muted=false`}
-            className="absolute inset-0 w-full h-full border-0"
+            className="absolute inset-0 w-full h-full border-0 z-10 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
@@ -495,8 +494,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           mediaInfo.type === 'iframe') && (
           <iframe
             src={mediaInfo.embedUrl || mediaInfo.url}
-            className="absolute inset-0 w-full h-full border-0 bg-black"
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
+            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
           />
@@ -570,7 +569,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         {/* Бейдж платформы и кнопка открытия оригинала для VK / Rutube / Twitch */}
         {mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
-          <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+          <div className="absolute top-3 right-3 z-20 flex items-center gap-2 pointer-events-auto">
             <a
               href={mediaInfo.url}
               target="_blank"
