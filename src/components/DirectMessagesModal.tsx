@@ -15,6 +15,7 @@ import {
   User,
   Search,
   UserCheck,
+  Lock,
 } from 'lucide-react';
 import {
   Dialog,
@@ -126,6 +127,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     setActiveDmUserId,
     markDmAsRead,
     getUnreadCountWith,
+    getFriendStatusWith,
   } = useRooms();
 
   const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'requests'>('chats');
@@ -195,6 +197,14 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     allConversations[0] ||
     null;
 
+  const isSelectedUserFriend = selectedUser
+    ? friendsList.some((f) => f.username.toLowerCase() === selectedUser.username.toLowerCase())
+    : false;
+
+  const friendStatusWithSelected = selectedUser
+    ? getFriendStatusWith(selectedUser.id, selectedUser.username)
+    : 'none';
+
   useEffect(() => {
     if (initialTargetUser) {
       setActiveDmUserId(initialTargetUser.id || initialTargetUser.username);
@@ -228,6 +238,10 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser || !inputText.trim()) return;
+    if (!isSelectedUserFriend) {
+      showError('Добавьте пользователя в друзья, чтобы отправлять сообщения');
+      return;
+    }
     sendDirectMessage(selectedUser, inputText.trim());
     setInputText('');
   };
@@ -260,6 +274,11 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     const file = e.target.files?.[0];
     if (!file || !selectedUser) return;
 
+    if (!isSelectedUserFriend) {
+      showError('Добавьте пользователя в друзья, чтобы отправлять фото');
+      return;
+    }
+
     if (!file.type.startsWith('image/')) {
       showError('Пожалуйста, выберите файл изображения');
       return;
@@ -278,6 +297,10 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
 
   const handleStartRecording = async () => {
     if (!selectedUser) return;
+    if (!isSelectedUserFriend) {
+      showError('Добавьте пользователя в друзья, чтобы отправлять голосовые');
+      return;
+    }
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       mediaRecorderRef.current = new MediaRecorder(stream);
@@ -314,7 +337,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
           showSuccess('Голосовое сообщение отправлено!');
         }
       };
-      reader.readAsDataURL(base64Audio);
+      reader.readAsDataURL(audioBlob);
 
       mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
     };
@@ -782,84 +805,114 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                       <div ref={messagesEndRef} />
                     </div>
 
+                    {/* ПАНЕЛЬ ВВОДА ИЛИ ПРЕДУПРЕЖДЕНИЕ ОБ ОТСУТСТВИИ В ДРУЗЬЯХ */}
                     <div className="p-2 border-t border-purple-900/40 bg-slate-950 flex items-center gap-2 shrink-0">
-                      <input
-                        ref={fileInputRef}
-                        type="file"
-                        accept="image/*"
-                        onChange={handlePhotoSelect}
-                        className="hidden"
-                      />
-
-                      {isRecording ? (
-                        <div className="flex-1 flex items-center justify-between bg-slate-900 border border-red-500/50 rounded-full px-4 h-9 animate-pulse">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-ping" />
-                            <span className="text-xs font-mono font-bold text-red-400">
-                              Запись: 0:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
-                            </span>
+                      {!isSelectedUserFriend ? (
+                        <div className="flex items-center justify-between gap-2 bg-slate-900/90 border border-purple-900/60 p-2 px-3 rounded-2xl w-full">
+                          <div className="flex items-center gap-2 text-xs text-slate-300 min-w-0">
+                            <Lock className="h-4 w-4 text-amber-400 shrink-0" />
+                            <span className="truncate">Добавьте пользователя в друзья, чтобы писать сообщения</span>
                           </div>
 
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={handleCancelRecording}
-                              className="text-slate-400 hover:text-red-400 p-1"
-                              title="Отмена"
+                          {friendStatusWithSelected === 'pending_sent' ? (
+                            <Button
+                              disabled
+                              size="sm"
+                              className="bg-slate-800 text-amber-300 font-bold text-xs h-8 px-3 rounded-xl shrink-0 opacity-90"
                             >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={handleStopAndSendRecording}
-                              className="bg-red-600 hover:bg-red-500 text-white rounded-full p-1 shadow-md"
-                              title="Отправить"
+                              Заявка отправлена
+                            </Button>
+                          ) : (
+                            <Button
+                              onClick={() => sendFriendRequest(selectedUser)}
+                              size="sm"
+                              className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs h-8 px-3 rounded-xl gap-1 shrink-0 shadow-md"
                             >
-                              <Send className="h-3.5 w-3.5" />
-                            </button>
-                          </div>
+                              <UserPlus className="h-3.5 w-3.5" /> В друзья
+                            </Button>
+                          )}
                         </div>
                       ) : (
                         <>
-                          <Button
-                            type="button"
-                            onClick={() => fileInputRef.current?.click()}
-                            size="icon"
-                            variant="ghost"
-                            className="h-9 w-9 text-slate-400 hover:text-pink-400 hover:bg-purple-950/50 rounded-full shrink-0"
-                            title="Отправить фото"
-                          >
-                            <ImageIcon className="h-4 w-4" />
-                          </Button>
+                          <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            onChange={handlePhotoSelect}
+                            className="hidden"
+                          />
 
-                          <form onSubmit={handleSendMessage} className="flex-1 flex items-center gap-2">
-                            <Input
-                              placeholder={`Сообщение для ${selectedUser.username}...`}
-                              value={inputText}
-                              onChange={(e) => setInputText(e.target.value)}
-                              className="bg-slate-900 border-purple-900/60 text-xs text-slate-100 h-9 rounded-full px-4 focus:border-pink-500 flex-1"
-                            />
+                          {isRecording ? (
+                            <div className="flex-1 flex items-center justify-between bg-slate-900 border border-red-500/50 rounded-full px-4 h-9 animate-pulse">
+                              <div className="flex items-center gap-2">
+                                <span className="h-2.5 w-2.5 rounded-full bg-red-500 animate-ping" />
+                                <span className="text-xs font-mono font-bold text-red-400">
+                                  Запись: 0:{recordingTime < 10 ? `0${recordingTime}` : recordingTime}
+                                </span>
+                              </div>
 
-                            {inputText.trim() ? (
-                              <Button
-                                type="submit"
-                                size="icon"
-                                className="h-9 w-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white rounded-full shrink-0 shadow-md"
-                              >
-                                <Send className="h-4 w-4" />
-                              </Button>
-                            ) : (
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={handleCancelRecording}
+                                  className="text-slate-400 hover:text-red-400 p-1"
+                                  title="Отмена"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={handleStopAndSendRecording}
+                                  className="bg-red-600 hover:bg-red-500 text-white rounded-full p-1 shadow-md"
+                                  title="Отправить"
+                                >
+                                  <Send className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
                               <Button
                                 type="button"
-                                onClick={handleStartRecording}
+                                onClick={() => fileInputRef.current?.click()}
                                 size="icon"
-                                className="h-9 w-9 bg-purple-800 hover:bg-purple-700 text-pink-300 rounded-full shrink-0 shadow-md"
-                                title="Записать голосовое сообщение"
+                                variant="ghost"
+                                className="h-9 w-9 text-slate-400 hover:text-pink-400 hover:bg-purple-950/50 rounded-full shrink-0"
+                                title="Отправить фото"
                               >
-                                <Mic className="h-4 w-4" />
+                                <ImageIcon className="h-4 w-4" />
                               </Button>
-                            )}
-                          </form>
+
+                              <form onSubmit={handleSendMessage} className="flex-1 flex items-center gap-2">
+                                <Input
+                                  placeholder={`Сообщение для ${selectedUser.username}...`}
+                                  value={inputText}
+                                  onChange={(e) => setInputText(e.target.value)}
+                                  className="bg-slate-900 border-purple-900/60 text-xs text-slate-100 h-9 rounded-full px-4 focus:border-pink-500 flex-1"
+                                />
+
+                                {inputText.trim() ? (
+                                  <Button
+                                    type="submit"
+                                    size="icon"
+                                    className="h-9 w-9 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white rounded-full shrink-0 shadow-md"
+                                  >
+                                    <Send className="h-4 w-4" />
+                                  </Button>
+                                ) : (
+                                  <Button
+                                    type="button"
+                                    onClick={handleStartRecording}
+                                    size="icon"
+                                    className="h-9 w-9 bg-purple-800 hover:bg-purple-700 text-pink-300 rounded-full shrink-0 shadow-md"
+                                    title="Записать голосовое сообщение"
+                                  >
+                                    <Mic className="h-4 w-4" />
+                                  </Button>
+                                )}
+                              </form>
+                            </>
+                          )}
                         </>
                       )}
                     </div>
