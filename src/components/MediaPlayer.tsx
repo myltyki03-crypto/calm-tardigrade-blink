@@ -70,7 +70,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
-  const isScreenSharingActive = Boolean(room.is_screen_sharing);
+  // Мгновенный локальный статус трансляции экрана без задержек базы данных
+  const isScreenSharingActive =
+    Boolean(room.is_screen_sharing) || Boolean(screenStream) || Boolean(remoteStream);
+
   const isIframePlayer =
     !isScreenSharingActive &&
     (mediaInfo.type === 'vk' ||
@@ -92,7 +95,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }
       video
         .play()
-        .then(() => setIsEmbedBlocked(false))
+        .then(() => {
+          setIsEmbedBlocked(false);
+          setNeedUserGesture(false);
+        })
         .catch((err) => {
           console.log('Screen share autoplay catch:', err);
         });
@@ -127,6 +133,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         audio: true,
       });
 
+      setIsEmbedBlocked(false);
+      setNeedUserGesture(false);
+
       setScreenStream(stream);
       setRoomScreenShareState(room.id, true);
       showSuccess('Демонстрация экрана запущена!');
@@ -134,7 +143,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       // Привязываем локальный поток к видеоплееру напрямую
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
-        screenShareVideoRef.current.play().catch(() => {});
+        screenShareVideoRef.current
+          .play()
+          .then(() => {
+            setIsEmbedBlocked(false);
+          })
+          .catch(() => {});
       }
 
       // Уведомляем зрителей через канал трансляции
@@ -801,7 +815,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
-        {!needUserGesture && !isEmbedBlocked && (
+        {(!needUserGesture || isScreenSharingActive) && !isEmbedBlocked && (
           <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
             <Button
               onClick={handleSyncClick}
@@ -904,7 +918,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ */}
+        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ (СКРЫВАЕТСЯ ПРИ ТРАНСЛЯЦИИ ЭКРАНА) */}
         {isEmbedBlocked && !isScreenSharingActive && (
           <div className="absolute inset-0 z-40 bg-slate-950/90 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
             <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
@@ -926,7 +940,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         {(needUserGesture || (!isPlaying && room.is_playing && !isHost && mediaInfo.type === 'youtube')) &&
-          !isEmbedBlocked && (
+          !isEmbedBlocked &&
+          !isScreenSharingActive && (
             <div className="absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
               <Button
                 onClick={handleMobileUnlockClick}
