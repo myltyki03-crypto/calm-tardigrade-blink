@@ -34,7 +34,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   isHost,
   floatingReactions = [],
 }) => {
-  const { updateRoomProgress, setRoomScreenShareState } = useRooms();
+  const { currentUser, updateRoomProgress, setRoomScreenShareState } = useRooms();
   const containerRef = useRef<HTMLDivElement>(null);
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
@@ -45,7 +45,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   // WebRTC и Демонстрация экрана
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
+  const viewerPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const webrtcChannelRef = useRef<any>(null);
 
   const lastHostSyncSaveRef = useRef<number>(0);
@@ -77,7 +79,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // Демонстрация экрана
+  // Закрепление потока видео трансляции экрана на HTML-элементе
+  useEffect(() => {
+    if (screenShareVideoRef.current) {
+      if (isHost && screenStream) {
+        screenShareVideoRef.current.srcObject = screenStream;
+        screenShareVideoRef.current.play().catch(() => {});
+      } else if (!isHost && remoteStream) {
+        screenShareVideoRef.current.srcObject = remoteStream;
+        screenShareVideoRef.current.play().catch(() => {});
+      }
+    }
+  }, [isScreenSharingActive, screenStream, remoteStream, isHost]);
+
+  // Демонстрация экрана ведущего
   const handleToggleScreenShare = async () => {
     if (!isHost) {
       showError('Только ведущий комнаты может запускать трансляцию экрана');
@@ -105,9 +120,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       setRoomScreenShareState(room.id, true);
       showSuccess('Демонстрация экрана запущена!');
 
-      if (screenShareVideoRef.current) {
-        screenShareVideoRef.current.srcObject = stream;
-        screenShareVideoRef.current.play().catch(() => {});
+      // Уведомляем зрителей через канал трансляции
+      if (webrtcChannelRef.current) {
+        webrtcChannelRef.current.send({
+          type: 'broadcast',
+          event: 'screenshare-started',
+          payload: { hostId: room.host_id },
+        });
       }
 
       stream.getVideoTracks()[0].onended = () => {
@@ -128,9 +147,17 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     peerConnectionsRef.current.forEach((pc) => pc.close());
     peerConnectionsRef.current.clear();
     setRoomScreenShareState(room.id, false);
+
+    if (webrtcChannelRef.current) {
+      webrtcChannelRef.current.send({
+        type: 'broadcast',
+        event: 'screenshare-stopped',
+        payload: { hostId: room.host_id },
+      });
+    }
   };
 
-  // WebRTC Сигналинг
+  // WebRTC Сигналинг (Передача видеопотока между ведущим и зрителями)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
@@ -139,10 +166,87 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       config: { broadcast: { self: false } },
     });
 
+    const myUserId = currentUser.id || 'guest';
+
     channel
+      .on('broadcast', { event: 'screenshare-started' }, () => {
+        if (!isHost) {
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-request-offer',
+            payload: { viewerId: myUserId },
+          });
+        }
+      })
+      .on('broadcast', { event: 'screenshare-stopped' }, () => {
+        if (!isHost) {
+          if (viewerPeerConnectionRef.current) {
+            viewerPeerConnectionRef.current.close();
+            viewerPeerConnectionRef.current = null;
+          }
+          setRemoteStream(null);
+        }
+      })
+      .on('broadcast', { event: 'webrtc-request-offer' }, async ({ payload }) => {
+        if (isHost && screenStream) {
+          const viewerId = payload.viewerId;
+          const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          });
+
+          peerConnectionsRef.current.set(viewerId, pc);
+
+          screenStream.getTracks().forEach((track) => {
+            pc.addTrack(track, screenStream);
+          });
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: 'broadcast',
+                event: 'webrtc-ice',
+                payload: { candidate: event.candidate, senderId: myUserId, targetId: viewerId },
+              });
+            }
+          };
+
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-offer',
+            payload: { offer, senderId: myUserId, targetId: viewerId },
+          });
+        }
+      })
       .on('broadcast', { event: 'webrtc-offer' }, async ({ payload }) => {
-        if (!isHost && isScreenSharingActive) {
-          const pc = createPeerConnection(payload.senderId);
+        if (!isHost && payload.targetId === myUserId) {
+          if (viewerPeerConnectionRef.current) {
+            viewerPeerConnectionRef.current.close();
+          }
+
+          const pc = new RTCPeerConnection({
+            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+          });
+          viewerPeerConnectionRef.current = pc;
+
+          pc.ontrack = (event) => {
+            if (event.streams && event.streams[0]) {
+              setRemoteStream(event.streams[0]);
+            }
+          };
+
+          pc.onicecandidate = (event) => {
+            if (event.candidate) {
+              channel.send({
+                type: 'broadcast',
+                event: 'webrtc-ice',
+                payload: { candidate: event.candidate, senderId: myUserId, targetId: payload.senderId },
+              });
+            }
+          };
+
           await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
@@ -150,12 +254,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           channel.send({
             type: 'broadcast',
             event: 'webrtc-answer',
-            payload: { answer, senderId: room.host_id, targetId: payload.senderId },
+            payload: { answer, senderId: myUserId, targetId: payload.senderId },
           });
         }
       })
       .on('broadcast', { event: 'webrtc-answer' }, async ({ payload }) => {
-        if (isHost && payload.targetId === room.host_id) {
+        if (isHost && payload.targetId === myUserId) {
           const pc = peerConnectionsRef.current.get(payload.senderId);
           if (pc) {
             await pc.setRemoteDescription(new RTCSessionDescription(payload.answer));
@@ -163,55 +267,37 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         }
       })
       .on('broadcast', { event: 'webrtc-ice' }, async ({ payload }) => {
-        const pc = peerConnectionsRef.current.get(payload.senderId);
-        if (pc && payload.candidate) {
-          try {
-            await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
-          } catch (e) {}
+        if (payload.targetId === myUserId) {
+          if (isHost) {
+            const pc = peerConnectionsRef.current.get(payload.senderId);
+            if (pc && payload.candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              } catch (e) {}
+            }
+          } else if (viewerPeerConnectionRef.current && payload.candidate) {
+            try {
+              await viewerPeerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
+            } catch (e) {}
+          }
         }
       })
-      .subscribe();
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED' && !isHost && isScreenSharingActive) {
+          channel.send({
+            type: 'broadcast',
+            event: 'webrtc-request-offer',
+            payload: { viewerId: myUserId },
+          });
+        }
+      });
 
     webrtcChannelRef.current = channel;
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [room.id, isHost, isScreenSharingActive]);
-
-  const createPeerConnection = (peerId: string) => {
-    if (peerConnectionsRef.current.has(peerId)) {
-      return peerConnectionsRef.current.get(peerId)!;
-    }
-
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    });
-
-    pc.onicecandidate = (event) => {
-      if (event.candidate && webrtcChannelRef.current) {
-        webrtcChannelRef.current.send({
-          type: 'broadcast',
-          event: 'webrtc-ice',
-          payload: { candidate: event.candidate, senderId: isHost ? room.host_id : 'viewer', targetId: peerId },
-        });
-      }
-    };
-
-    pc.ontrack = (event) => {
-      if (!isHost && screenShareVideoRef.current && event.streams[0]) {
-        screenShareVideoRef.current.srcObject = event.streams[0];
-        screenShareVideoRef.current.play().catch(() => {});
-      }
-    };
-
-    if (isHost && screenStream) {
-      screenStream.getTracks().forEach((track) => pc.addTrack(track, screenStream));
-    }
-
-    peerConnectionsRef.current.set(peerId, pc);
-    return pc;
-  };
+  }, [room.id, isHost, isScreenSharingActive, screenStream, currentUser.id]);
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
