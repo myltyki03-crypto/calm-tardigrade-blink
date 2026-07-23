@@ -81,13 +81,24 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   // Закрепление потока видео трансляции экрана на HTML-элементе
   useEffect(() => {
-    if (screenShareVideoRef.current) {
-      if (isHost && screenStream) {
-        screenShareVideoRef.current.srcObject = screenStream;
-        screenShareVideoRef.current.play().catch(() => {});
-      } else if (!isHost && remoteStream) {
-        screenShareVideoRef.current.srcObject = remoteStream;
-        screenShareVideoRef.current.play().catch(() => {});
+    const video = screenShareVideoRef.current;
+    if (!video) return;
+
+    const activeStream = isHost ? screenStream : remoteStream;
+
+    if (isScreenSharingActive && activeStream) {
+      if (video.srcObject !== activeStream) {
+        video.srcObject = activeStream;
+      }
+      video
+        .play()
+        .then(() => setIsEmbedBlocked(false))
+        .catch((err) => {
+          console.log('Screen share autoplay catch:', err);
+        });
+    } else {
+      if (video.srcObject) {
+        video.srcObject = null;
       }
     }
   }, [isScreenSharingActive, screenStream, remoteStream, isHost]);
@@ -120,6 +131,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       setRoomScreenShareState(room.id, true);
       showSuccess('Демонстрация экрана запущена!');
 
+      // Привязываем локальный поток к видеоплееру напрямую
+      if (screenShareVideoRef.current) {
+        screenShareVideoRef.current.srcObject = stream;
+        screenShareVideoRef.current.play().catch(() => {});
+      }
+
       // Уведомляем зрителей через канал трансляции
       if (webrtcChannelRef.current) {
         webrtcChannelRef.current.send({
@@ -143,6 +160,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     if (screenStream) {
       screenStream.getTracks().forEach((track) => track.stop());
       setScreenStream(null);
+    }
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.srcObject = null;
     }
     peerConnectionsRef.current.forEach((pc) => pc.close());
     peerConnectionsRef.current.clear();
@@ -407,7 +427,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     const initPlayer = () => {
       if (!playerContainerRef.current) return;
 
-      // Очищаем внутренности изоляционного контейнера
       playerContainerRef.current.innerHTML = '';
       const targetElement = document.createElement('div');
       playerContainerRef.current.appendChild(targetElement);
@@ -682,7 +701,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setIsMuted(nextMute);
 
     if (screenShareVideoRef.current) {
-      screenShareVideoRef.current.muted = nextMute;
+      screenShareVideoRef.current.muted = isHost ? true : nextMute;
     }
 
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
@@ -832,23 +851,24 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {/* АНИМАЦИЯ СМАЙЛОВ */}
         <VideoReactionsOverlay reactions={floatingReactions} />
 
-        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА (СТАБИЛЬНЫЙ УЗЕЛ DOM) */}
-        <div className={`absolute inset-0 w-full h-full ${isScreenSharingActive ? 'block z-25' : 'hidden'}`}>
-          <video
-            ref={screenShareVideoRef}
-            className="w-full h-full object-contain bg-black pointer-events-auto"
-            autoPlay
-            playsInline
-          />
-        </div>
-
-        {/* 1. YOUTUBE (СТАБИЛЬНЫЙ ИЗОЛИРОВАННЫЙ КОНТЕЙНЕР) */}
-        <div
-          ref={playerContainerRef}
-          className={`absolute inset-0 w-full h-full pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none ${
-            !isScreenSharingActive && mediaInfo.type === 'youtube' ? 'block' : 'hidden'
+        {/* 0. ПЛЕЕР ДЕМОНСТРАЦИИ ЭКРАНА (ПОСТОЯННЫЙ УЗЕЛ) */}
+        <video
+          ref={screenShareVideoRef}
+          className={`absolute inset-0 w-full h-full object-contain bg-black pointer-events-auto transition-opacity ${
+            isScreenSharingActive ? 'z-30 opacity-100' : 'z-0 opacity-0 pointer-events-none'
           }`}
+          autoPlay
+          playsInline
+          muted={isHost}
         />
+
+        {/* 1. YOUTUBE */}
+        {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
+          <div
+            ref={playerContainerRef}
+            className="absolute inset-0 w-full h-full pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none"
+          />
+        )}
 
         {/* 2. TWITCH */}
         {!isScreenSharingActive && mediaInfo.type === 'twitch' && (
