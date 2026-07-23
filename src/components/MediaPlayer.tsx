@@ -9,19 +9,13 @@ import {
   Minimize,
   Lock,
   RotateCcw,
-  ExternalLink,
   AlertCircle,
-  Video,
-  Settings,
-  Eye,
-  ShieldCheck,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
 import { parseMediaUrl, MediaInfo } from '@/utils/mediaUtils';
-import { showError, showSuccess } from '@/utils/toast';
 
 declare global {
   interface Window {
@@ -59,9 +53,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(true);
 
-  // Режим прямых кликов по плееру для зрителей (чтобы настроить качество/шестеренку)
-  const [allowIframeClick, setAllowIframeClick] = useState(false);
-
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
@@ -92,7 +83,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   useEffect(() => {
     setIsEmbedBlocked(false);
-    setAllowIframeClick(false);
   }, [mediaInfo.id, mediaInfo.url]);
 
   useEffect(() => {
@@ -297,12 +287,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setIsPlaying(true);
     setNeedUserGesture(false);
     forceDisableCaptions();
-    showSuccess('Воспроизведение запущено!');
-  };
-
-  const handleViewerShieldClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    showError('Управлять видео и переключать рекомендации может только ведущий (DJ) 👑');
   };
 
   const toggleFullscreen = () => {
@@ -328,10 +312,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       return;
     }
 
-    if (!isHost) {
-      showError('Только владелец комнаты может управлять воспроизведением!');
-      return;
-    }
+    if (!isHost) return;
 
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       if (isPlaying) {
@@ -395,10 +376,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   const handleSeek = (newProgressPercent: number) => {
-    if (!isHost) {
-      showError('Только владелец комнаты может перематывать!');
-      return;
-    }
+    if (!isHost) return;
 
     if (duration > 0) {
       const targetSeconds = (newProgressPercent / 100) * duration;
@@ -428,7 +406,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         setIsPlaying(true);
       }
     }
-    showSuccess('Синхронизировано!');
   };
 
   const formatTime = (seconds: number) => {
@@ -441,19 +418,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const currentHostname = window.location.hostname || 'localhost';
 
-  const getPlatformLabel = () => {
-    switch (mediaInfo.type) {
-      case 'rutube': return 'Rutube';
-      case 'vk': return 'VK Видео';
-      case 'twitch': return 'Twitch';
-      case 'vimeo': return 'Vimeo';
-      case 'ok': return 'OK.ru';
-      case 'direct': return 'MP4 / Прямой поток';
-      case 'youtube': return 'YouTube';
-      default: return 'Веб Плеер';
-    }
-  };
-
   return (
     <div
       ref={containerRef}
@@ -464,7 +428,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE (ПОВЕРХ ВИДЕО) */}
+        {/* АНИМАЦИЯ ПАРЯЩИХ СМАЙЛОВ В СТИЛЕ RAVE */}
         <div className="absolute inset-0 pointer-events-none z-30 overflow-hidden">
           {floatingReactions.map((e) => (
             <div
@@ -523,15 +487,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ЗАЩИТНЫЙ ЩИТ ДЛЯ ЗРИТЕЛЕЙ (!isHost) С ВОЗМОЖНОСТЬЮ ВКЛЮЧЕНИЯ ИНТЕРАКТИВНОГО РЕЖИМА НАСТРОЙКИ КАЧЕСТВА */}
-        {!isHost && !needUserGesture && !isEmbedBlocked && !allowIframeClick && (
-          <div
-            onClick={handleViewerShieldClick}
-            className="absolute inset-0 z-20 cursor-not-allowed bg-transparent pointer-events-auto flex flex-col justify-between p-3"
-            title="Только ведущий может управлять видео и переключать рекомендации"
-          />
-        )}
-
         {isInteractivePlayer && isHost && (
           <div
             onClick={() => {
@@ -552,7 +507,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Это видео ограничено автором. Откройте его на источнике.
+                Это видео ограничено автором.
               </p>
             </div>
             <a
@@ -561,103 +516,35 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg hover:opacity-90 transition-opacity"
             >
-              <ExternalLink className="h-4 w-4" /> Открыть видео
+              Открыть на источнике
             </a>
           </div>
         )}
 
-        {/* ВЕРХНИЕ УНИВЕРСАЛЬНЫЕ КНОПКИ УПРАВЛЕНИЯ (НА ВЕСЬ ЭКРАН, КАЧЕСТВО, ЗВУК) */}
-        {!needUserGesture && !isEmbedBlocked && (
+        {/* Кнопка синхронизации только для YouTube/MP4 */}
+        {!isFullscreen && !needUserGesture && !isEmbedBlocked && isInteractivePlayer && (
           <div
-            className={`absolute top-3 left-3 right-3 z-30 flex items-center justify-between gap-2 transition-opacity duration-300 pointer-events-auto ${
-              showControls ? 'opacity-100' : 'opacity-0'
+            className={`absolute top-3 left-3 z-20 flex items-center gap-2 transition-opacity duration-300 ${
+              showControls ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
             }`}
           >
-            {/* Левая группа */}
-            <div className="flex items-center gap-1.5">
-              {isInteractivePlayer && (
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSyncClick();
-                  }}
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-[11px] px-2.5 bg-slate-950/85 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/80 rounded-full shadow-lg backdrop-blur-md"
-                >
-                  <RefreshCw className="h-3 w-3 mr-1" />
-                  Синхронизировать
-                </Button>
-              )}
-
-              {/* Переключатель кликабельности плеера для настройки Качества в VK/Rutube */}
-              {!isHost && mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
-                <Button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setAllowIframeClick(!allowIframeClick);
-                    if (!allowIframeClick) {
-                      showSuccess('Нажмите на шестеренку в видео для выбора качества (1080p, 720p)');
-                    } else {
-                      showSuccess('Защита от переключений восстановлена');
-                    }
-                  }}
-                  size="sm"
-                  variant="outline"
-                  className={`h-7 text-[11px] px-2.5 rounded-full shadow-lg backdrop-blur-md border ${
-                    allowIframeClick
-                      ? 'bg-amber-950/90 border-amber-500/60 text-amber-200'
-                      : 'bg-slate-950/85 border-purple-500/40 text-purple-200 hover:bg-purple-900/60'
-                  }`}
-                  title="Нажмите, чтобы настроить качество внутри плеера"
-                >
-                  {allowIframeClick ? (
-                    <>
-                      <Eye className="h-3 w-3 mr-1 text-amber-400" />
-                      <span>Качество (Нажмите шестеренку)</span>
-                    </>
-                  ) : (
-                    <>
-                      <Settings className="h-3 w-3 mr-1 text-pink-400" />
-                      <span>Настройка качества (1080p)</span>
-                    </>
-                  )}
-                </Button>
-              )}
-            </div>
-
-            {/* Правая группа */}
-            <div className="flex items-center gap-1.5">
-              <a
-                href={mediaInfo.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/85 border border-purple-500/50 text-purple-200 hover:text-white hover:bg-purple-900/80 text-[11px] font-bold backdrop-blur-md shadow-lg transition-colors"
-                title="Открыть оригинальную ссылку"
-              >
-                <ExternalLink className="h-3 w-3 text-pink-400" />
-                <span>{getPlatformLabel()}</span>
-              </a>
-
-              {/* УНИВЕРСАЛЬНАЯ КНОПКА «НА ВЕСЬ ЭКРАН» ДЛЯ ВСЕХ */}
-              <Button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggleFullscreen();
-                }}
-                size="sm"
-                className="h-7 text-[11px] px-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold rounded-full shadow-lg backdrop-blur-md gap-1"
-                title={isFullscreen ? 'Свернуть' : 'Развернуть на весь экран'}
-              >
-                {isFullscreen ? <Minimize className="h-3.5 w-3.5" /> : <Maximize className="h-3.5 w-3.5" />}
-                <span className="hidden sm:inline">{isFullscreen ? 'Свернуть' : 'На весь экран'}</span>
-              </Button>
-            </div>
+            <Button
+              onClick={(e) => {
+                e.stopPropagation();
+                handleSyncClick();
+              }}
+              size="sm"
+              variant="outline"
+              className="h-7 text-[11px] px-2.5 bg-slate-950/80 border-cyan-500/40 text-cyan-300 hover:bg-cyan-950/60 rounded-full shadow-lg backdrop-blur-md"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Синхронизировать
+            </Button>
           </div>
         )}
 
         {(needUserGesture || (!isPlaying && room.is_playing && !isHost && isInteractivePlayer)) && !isEmbedBlocked && (
-          <div className="absolute inset-0 z-40 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
+          <div className="absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
             <Button
               onClick={handleMobileUnlockClick}
               size="lg"
