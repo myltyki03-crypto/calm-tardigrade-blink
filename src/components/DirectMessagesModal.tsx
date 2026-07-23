@@ -115,6 +115,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     currentUser,
     friendsList,
     friendRequests,
+    sendFriendRequest,
     acceptFriendRequest,
     rejectFriendRequest,
     removeFriend,
@@ -130,6 +131,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
   const [activeTab, setActiveTab] = useState<'chats' | 'friends' | 'requests'>('chats');
   const [inputText, setInputText] = useState('');
   const [friendSearchQuery, setFriendSearchQuery] = useState('');
+  const [addFriendInput, setAddFriendInput] = useState('');
   const [mobileShowChat, setMobileShowChat] = useState<boolean>(false);
   const [fullImagePreview, setFullImagePreview] = useState<string | null>(null);
 
@@ -230,6 +232,30 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     setInputText('');
   };
 
+  const handleAddFriendSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanName = addFriendInput.trim();
+    if (!cleanName) {
+      showError('Введите логин пользователя');
+      return;
+    }
+
+    if (cleanName.toLowerCase() === myName) {
+      showError('Нельзя добавить самого себя');
+      return;
+    }
+
+    const targetUser: UserProfile = {
+      id: `usr_${cleanName}`,
+      username: cleanName,
+      avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(cleanName)}`,
+      is_online: true,
+    };
+
+    await sendFriendRequest(targetUser);
+    setAddFriendInput('');
+  };
+
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file || !selectedUser) return;
@@ -288,7 +314,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
           showSuccess('Голосовое сообщение отправлено!');
         }
       };
-      reader.readAsDataURL(audioBlob);
+      reader.readAsDataURL(base64Audio);
 
       mediaRecorderRef.current?.stream.getTracks().forEach((track) => track.stop());
     };
@@ -391,9 +417,29 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
             </div>
           </DialogHeader>
 
-          {/* ВКЛАДКА 1: СПИСОК ДРУЗЕЙ */}
+          {/* ВКЛАДКА 1: СПИСОК ДРУЗЕЙ И ФОРМА ДОБАВЛЕНИЯ */}
           {activeTab === 'friends' && (
             <div className="flex-1 flex flex-col p-4 overflow-hidden bg-slate-950/40">
+              {/* Форма отправки заявки в друзья по логину */}
+              <form onSubmit={handleAddFriendSubmit} className="mb-3 bg-purple-950/40 p-2.5 rounded-2xl border border-purple-900/50 flex items-center gap-2">
+                <div className="relative flex-1">
+                  <UserPlus className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-pink-400" />
+                  <Input
+                    placeholder="Добавить по логину (никнейму)..."
+                    value={addFriendInput}
+                    onChange={(e) => setAddFriendInput(e.target.value)}
+                    className="pl-8 bg-slate-900/90 border-purple-800/60 text-xs h-9 rounded-xl text-slate-100 placeholder:text-slate-500 focus:border-pink-500"
+                  />
+                </div>
+                <Button
+                  type="submit"
+                  size="sm"
+                  className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs h-9 px-3.5 rounded-xl gap-1 shrink-0 shadow-md"
+                >
+                  <UserPlus className="h-3.5 w-3.5" /> Добавить
+                </Button>
+              </form>
+
               <div className="flex items-center justify-between mb-3 gap-2">
                 <h4 className="text-xs font-bold text-purple-300 uppercase tracking-wider flex items-center gap-1.5 shrink-0">
                   <UserCheck className="h-4 w-4 text-emerald-400" /> Мои друзья ({friendsList.length})
@@ -416,7 +462,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
                     <Users className="h-8 w-8 text-purple-500/30 mx-auto" />
                     <p>
                       {friendsList.length === 0
-                        ? 'У вас пока нет добавленных друзей. Отправляйте заявки участникам в комнатах!'
+                        ? 'У вас пока нет добавленных друзей. Отправляйте заявки выше!'
                         : 'Друзья по вашему запросу не найдены'}
                     </p>
                   </div>
