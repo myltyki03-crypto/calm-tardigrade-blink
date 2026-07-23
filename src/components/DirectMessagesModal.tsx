@@ -194,7 +194,7 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
         u.username.toLowerCase() === (activeDmUserId || '').toLowerCase()
     ) ||
     initialTargetUser ||
-    allConversations[0] ||
+    (activeDmUserId ? null : allConversations[0]) ||
     null;
 
   const isSelectedUserFriend = selectedUser
@@ -212,11 +212,17 @@ export const DirectMessagesModal: React.FC<DirectMessagesModalProps> = ({
     }
   }, [initialTargetUser]);
 
+  // ПОМЕЧАТЬ КАК ПРОЧИТАННОЕ ТОЛЬКО КОГДА МОДАЛЬНОЕ ОКНО ОТКРЫТО И ЧАТ АКТИВЕН
   useEffect(() => {
-    if (selectedUser) {
-      markDmAsRead(selectedUser.username);
+    if (!isOpen) return;
+
+    if (selectedUser && activeDmUserId) {
+      const isMobile = window.innerWidth < 640;
+      if (!isMobile || mobileShowChat) {
+        markDmAsRead(selectedUser.username);
+      }
     }
-  }, [selectedUser?.username, directMessages.length, isOpen]);
+  }, [selectedUser?.username, directMessages.length, isOpen, mobileShowChat, activeDmUserId]);
 
   const activeMessages = selectedUser ? getDirectMessagesWith(selectedUser.id, selectedUser.username) : [];
 
