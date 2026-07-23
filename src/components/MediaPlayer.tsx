@@ -164,11 +164,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
       } else if (command === 'seek' && typeof value === 'number') {
         win.postMessage({ box_msg: 'seek', value: val }, '*');
+        win.postMessage({ box_msg: 'seek', time: val }, '*');
         win.postMessage({ type: 'seek', time: val, value: val }, '*');
         win.postMessage({ event: 'seek', param: val }, '*');
         win.postMessage({ method: 'seek', param: val }, '*');
         win.postMessage(JSON.stringify({ type: 'seek', time: val, value: val }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'seek', value: val }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'seek', time: val }), '*');
         win.postMessage(JSON.stringify({ event: 'seek', param: val }), '*');
         win.postMessage(JSON.stringify(['call', 'seek', [val]]), '*');
       } else if (command === 'unmute' || command === 'volume') {
@@ -233,6 +235,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           if (typeof data.param === 'number') timeVal = data.param;
           else if (typeof data.value === 'number') timeVal = data.value;
           else if (Array.isArray(data) && typeof data[1] === 'number') timeVal = data[1];
+        }
+
+        // Игнорируем задержки или переходные 0.00 сообщения во время буферизации после перемотки
+        if (Date.now() - lastAutoSeekRef.current < 4000) {
+          return;
         }
 
         if (typeof timeVal === 'number' && !isNaN(timeVal) && timeVal >= 0) {
@@ -333,15 +340,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         const currentViewerTime = currentTimeRef.current;
         const diff = Math.abs(currentViewerTime - targetHostTime);
 
-        if (diff > 4) {
+        if (diff > 3) {
+          lastAutoSeekRef.current = Date.now();
           setCurrentTime(targetHostTime);
           sendIframeCommand('seek', targetHostTime);
-
-          if (mediaInfo.type === 'vk' || mediaInfo.type === 'iframe' || mediaInfo.type === 'rutube') {
-            const newSrc = getEmbedUrlWithTime(mediaInfo, targetHostTime, currentIsPlaying);
-            setIframeSrc(newSrc);
-            setIframeKey(Date.now());
-          }
         }
       }
     }
@@ -1157,12 +1159,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', syncTime);
         sendIframeCommand('play');
         sendIframeCommand('unmute');
-
-        if (mediaInfo.type === 'vk' || mediaInfo.type === 'iframe' || mediaInfo.type === 'rutube') {
-          const newSrc = getEmbedUrlWithTime(mediaInfo, syncTime, true);
-          setIframeSrc(newSrc);
-          setIframeKey(Date.now());
-        }
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
