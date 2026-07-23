@@ -62,12 +62,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  // Динамический URL для VK и внешних iframe (autoplay=0 по умолчанию)
+  // Динамический URL для VK и внешних iframe
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
-  const isInteractivePlayer = mediaInfo.type === 'youtube' || mediaInfo.type === 'direct';
+  // Теперь ВСЕ плееры (YouTube, VK, Direct MP4, Rutube) управляются через наш кастомный интерфейс
+  const isInteractivePlayer = true;
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -97,9 +98,85 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, startSec);
   };
 
+  // Функция отправки postMessage команд в iframe (VK, Rutube и т.д.)
+  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume', value?: number) => {
+    if (!iframeRef.current?.contentWindow) return;
+    const win = iframeRef.current.contentWindow;
+
+    try {
+      if (command === 'play') {
+        win.postMessage(JSON.stringify({ box_msg: 'play' }), '*');
+        win.postMessage(JSON.stringify({ type: 'play' }), '*');
+        win.postMessage('{"event":"command","func":"playVideo"}', '*');
+      } else if (command === 'pause') {
+        win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
+        win.postMessage(JSON.stringify({ type: 'pause' }), '*');
+        win.postMessage('{"event":"command","func":"pauseVideo"}', '*');
+      } else if (command === 'seek' && typeof value === 'number') {
+        win.postMessage(JSON.stringify({ box_msg: 'seek', value: value }), '*');
+        win.postMessage(JSON.stringify({ type: 'seek', time: value }), '*');
+      } else if (command === 'volume' && typeof value === 'number') {
+        win.postMessage(JSON.stringify({ box_msg: 'set_volume', value: value / 100 }), '*');
+      }
+    } catch (e) {
+      console.error('Failed to send iframe command:', e);
+    }
+  };
+
+  // Слушатель входящих ответов от VK Плеера для точного отслеживания времени и состояния
+  useEffect(() => {
+    const handleWindowMessage = (event: MessageEvent) => {
+      try {
+        let data = event.data;
+        if (typeof data === 'string') {
+          try { data = JSON.parse(data); } catch { return; }
+        }
+        if (!data) return;
+
+        if (data.box_msg === 'timeupdate' && data.value) {
+          if (typeof data.value.current === 'number') setCurrentTime(data.value.current);
+          if (typeof data.value.duration === 'number' && data.value.duration > 0) setDuration(data.value.duration);
+        } else if (data.type === 'timeupdate' || data.event === 'timeupdate') {
+          if (typeof data.time === 'number') setCurrentTime(data.time);
+          if (typeof data.duration === 'number' && data.duration > 0) setDuration(data.duration);
+        }
+
+        if (data.box_msg === 'play' || data.type === 'play' || data.event === 'onPlay') {
+          setIsPlaying(true);
+        } else if (data.box_msg === 'pause' || data.type === 'pause' || data.event === 'onPause') {
+          setIsPlaying(false);
+        }
+      } catch (e) {}
+    };
+
+    window.addEventListener('message', handleWindowMessage);
+    return () => window.removeEventListener('message', handleWindowMessage);
+  }, []);
+
+  // Синхронизация прогресса времени для VK Видео
+  useEffect(() => {
+    if (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'iframe') {
+      let interval: NodeJS.Timeout | null = null;
+      if (isPlaying) {
+        interval = setInterval(() => {
+          setCurrentTime((prev) => {
+            const next = prev + 1;
+            if (isHost && Date.now() - lastHostSyncSaveRef.current > 4000) {
+              lastHostSyncSaveRef.current = Date.now();
+              updateRoomProgress(room.id, next, true);
+            }
+            return next;
+          });
+        }, 1000);
+      }
+      return () => { if (interval) clearInterval(interval); };
+    }
+  }, [isPlaying, isHost, mediaInfo.type]);
+
   useEffect(() => {
     setIsEmbedBlocked(false);
     const initialSec = getCalculatedHostTime();
+    setCurrentTime(initialSec);
     setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, false));
   }, [mediaInfo.id, mediaInfo.url]);
 
@@ -277,8 +354,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
       } else if (mediaInfo.type === 'vk') {
-        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime);
+        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
         setIframeSrc(newVkUrl);
+        setIsPlaying(room.is_playing);
       }
     }
   }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
@@ -306,6 +384,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     } else if (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe') {
       const syncTime = getCalculatedHostTime();
       setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
+      sendIframeCommand('play');
     }
 
     setIsMuted(false);
@@ -361,8 +440,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         updateRoomProgress(room.id, videoElementRef.current.currentTime, true);
       }
     } else {
+      // Для VK Видео и других iframe отправляем команды Пауза / Плей
       const nextPlaying = !isPlaying;
       setIsPlaying(nextPlaying);
+      if (nextPlaying) {
+        sendIframeCommand('play');
+      } else {
+        sendIframeCommand('pause');
+      }
       updateRoomProgress(room.id, currentTime, nextPlaying);
     }
   };
@@ -383,6 +468,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.volume = newVolume / 100;
       setIsMuted(newVolume === 0);
+    } else {
+      sendIframeCommand('volume', newVolume);
     }
   };
 
@@ -397,20 +484,28 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.muted = nextMute;
+    } else {
+      sendIframeCommand('volume', nextMute ? 0 : volume);
     }
   };
 
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) return;
 
-    if (duration > 0) {
-      const targetSeconds = (newProgressPercent / 100) * duration;
+    if (duration > 0 || mediaInfo.type === 'vk') {
+      const maxSec = duration > 0 ? duration : 3600;
+      const targetSeconds = (newProgressPercent / 100) * maxSec;
       setCurrentTime(targetSeconds);
+
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
         ytPlayerRef.current.seekTo(targetSeconds, true);
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         videoElementRef.current.currentTime = targetSeconds;
+      } else {
+        sendIframeCommand('seek', targetSeconds);
+        setIframeSrc(getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying));
       }
+
       updateRoomProgress(room.id, targetSeconds, isPlaying);
     }
   };
@@ -453,20 +548,15 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       } else if (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe') {
         const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
         setIframeSrc(newEmbedUrl);
-
-        if (iframeRef.current?.contentWindow) {
-          try {
-            iframeRef.current.contentWindow.postMessage(JSON.stringify({ box_msg: 'seek', value: syncTime }), '*');
-            iframeRef.current.contentWindow.postMessage(JSON.stringify({ type: 'seek', time: syncTime }), '*');
-          } catch (err) {}
-        }
+        sendIframeCommand('play');
+        sendIframeCommand('seek', syncTime);
       }
 
       showSuccess(`⚡ Синхронизировано с VK / ведущим (${formatTime(syncTime)})`);
     }
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
+  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : (currentTime % 3600) / 36;
   const currentHostname = window.location.hostname || 'localhost';
 
   return (
@@ -478,7 +568,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         isFullscreen ? 'w-screen h-screen justify-between z-50' : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20'
       }`}
     >
-      {/* ВЕРХНЯЯ ВНЕШНЯЯ ПАНЕЛЬ ПЛЕЕРА ДЛЯ СИНХРОНИЗАЦИИ (БОЛЬШЕ НЕ ПЕРЕКРЫВАЕТСЯ VK ВИТРИНОЙ) */}
+      {/* ВЕРХНЯЯ ВНЕШНЯЯ ПАНЕЛЬ ПЛЕЕРА ДЛЯ СИНХРОНИЗАЦИИ */}
       <div className="bg-slate-900 border-b border-purple-900/40 p-2 px-3 flex items-center justify-between shrink-0 z-30">
         <div className="flex items-center gap-2">
           <Badge className="bg-gradient-to-r from-purple-600 to-pink-600 text-white text-[10px] font-bold px-2.5 py-0.5 rounded-lg flex items-center gap-1">
@@ -546,7 +636,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           <iframe
             ref={iframeRef}
             src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
-            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto"
+            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto scale-[1.01]"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
@@ -560,19 +650,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             src={mediaInfo.url}
             className="absolute inset-0 w-full h-full object-contain bg-black"
             playsInline
-          />
-        )}
-
-        {isInteractivePlayer && isHost && (
-          <div
-            onClick={() => {
-              if (needUserGesture) {
-                handleMobileUnlockClick();
-              } else {
-                setShowControls((prev) => !prev);
-              }
-            }}
-            className="absolute inset-0 z-10 cursor-pointer pointer-events-auto"
           />
         )}
 
@@ -611,90 +688,88 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
       </div>
 
-      {/* Панель управления для интерактивных источников (YouTube / MP4) */}
-      {isInteractivePlayer && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/60 to-transparent flex flex-col gap-2 transition-all duration-300 ${
-            showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
-          }`}
-        >
-          <div className="flex items-center gap-2 px-1">
-            <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
-              {formatTime(currentTime)}
-            </span>
-            <Slider
-              value={[progressPercent]}
-              max={100}
-              step={0.1}
-              disabled={!isHost}
-              onValueChange={(val) => handleSeek(val[0])}
-              className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
-            />
-            <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
-              {formatTime(duration)}
-            </span>
+      {/* КАСТОМНАЯ ПАНЕЛЬ УПРАВЛЕНИЯ ПЛЕЕРОМ (ДЛЯ VK, YOUTUBE, MP4 И ВСЕХ ИСТОЧНИКОВ) */}
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ${
+          showControls ? 'opacity-100 translate-y-0 pointer-events-auto' : 'opacity-0 translate-y-4 pointer-events-none'
+        }`}
+      >
+        <div className="flex items-center gap-2 px-1">
+          <span className="text-[10px] font-mono text-purple-200 w-10 font-bold drop-shadow">
+            {formatTime(currentTime)}
+          </span>
+          <Slider
+            value={[progressPercent]}
+            max={100}
+            step={0.1}
+            disabled={!isHost}
+            onValueChange={(val) => handleSeek(val[0])}
+            className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
+          />
+          <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
+            {duration > 0 ? formatTime(duration) : '00:00'}
+          </span>
+        </div>
+
+        <div className="flex items-center justify-between pt-1">
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Button
+              onClick={handleTogglePlay}
+              size="icon"
+              title={isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только владелец комнаты может запускать видео'}
+              className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
+                isHost
+                  ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
+                  : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400'
+              }`}
+            >
+              {isPlaying ? (
+                <Pause className="h-4 w-4" />
+              ) : isHost ? (
+                <Play className="h-4 w-4 ml-0.5 fill-white" />
+              ) : (
+                <Lock className="h-3.5 w-3.5 text-amber-400" />
+              )}
+            </Button>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleToggleMute}
+                className="text-slate-200 hover:text-white transition-colors drop-shadow"
+              >
+                {isMuted || volume === 0 ? (
+                  <VolumeX className="h-4 w-4 text-red-400" />
+                ) : (
+                  <Volume2 className="h-4 w-4 text-cyan-400" />
+                )}
+              </button>
+              <Slider
+                value={[isMuted ? 0 : volume]}
+                max={100}
+                step={1}
+                onValueChange={(val) => handleVolumeChange(val[0])}
+                className="w-16 sm:w-24 cursor-pointer"
+              />
+              <span className="text-[10px] font-mono text-slate-300 w-6 hidden sm:inline font-bold drop-shadow">
+                {isMuted ? '0%' : `${volume}%`}
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center justify-between pt-1">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <Button
-                onClick={handleTogglePlay}
-                size="icon"
-                title={isHost ? (isPlaying ? 'Пауза' : 'Запустить') : 'Только владелец комнаты может запускать видео'}
-                className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${
-                  isHost
-                    ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
-                    : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400'
-                }`}
-              >
-                {isPlaying ? (
-                  <Pause className="h-4 w-4" />
-                ) : isHost ? (
-                  <Play className="h-4 w-4 ml-0.5 fill-white" />
-                ) : (
-                  <Lock className="h-3.5 w-3.5 text-amber-400" />
-                )}
-              </Button>
-
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={handleToggleMute}
-                  className="text-slate-200 hover:text-white transition-colors drop-shadow"
-                >
-                  {isMuted || volume === 0 ? (
-                    <VolumeX className="h-4 w-4 text-red-400" />
-                  ) : (
-                    <Volume2 className="h-4 w-4 text-cyan-400" />
-                  )}
-                </button>
-                <Slider
-                  value={[isMuted ? 0 : volume]}
-                  max={100}
-                  step={1}
-                  onValueChange={(val) => handleVolumeChange(val[0])}
-                  className="w-16 sm:w-24 cursor-pointer"
-                />
-                <span className="text-[10px] font-mono text-slate-300 w-6 hidden sm:inline font-bold drop-shadow">
-                  {isMuted ? '0%' : `${volume}%`}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <Button
-                onClick={toggleFullscreen}
-                size="icon"
-                variant="ghost"
-                className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
-                title={isFullscreen ? 'Свернуть' : 'На весь экран'}
-              >
-                {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
-              </Button>
-            </div>
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <Button
+              onClick={toggleFullscreen}
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
+              title={isFullscreen ? 'Свернуть' : 'На весь экран'}
+            >
+              {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4" />}
+            </Button>
           </div>
         </div>
-      )}
+      </div>
     </div>
   );
 };
