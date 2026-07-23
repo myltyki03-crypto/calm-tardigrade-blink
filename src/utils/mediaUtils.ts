@@ -13,7 +13,7 @@ export interface MediaInfo {
 export const parseMediaUrl = (url: string): MediaInfo => {
   let cleanUrl = url.trim();
 
-  // Автоматическое извлечение ссылки из скопированного HTML-кода <iframe>
+  // Автоматическое извлечение ссылки из скопированного HTML-кода iframe
   if (cleanUrl.includes('<iframe')) {
     const srcMatch = cleanUrl.match(/src=["']([^"']+)["']/i);
     if (srcMatch && srcMatch[1]) {
@@ -42,32 +42,27 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 2. VK ВИДЕО (vk.com, vkvideo.ru, vk.com/video_ext.php, клипы)
-  if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/') || cleanUrl.includes('video_ext.php')) {
-    // Если уже передана прямая ссылка на плеер video_ext.php
-    if (cleanUrl.includes('video_ext.php')) {
-      const embedUrl = cleanUrl.includes('autoplay=') ? cleanUrl : `${cleanUrl}&autoplay=1`;
-      return {
-        type: 'vk',
-        url: cleanUrl,
-        id: cleanUrl,
-        title: 'VK Видео Трансляция',
-        thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
-        embedUrl: embedUrl,
-      };
-    }
-
+  // 2. VK ВИДЕО (vk.com, vkvideo.ru, vk.ru, video_ext.php, клипы)
+  if (
+    cleanUrl.includes('vk.com') ||
+    cleanUrl.includes('vkvideo.ru') ||
+    cleanUrl.includes('vk.ru') ||
+    cleanUrl.includes('video_ext.php')
+  ) {
     let oid = '';
     let id = '';
     let hash = '';
 
-    const extMatch = cleanUrl.match(/oid=(-?\d+)&id=(\d+)/i);
-    const stdMatch = cleanUrl.match(/(?:video|clip)(-?\d+)_(\d+)/i);
-    const hashMatch = cleanUrl.match(/hash=([a-f0-9]+)/i);
-
+    // Извлечение хэша
+    const hashMatch = cleanUrl.match(/[?&]hash=([a-f0-9]+)/i);
     if (hashMatch) {
       hash = hashMatch[1];
     }
+
+    // Парсинг параметров из video_ext.php
+    const extMatch = cleanUrl.match(/[?&]oid=(-?\d+)&id=(\d+)/i);
+    // Парсинг стандартных ссылок вида video-220754053_456241280 или clip-220754053_456241280
+    const stdMatch = cleanUrl.match(/(?:video|clip)(-?\d+)_(\d+)/i);
 
     if (extMatch) {
       oid = extMatch[1];
@@ -79,12 +74,28 @@ export const parseMediaUrl = (url: string): MediaInfo => {
 
     if (oid && id) {
       const hashParam = hash ? `&hash=${hash}` : '';
-      const embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}&autoplay=1`;
+      const embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=1`;
       return {
         type: 'vk',
         url: cleanUrl,
         id: `${oid}_${id}`,
         title: `VK Видео (${oid}_${id})`,
+        thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
+        embedUrl: embedUrl,
+      };
+    }
+
+    // Если уже вставлена готовая ссылка формата video_ext.php
+    if (cleanUrl.includes('video_ext.php')) {
+      let embedUrl = cleanUrl;
+      if (!embedUrl.includes('autoplay=')) {
+        embedUrl += (embedUrl.includes('?') ? '&' : '?') + 'autoplay=1';
+      }
+      return {
+        type: 'vk',
+        url: cleanUrl,
+        id: cleanUrl,
+        title: 'VK Видео Трансляция',
         thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
         embedUrl: embedUrl,
       };

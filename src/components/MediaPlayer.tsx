@@ -481,7 +481,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               mediaInfo.twitchType === 'video' ? `video=${mediaInfo.id}` : `channel=${mediaInfo.id}`
             }&parent=${currentHostname}&autoplay=${room.is_playing ? 'true' : 'false'}&muted=false`}
             className="absolute inset-0 w-full h-full border-0"
-            allow="autoplay; fullscreen"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
+            referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
           />
         )}
@@ -495,7 +496,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           <iframe
             src={mediaInfo.embedUrl || mediaInfo.url}
             className="absolute inset-0 w-full h-full border-0 bg-black"
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
+            referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
           />
         )}
@@ -530,16 +532,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             <div>
               <h3 className="text-sm sm:text-base font-bold text-white">Автор ограничил встраивание видео</h3>
               <p className="text-xs text-slate-400 mt-1 max-w-xs mx-auto">
-                Это видео защищено авторскими правами и не разрешает воспроизведение на сторонних сайтах.
+                Это видео ограничено автором. Откройте его на источнике.
               </p>
             </div>
             <a
               href={mediaInfo.url}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg hover:opacity-90 transition-opacity"
+              className="inline-flex items-center gap-1.5 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg hover:opacity-90 transition-opacity"
             >
-              <ExternalLink className="h-4 w-4" /> Открыть в новом окне
+              <ExternalLink className="h-4 w-4" /> Открыть видео
             </a>
           </div>
         )}
@@ -566,7 +568,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* Бейдж платформы и кнопка открытия оригинала для не-YouTube сервисов */}
+        {/* Бейдж платформы и кнопка открытия оригинала для VK / Rutube / Twitch */}
         {mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
           <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
             <a
