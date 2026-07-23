@@ -40,7 +40,7 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
   onVolumeChange,
   onToggleFullscreen,
 }) => {
-  const containerStyle = showControls
+  const containerVisibilityClass = showControls
     ? 'opacity-100 translate-y-0 pointer-events-auto'
     : 'opacity-0 translate-y-4 pointer-events-none';
 
@@ -48,19 +48,18 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
     ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
     : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400';
 
-  let playTitle = 'Только ведущий может запускать видео';
-  if (isHost) {
-    playTitle = isPlaying ? 'Пауза' : 'Запустить';
-  }
+  const playButtonTitle = isHost
+    ? (isPlaying ? 'Пауза' : 'Запустить')
+    : 'Только ведущий может запускать видео';
 
-  const fullscreenTitle = isFullscreen ? 'Свернуть' : 'На весь экран';
-  const formattedDuration = duration > 0 ? formatTime(duration) : '00:00';
-  const formattedVolume = isMuted ? '0%' : `${volume}%`;
+  const fullscreenButtonTitle = isFullscreen ? 'Свернуть' : 'На весь экран';
+  const displayDuration = duration > 0 ? formatTime(duration) : '00:00';
+  const displayVolume = isMuted ? '0%' : `${volume}%`;
 
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ${containerStyle}`}
+      className={`absolute bottom-0 inset-x-0 z-30 p-3 bg-gradient-to-t from-slate-950/95 via-slate-950/80 to-transparent flex flex-col gap-2 transition-all duration-300 ${containerVisibilityClass}`}
     >
       {!isScreenSharingActive && (
         <div className="flex items-center gap-2 px-1">
@@ -76,7 +75,7 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
             className={`flex-1 ${isHost ? 'cursor-pointer' : 'cursor-not-allowed opacity-75'}`}
           />
           <span className="text-[10px] font-mono text-slate-300 w-10 text-right font-bold drop-shadow">
-            {formattedDuration}
+            {displayDuration}
           </span>
         </div>
       )}
@@ -87,7 +86,7 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
             <Button
               onClick={onTogglePlay}
               size="icon"
-              title={playTitle}
+              title={playButtonTitle}
               className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${hostPlayClass}`}
             >
               {isPlaying ? (
@@ -104,6 +103,7 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
             <button
               onClick={onToggleMute}
               className="text-slate-200 hover:text-white transition-colors drop-shadow"
+              type="button"
             >
               {isMuted || volume === 0 ? (
                 <VolumeX className="h-4 w-4 text-red-400" />
@@ -119,7 +119,7 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
               className="w-16 sm:w-24 cursor-pointer"
             />
             <span className="text-[10px] font-mono text-slate-300 w-6 hidden sm:inline font-bold drop-shadow">
-              {formattedVolume}
+              {displayVolume}
             </span>
           </div>
         </div>
@@ -130,9 +130,13 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
             size="icon"
             variant="ghost"
             className="h-8 w-8 rounded-lg text-slate-200 hover:text-white hover:bg-slate-900/60"
-            title={fullscreenTitle}
+            title={fullscreenButtonTitle}
           >
-            {isFullscreen ? <Minimize className="h-4 w-4" /> : <Maximize className="h-4 w-4 />}
+            {isFullscreen ? (
+              <Minimize className="h-4 w-4" />
+            ) : (
+              <Maximize className="h-4 w-4" />
+            )}
           </Button>
         </div>
       </div>
