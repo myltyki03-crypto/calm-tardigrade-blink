@@ -7,6 +7,7 @@ import {
   Square,
   Radio,
   Loader2,
+  Volume2,
   RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -36,6 +37,7 @@ const ICE_SERVERS = [
   { urls: 'stun:stun1.l.google.com:19302' },
   { urls: 'stun:stun2.l.google.com:19302' },
   { urls: 'stun:stun3.l.google.com:19302' },
+  { urls: 'stun:global.stun.twilio.com:3478' },
 ];
 
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
@@ -48,6 +50,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const playerContainerRef = useRef<HTMLDivElement>(null);
   const videoElementRef = useRef<HTMLVideoElement>(null);
   const screenShareVideoRef = useRef<HTMLVideoElement>(null);
+  const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -55,10 +58,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   // WebRTC и Демонстрация экрана
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  const [fallbackFrame, setFallbackFrame] = useState<string | null>(null);
+  const [needAudioClick, setNeedAudioClick] = useState<boolean>(false);
+
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const viewerPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
   const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const webrtcChannelRef = useRef<any>(null);
+  const canvasIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastHostSyncSaveRef = useRef<number>(0);
   const prevLastUpdatedRef = useRef<string | undefined>(room.last_updated_at);
@@ -82,7 +89,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   // Мгновенный статус трансляции экрана
   const isScreenSharingActive =
-    Boolean(room.is_screen_sharing) || Boolean(screenStream) || Boolean(remoteStream);
+    Boolean(room.is_screen_sharing) || Boolean(screenStream) || Boolean(remoteStream) || Boolean(fallbackFrame);
 
   const isIframePlayer =
     !isScreenSharingActive &&
@@ -92,7 +99,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // Закрепление видеопотока трансляции на HTML-теге
+  // Закрепление видеопотока трансляции на HTML-теге с поддержкой принудительного воспроизведения
   useEffect(() => {
     const video = screenShareVideoRef.current;
     if (!video) return;
@@ -103,21 +110,33 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       if (video.srcObject !== activeStream) {
         video.srcObject = activeStream;
       }
+
+      // Настройка звука и подстраховка для обхода автозапуска браузера
+      video.muted = isHost || isMuted;
+
       video
         .play()
         .then(() => {
           setIsEmbedBlocked(false);
           setNeedUserGesture(false);
         })
-        .catch((err) => {
-          console.log('Screen share autoplay catch:', err);
+        .catch(() => {
+          // Если браузер заблокировал со звуком, запускаем без звука для мгновенной картинки
+          video.muted = true;
+          video
+            .play()
+            .then(() => {
+              if (!isHost) setNeedAudioClick(true);
+              setIsEmbedBlocked(false);
+            })
+            .catch((e) => console.error('Even muted screen play failed:', e));
         });
     } else {
       if (!isScreenSharingActive && video.srcObject) {
         video.srcObject = null;
       }
     }
-  }, [isScreenSharingActive, screenStream, remoteStream, isHost]);
+  }, [isScreenSharingActive, screenStream, remoteStream, isHost, isMuted]);
 
   // Демонстрация экрана ведущего
   const handleToggleScreenShare = async () => {
@@ -139,7 +158,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }
 
       const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { cursor: 'always' } as any,
+        video: { cursor: 'always', frameRate: { ideal: 30 } } as any,
         audio: true,
       });
 
@@ -153,6 +172,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       // Привязываем локальный поток напрямую
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
+        screenShareVideoRef.current.muted = true;
         screenShareVideoRef.current
           .play()
           .then(() => {
@@ -170,6 +190,29 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         });
       }
 
+      // Фоллбек кадров (Canvas Snapshot Broadcast) для обхода любых блокировок P2P
+      if (canvasIntervalRef.current) clearInterval(canvasIntervalRef.current);
+      canvasIntervalRef.current = setInterval(() => {
+        const video = screenShareVideoRef.current;
+        const canvas = hiddenCanvasRef.current;
+        if (video && canvas && video.videoWidth > 0 && video.videoHeight > 0) {
+          canvas.width = Math.min(video.videoWidth, 854);
+          canvas.height = Math.min(video.videoHeight, 480);
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.5);
+            if (webrtcChannelRef.current) {
+              webrtcChannelRef.current.send({
+                type: 'broadcast',
+                event: 'screenshare-frame',
+                payload: { frame: dataUrl },
+              });
+            }
+          }
+        }
+      }, 350);
+
       stream.getVideoTracks()[0].onended = () => {
         stopLocalScreenShare();
       };
@@ -181,6 +224,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   };
 
   const stopLocalScreenShare = () => {
+    if (canvasIntervalRef.current) {
+      clearInterval(canvasIntervalRef.current);
+      canvasIntervalRef.current = null;
+    }
+
     if (screenStream) {
       screenStream.getTracks().forEach((track) => track.stop());
       setScreenStream(null);
@@ -210,10 +258,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       event: 'webrtc-request-offer',
       payload: { viewerId: myUserId },
     });
-    showSuccess('Отправлен запрос на прямое подключение...');
+    showSuccess('Перезапрос видеопотока...');
   };
 
-  // WebRTC Сигналинг (Запрос и передача видеопотока между владельцем и зрителями)
+  // WebRTC Сигналинг + Canvas snapshot fallback
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
 
@@ -241,7 +289,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             viewerPeerConnectionRef.current = null;
           }
           setRemoteStream(null);
+          setFallbackFrame(null);
           pendingIceCandidatesRef.current = [];
+        }
+      })
+      .on('broadcast', { event: 'screenshare-frame' }, ({ payload }) => {
+        if (!isHost && payload?.frame) {
+          setFallbackFrame(payload.frame);
+          setIsEmbedBlocked(false);
         }
       })
       .on('broadcast', { event: 'webrtc-request-offer' }, async ({ payload }) => {
@@ -288,8 +343,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           pc.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
               setRemoteStream(event.streams[0]);
-              setIsEmbedBlocked(false);
+            } else if (event.track) {
+              setRemoteStream(new MediaStream([event.track]));
             }
+            setIsEmbedBlocked(false);
           };
 
           pc.onicecandidate = (event) => {
@@ -304,7 +361,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
           await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
 
-          // Применяем накопленные ICE кандидаты после установки RemoteDescription
+          // Очередь кандидатов для гарантированного обхода фаерволов
           while (pendingIceCandidatesRef.current.length > 0) {
             const candidate = pendingIceCandidatesRef.current.shift();
             if (candidate) {
@@ -370,7 +427,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [room.id, isHost, isScreenSharingActive, screenStream, currentUser.id]);
 
-  // Периодический запрос трансляции для новых зрителей, пока нет видео
+  // Запрос трансляции при входе зрителя
   useEffect(() => {
     if (!isHost && isScreenSharingActive && !remoteStream && webrtcChannelRef.current) {
       const myUserId = currentUser.id || 'guest';
@@ -683,6 +740,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     forceDisableCaptions();
   };
 
+  const handleEnableAudioClick = () => {
+    if (screenShareVideoRef.current) {
+      screenShareVideoRef.current.muted = false;
+      screenShareVideoRef.current.volume = (volume || 80) / 100;
+    }
+    setIsMuted(false);
+    setNeedAudioClick(false);
+    showSuccess('Звук трансляции включен');
+  };
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -866,6 +933,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       onClick={handleUserActivity}
       className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${fullscreenClass}`}
     >
+      {/* Скрытый холст для захвата дублирующих кадров трансляции */}
+      <canvas ref={hiddenCanvasRef} className="hidden" />
+
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
         {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
         {(!needUserGesture || isScreenSharingActive) && !isEmbedBlocked && (
@@ -880,7 +950,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <span>Синхронизировать</span>
             </Button>
 
-            {/* Только создатель комнаты может запускать демонстрацию своего экрана */}
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
@@ -925,6 +994,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             isScreenSharingActive ? 'z-30 opacity-100 pointer-events-auto' : 'z-0 opacity-0 pointer-events-none'
           }`}
         >
+          {/* 0.1 Обычный видеопоток WebRTC */}
           <video
             ref={screenShareVideoRef}
             className="w-full h-full object-contain bg-black"
@@ -933,18 +1003,41 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             muted={isHost}
           />
 
-          {!isHost && !remoteStream && (
+          {/* 0.2 Отрисовка фоллбек кадров (Snapshots) при блокировке WebRTC фаерволами */}
+          {!isHost && !remoteStream && fallbackFrame && (
+            <img
+              src={fallbackFrame}
+              alt="Трансляция экрана"
+              className="absolute inset-0 w-full h-full object-contain bg-black"
+            />
+          )}
+
+          {/* Индикатор загрузки подключения */}
+          {!isHost && !remoteStream && !fallbackFrame && (
             <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-40 space-y-2">
               <Loader2 className="h-8 w-8 text-pink-500 animate-spin mb-1" />
               <p className="text-xs font-bold text-white">Подключение к прямому эфиру ведущего ({room.host_name})...</p>
-              <p className="text-[10px] text-slate-400">Устанавливается прямое WebRTC соединение</p>
+              <p className="text-[10px] text-slate-400">Устанавливается соединение трансляции</p>
               <Button
                 onClick={handleRequestStreamAgain}
                 size="sm"
                 variant="outline"
                 className="mt-2 text-[10px] h-7 border-purple-700 text-purple-300 hover:bg-purple-900/60 rounded-xl gap-1"
               >
-                <RefreshCw className="h-3 w-3" /> Переподключить эфир
+                <RefreshCw className="h-3 w-3" /> Переподключить
+              </Button>
+            </div>
+          )}
+
+          {/* Подсказка для включения звука трансляции */}
+          {!isHost && needAudioClick && (
+            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto">
+              <Button
+                onClick={handleEnableAudioClick}
+                size="sm"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs h-9 px-4 rounded-full shadow-2xl animate-pulse gap-1.5 border border-white/20"
+              >
+                <Volume2 className="h-4 w-4 text-cyan-300" /> Включить звук трансляции
               </Button>
             </div>
           )}
@@ -1013,7 +1106,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>
