@@ -16,8 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import { Room } from '@/types/rave';
 import { useRooms } from '@/context/RoomContext';
-import { parseMediaUrl, MediaInfo } from '@/utils/mediaUtils';
-import { showSuccess, showError } from '@/utils/toast';
+import { parseMediaUrl, getEmbedUrlWithTime, MediaInfo } from '@/utils/mediaUtils';
+import { showSuccess } from '@/utils/toast';
 
 declare global {
   interface Window {
@@ -61,6 +61,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
+  // Динамический URL для VK и внешних iframe с поддержкой точной секунды
+  const [iframeSrc, setIframeSrc] = useState<string>(() => {
+    return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0);
+  });
+
   const isInteractivePlayer = mediaInfo.type === 'youtube' || mediaInfo.type === 'direct';
 
   const forceDisableCaptions = () => {
@@ -93,6 +98,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   useEffect(() => {
     setIsEmbedBlocked(false);
+    const initialSec = getCalculatedHostTime();
+    setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec));
   }, [mediaInfo.id, mediaInfo.url]);
 
   useEffect(() => {
@@ -268,6 +275,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           v.pause();
           setIsPlaying(false);
         }
+      } else if (mediaInfo.type === 'vk') {
+        // Для VK Видео обновляем iframe URL с новым параметром t=...s
+        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime);
+        setIframeSrc(newVkUrl);
       }
     }
   }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
@@ -400,12 +411,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // ФУНКЦИЯ МГНОВЕННОЙ СИНХРОНИЗАЦИИ ДЛЯ ЗРИТЕЛЯ И СОЗДАТЕЛЯ
+  // ФУНКЦИЯ МГНОВЕННОЙ СИНХРОНИЗАЦИИ ДЛЯ VK ВИДЕО И ДРУГИХ ИСТОЧНИКОВ
   const handleSyncClick = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
 
+    const syncTime = getCalculatedHostTime();
+
     if (isHost) {
-      // Ведущий обновляет свою позицию на сервере для всех
       let curSec = currentTime;
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.getCurrentTime) {
         curSec = ytPlayerRef.current.getCurrentTime() || currentTime;
@@ -413,11 +425,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         curSec = videoElementRef.current.currentTime || currentTime;
       }
       updateRoomProgress(room.id, curSec, isPlaying);
-      showSuccess(`⚡ Время ведущего (${formatTime(curSec)}) обновлено для всех зрителей!`);
+      showSuccess(`⚡ Время VK / эфира (${formatTime(curSec)}) отправлено зрителям!`);
     } else {
-      // Зритель подтягивает точное время ведущего
-      const syncTime = getCalculatedHostTime();
-
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
         ytPlayerRef.current.seekTo(syncTime, true);
         if (room.is_playing) {
@@ -437,16 +446,21 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           videoElementRef.current.pause();
           setIsPlaying(false);
         }
-      } else if (iframeRef.current) {
-        // Для iframe (VK / Rutube / Twitch) перезагружаем плеер для выравнивания живого эфира
-        const currentSrc = iframeRef.current.src;
-        iframeRef.current.src = '';
-        setTimeout(() => {
-          if (iframeRef.current) iframeRef.current.src = currentSrc;
-        }, 50);
+      } else if (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe') {
+        // Вычисляем новый URL с точным таймкодом t=...s
+        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime);
+        setIframeSrc(newEmbedUrl);
+
+        // Отправка команд VK API через postMessage
+        if (iframeRef.current?.contentWindow) {
+          try {
+            iframeRef.current.contentWindow.postMessage(JSON.stringify({ box_msg: 'seek', value: syncTime }), '*');
+            iframeRef.current.contentWindow.postMessage(JSON.stringify({ type: 'seek', time: syncTime }), '*');
+          } catch (err) {}
+        }
       }
 
-      showSuccess(`⚡ Синхронизировано с ведущим (${formatTime(syncTime)})`);
+      showSuccess(`⚡ Синхронизировано с VK / ведущим (${formatTime(syncTime)})`);
     }
   };
 
@@ -463,14 +477,14 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКА СИНХРОНИЗАЦИИ ВСЕГДА ВЕРХУ ДЛЯ ВСЕХ УЧАСТНИКОВ */}
+        {/* КНОПКА СИНХРОНИЗАЦИИ ВСЕГДА ВЕРХУ ДЛЯ ВСЕХ УЧАСТНИКОВ (В ВК ВИДЕО И ДРУГИХ) */}
         {!needUserGesture && !isEmbedBlocked && (
           <div className="absolute top-3 left-3 z-40 pointer-events-auto">
             <Button
               onClick={handleSyncClick}
               size="sm"
               className="h-8 px-3 bg-gradient-to-r from-purple-600 via-pink-600 to-pink-500 hover:opacity-90 text-white font-black text-xs rounded-full shadow-xl shadow-pink-500/30 backdrop-blur-md flex items-center gap-1.5 border border-white/20 animate-pulse hover:animate-none"
-              title="Синхронизировать видео и таймкод с создателем комнаты"
+              title="Синхронизировать VK Видео или эфир с создателем комнаты"
             >
               <Zap className="h-3.5 w-3.5 fill-amber-300 text-amber-300" />
               <span>Синхронизировать</span>
@@ -521,7 +535,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           mediaInfo.type === 'iframe') && (
           <iframe
             ref={iframeRef}
-            src={mediaInfo.embedUrl || mediaInfo.url}
+            src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
             className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write"
             referrerPolicy="no-referrer-when-downgrade"

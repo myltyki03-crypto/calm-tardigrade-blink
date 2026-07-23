@@ -10,6 +10,50 @@ export interface MediaInfo {
   twitchType?: 'channel' | 'video';
 }
 
+export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number): string => {
+  let baseUrl = mediaInfo.embedUrl || mediaInfo.url;
+  if (!baseUrl) return '';
+
+  const cleanSec = Math.max(0, Math.floor(startSec));
+
+  if (mediaInfo.type === 'vk') {
+    // Удаляем старые параметры времени
+    let urlWithoutTime = baseUrl
+      .replace(/([?&])t=[^&]*/gi, '')
+      .replace(/([?&])start=[^&]*/gi, '')
+      .replace(/([?&])time=[^&]*/gi, '')
+      .replace(/&+/g, '&')
+      .replace(/\?&/g, '?');
+
+    const separator = urlWithoutTime.includes('?') ? '&' : '?';
+    return `${urlWithoutTime}${separator}t=${cleanSec}s&autoplay=1&js_api=1`;
+  }
+
+  if (mediaInfo.type === 'rutube') {
+    let urlWithoutTime = baseUrl
+      .replace(/([?&])t=[^&]*/gi, '')
+      .replace(/([?&])start=[^&]*/gi, '')
+      .replace(/&+/g, '&')
+      .replace(/\?&/g, '?');
+
+    const separator = urlWithoutTime.includes('?') ? '&' : '?';
+    return `${urlWithoutTime}${separator}start=${cleanSec}&autoplay=1`;
+  }
+
+  if (mediaInfo.type === 'vimeo') {
+    const urlWithoutHash = baseUrl.split('#')[0];
+    return `${urlWithoutHash}#t=${cleanSec}s`;
+  }
+
+  if (mediaInfo.type === 'ok') {
+    let urlWithoutTime = baseUrl.replace(/([?&])from=[^&]*/gi, '').replace(/&+/g, '&');
+    const separator = urlWithoutTime.includes('?') ? '&' : '?';
+    return `${urlWithoutTime}${separator}from=${cleanSec}&autoplay=1`;
+  }
+
+  return baseUrl;
+};
+
 export const parseMediaUrl = (url: string): MediaInfo => {
   let cleanUrl = url.trim();
 
@@ -28,7 +72,6 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     cleanUrl.includes('vk.ru') ||
     cleanUrl.includes('video_ext.php')
   ) {
-    // Определяем используемый домен (vkvideo.ru или vk.com)
     const domain = cleanUrl.includes('vkvideo.ru') ? 'vkvideo.ru' : 'vk.com';
 
     let embedUrl = cleanUrl;
@@ -57,7 +100,6 @@ export const parseMediaUrl = (url: string): MediaInfo => {
         embedUrl = `https://${domain}/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=1&js_api=1`;
       }
     } else {
-      // Если это уже video_ext.php, добавляем автозапуск и js_api если их нет
       if (!embedUrl.includes('autoplay=')) {
         embedUrl += (embedUrl.includes('?') ? '&' : '?') + 'autoplay=1';
       }
