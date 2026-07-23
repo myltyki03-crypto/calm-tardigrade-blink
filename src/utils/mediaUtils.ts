@@ -11,7 +11,15 @@ export interface MediaInfo {
 }
 
 export const parseMediaUrl = (url: string): MediaInfo => {
-  const cleanUrl = url.trim();
+  let cleanUrl = url.trim();
+
+  // Автоматическое извлечение ссылки из скопированного HTML-кода <iframe>
+  if (cleanUrl.includes('<iframe')) {
+    const srcMatch = cleanUrl.match(/src=["']([^"']+)["']/i);
+    if (srcMatch && srcMatch[1]) {
+      cleanUrl = srcMatch[1].replace(/&/g, '&');
+    }
+  }
 
   // 1. RUTUBE (rutube.ru/video/id/ или rutube.ru/play/embed/id/)
   if (cleanUrl.includes('rutube.ru/')) {
@@ -34,14 +42,27 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 2. VK ВИДЕО (vk.com/video-123_456, vkvideo.ru/video-123_456, vk.com/video_ext.php...)
-  if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/')) {
+  // 2. VK ВИДЕО (vk.com, vkvideo.ru, vk.com/video_ext.php, клипы)
+  if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/') || cleanUrl.includes('video_ext.php')) {
+    // Если уже передана прямая ссылка на плеер video_ext.php
+    if (cleanUrl.includes('video_ext.php')) {
+      const embedUrl = cleanUrl.includes('autoplay=') ? cleanUrl : `${cleanUrl}&autoplay=1`;
+      return {
+        type: 'vk',
+        url: cleanUrl,
+        id: cleanUrl,
+        title: 'VK Видео Трансляция',
+        thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
+        embedUrl: embedUrl,
+      };
+    }
+
     let oid = '';
     let id = '';
     let hash = '';
 
     const extMatch = cleanUrl.match(/oid=(-?\d+)&id=(\d+)/i);
-    const stdMatch = cleanUrl.match(/video(-?\d+)_(\d+)/i);
+    const stdMatch = cleanUrl.match(/(?:video|clip)(-?\d+)_(\d+)/i);
     const hashMatch = cleanUrl.match(/hash=([a-f0-9]+)/i);
 
     if (hashMatch) {
@@ -58,13 +79,14 @@ export const parseMediaUrl = (url: string): MediaInfo => {
 
     if (oid && id) {
       const hashParam = hash ? `&hash=${hash}` : '';
+      const embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}&autoplay=1`;
       return {
         type: 'vk',
         url: cleanUrl,
         id: `${oid}_${id}`,
         title: `VK Видео (${oid}_${id})`,
         thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
-        embedUrl: `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&autoplay=1`,
+        embedUrl: embedUrl,
       };
     }
   }
