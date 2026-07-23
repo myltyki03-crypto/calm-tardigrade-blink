@@ -95,25 +95,58 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, startSec);
   };
 
-  // Функция отправки postMessage команд в iframe (VK, Rutube и т.д.)
-  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume', value?: number) => {
+  // Расширенная функция отправки postMessage команд в iframe (VK, Rutube и т.д.)
+  const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume' | 'mute' | 'unmute', value?: number) => {
     if (!iframeRef.current?.contentWindow) return;
     const win = iframeRef.current.contentWindow;
 
     try {
       if (command === 'play') {
+        win.postMessage({ box_msg: 'play' }, '*');
+        win.postMessage({ type: 'play' }, '*');
         win.postMessage(JSON.stringify({ box_msg: 'play' }), '*');
         win.postMessage(JSON.stringify({ type: 'play' }), '*');
         win.postMessage('{"event":"command","func":"playVideo"}', '*');
       } else if (command === 'pause') {
+        win.postMessage({ box_msg: 'pause' }, '*');
+        win.postMessage({ type: 'pause' }, '*');
         win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
         win.postMessage(JSON.stringify({ type: 'pause' }), '*');
         win.postMessage('{"event":"command","func":"pauseVideo"}', '*');
       } else if (command === 'seek' && typeof value === 'number') {
+        win.postMessage({ box_msg: 'seek', value: value }, '*');
+        win.postMessage({ type: 'seek', time: value }, '*');
         win.postMessage(JSON.stringify({ box_msg: 'seek', value: value }), '*');
         win.postMessage(JSON.stringify({ type: 'seek', time: value }), '*');
+        win.postMessage(JSON.stringify({ event: 'command', func: 'seekTo', args: [value, true] }), '*');
       } else if (command === 'volume' && typeof value === 'number') {
-        win.postMessage(JSON.stringify({ box_msg: 'set_volume', value: value / 100 }), '*');
+        const normValue = Math.max(0, Math.min(1, value / 100));
+        win.postMessage({ box_msg: 'set_volume', value: normValue }, '*');
+        win.postMessage({ box_msg: 'set_volume', value: value }, '*');
+        win.postMessage({ type: 'set_volume', value: normValue }, '*');
+        win.postMessage({ type: 'volume', value: normValue }, '*');
+        win.postMessage(JSON.stringify({ box_msg: 'set_volume', value: normValue }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'set_volume', value: value }), '*');
+        win.postMessage(JSON.stringify({ type: 'set_volume', value: normValue }), '*');
+        win.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [value] }), '*');
+        win.postMessage(JSON.stringify({ event: 'command', func: 'setVolume', args: [normValue] }), '*');
+      } else if (command === 'mute') {
+        win.postMessage({ box_msg: 'mute' }, '*');
+        win.postMessage({ type: 'mute' }, '*');
+        win.postMessage({ box_msg: 'set_volume', value: 0 }, '*');
+        win.postMessage(JSON.stringify({ box_msg: 'mute' }), '*');
+        win.postMessage(JSON.stringify({ type: 'mute' }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'set_volume', value: 0 }), '*');
+        win.postMessage(JSON.stringify({ event: 'command', func: 'mute' }), '*');
+      } else if (command === 'unmute') {
+        win.postMessage({ box_msg: 'unmute' }, '*');
+        win.postMessage({ type: 'unmute' }, '*');
+        win.postMessage(JSON.stringify({ box_msg: 'unmute' }), '*');
+        win.postMessage(JSON.stringify({ type: 'unmute' }), '*');
+        win.postMessage(JSON.stringify({ event: 'command', func: 'unMute' }), '*');
+        const normValue = Math.max(0, Math.min(1, (value || 80) / 100));
+        win.postMessage({ box_msg: 'set_volume', value: normValue }, '*');
+        win.postMessage(JSON.stringify({ box_msg: 'set_volume', value: normValue }), '*');
       }
     } catch (e) {
       console.error('Failed to send iframe command:', e);
@@ -382,6 +415,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       const syncTime = getCalculatedHostTime();
       setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
       sendIframeCommand('play');
+      sendIframeCommand('volume', volume || 80);
     }
 
     setIsMuted(false);
@@ -450,28 +484,33 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const handleVolumeChange = (newVolume: number) => {
     setVolume(newVolume);
+    setIsMuted(newVolume === 0);
+
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       if (newVolume === 0) {
-        setIsMuted(true);
         ytPlayerRef.current.mute();
       } else {
         if (isMuted) {
-          setIsMuted(false);
           ytPlayerRef.current.unMute();
         }
         ytPlayerRef.current.setVolume(newVolume);
       }
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.volume = newVolume / 100;
-      setIsMuted(newVolume === 0);
     } else {
-      sendIframeCommand('volume', newVolume);
+      if (newVolume === 0) {
+        sendIframeCommand('mute');
+      } else {
+        sendIframeCommand('unmute', newVolume);
+        sendIframeCommand('volume', newVolume);
+      }
     }
   };
 
   const handleToggleMute = () => {
     const nextMute = !isMuted;
     setIsMuted(nextMute);
+
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       if (nextMute) ytPlayerRef.current.mute();
       else {
@@ -481,7 +520,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
       videoElementRef.current.muted = nextMute;
     } else {
-      sendIframeCommand('volume', nextMute ? 0 : volume);
+      if (nextMute) {
+        sendIframeCommand('mute');
+      } else {
+        sendIframeCommand('unmute', volume);
+        sendIframeCommand('volume', volume);
+      }
     }
   };
 
@@ -625,7 +669,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             ref={iframeRef}
             src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
             className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto scale-[1.01]"
-            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write"
+            allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write; microphone; camera"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
           />
