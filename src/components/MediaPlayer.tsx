@@ -165,7 +165,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Перехват PostMessage сообщений от VK Видео и обработка времени с защитой от сброса на 0
+  // Перехват PostMessage сообщений от VK Видео и обработка времени с защитой от ложных статусов
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       try {
@@ -176,26 +176,58 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           } catch {}
         }
 
-        if (!data) return;
+        if (!data || typeof data !== 'object') return;
 
-        const eventType = data.event || data.type || data.box_msg || (Array.isArray(data) ? data[0] : null);
+        const eventType = String(
+          data.event || data.type || data.box_msg || data.action || (Array.isArray(data) ? data[0] : '')
+        ).toLowerCase();
+
+        // 1. Фильтрация и обработка сообщений состояния (play/pause/volume/status/quality)
+        if (
+          eventType.includes('state') ||
+          eventType.includes('status') ||
+          eventType.includes('volume') ||
+          eventType.includes('quality') ||
+          eventType.includes('resize') ||
+          eventType.includes('init')
+        ) {
+          if (eventType.includes('pause')) setIsPlaying(false);
+          if (eventType.includes('play')) setIsPlaying(true);
+          return; // Не извлекаем timeVal из сообщений состояния!
+        }
 
         let timeVal: number | undefined = undefined;
-        if (typeof data.time === 'number') timeVal = data.time;
-        else if (typeof data.param === 'number') timeVal = data.param;
-        else if (typeof data.value === 'number') timeVal = data.value;
-        else if (typeof data.currentTime === 'number') timeVal = data.currentTime;
-        else if (Array.isArray(data) && typeof data[1] === 'number') timeVal = data[1];
 
-        if (typeof timeVal === 'number' && timeVal >= 0 && !isNaN(timeVal)) {
+        // 2. Извлечение времени только из явных полей времени или при специфических событиях timeupdate/progress/seek
+        if (typeof data.currentTime === 'number') {
+          timeVal = data.currentTime;
+        } else if (typeof data.time === 'number') {
+          timeVal = data.time;
+        } else if (data.param && typeof data.param === 'object' && typeof data.param.time === 'number') {
+          timeVal = data.param.time;
+        } else if (data.param && typeof data.param === 'object' && typeof data.param.currentTime === 'number') {
+          timeVal = data.param.currentTime;
+        } else if (
+          eventType.includes('time') ||
+          eventType.includes('progress') ||
+          eventType.includes('seek') ||
+          eventType.includes('position')
+        ) {
+          if (typeof data.param === 'number') timeVal = data.param;
+          else if (typeof data.value === 'number') timeVal = data.value;
+          else if (Array.isArray(data) && typeof data[1] === 'number') timeVal = data[1];
+        }
+
+        // 3. Валидация времени и защита от внезапного отматывания назад
+        if (typeof timeVal === 'number' && !isNaN(timeVal) && timeVal >= 0) {
           const now = Date.now();
           const isInitialBufferingPeriod = now - iframeLoadedTimeRef.current < 2500;
 
-          // ЗАЩИТА: Если идет период загрузки плеера ИЛИ время внезапно сбросилось в 0 когда видео уже шло,
-          // НЕ перезаписываем время ведущего на 0
-          const isSpuriousZero = timeVal < 1 && currentTime > 3 && !isUserSeekingRef.current;
+          // Если видео уже шло (>2 сек), а пришло значение <2 сек и пользователь сам не перематывал,
+          // это аномальное сообщение сброса от iframe — отбрасываем!
+          const isSpuriousRewind = timeVal < 2 && currentTime > 2 && !isUserSeekingRef.current;
 
-          if (!isInitialBufferingPeriod && !isSpuriousZero) {
+          if (!isInitialBufferingPeriod && !isSpuriousRewind) {
             setCurrentTime(timeVal);
 
             if (isHost && isPlaying) {
@@ -207,16 +239,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           }
         }
 
-        if (eventType === 'play' || eventType === 'video_play' || eventType === 'started' || eventType === 'playing') {
+        // 4. Детекция начала / паузы воспроизведения
+        if (
+          eventType === 'play' ||
+          eventType === 'video_play' ||
+          eventType === 'started' ||
+          eventType === 'playing'
+        ) {
           setIsPlaying(true);
-          if (isHost && Date.now() - iframeLoadedTimeRef.current > 2000) {
-            updateRoomProgress(room.id, currentTime, true);
-          }
-        } else if (eventType === 'pause' || eventType === 'video_pause' || eventType === 'paused') {
+        } else if (
+          eventType === 'pause' ||
+          eventType === 'video_pause' ||
+          eventType === 'paused'
+        ) {
           setIsPlaying(false);
-          if (isHost && Date.now() - iframeLoadedTimeRef.current > 2000) {
-            updateRoomProgress(room.id, currentTime, false);
-          }
         }
       } catch (e) {}
     };
