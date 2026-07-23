@@ -7,6 +7,7 @@ import {
   Square,
   Radio,
   Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Room } from '@/types/rave';
@@ -30,6 +31,13 @@ interface MediaPlayerProps {
   floatingReactions?: { id: string; emoji: string; x: number }[];
 }
 
+const ICE_SERVERS = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun1.l.google.com:19302' },
+  { urls: 'stun:stun2.l.google.com:19302' },
+  { urls: 'stun:stun3.l.google.com:19302' },
+];
+
 export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   room,
   isHost,
@@ -49,6 +57,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const viewerPeerConnectionRef = useRef<RTCPeerConnection | null>(null);
+  const pendingIceCandidatesRef = useRef<RTCIceCandidateInit[]>([]);
   const webrtcChannelRef = useRef<any>(null);
 
   const lastHostSyncSaveRef = useRef<number>(0);
@@ -192,6 +201,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
+  // Ручной перезапрос видеопотока зрителям
+  const handleRequestStreamAgain = () => {
+    if (!webrtcChannelRef.current) return;
+    const myUserId = currentUser.id || 'guest';
+    webrtcChannelRef.current.send({
+      type: 'broadcast',
+      event: 'webrtc-request-offer',
+      payload: { viewerId: myUserId },
+    });
+    showSuccess('Отправлен запрос на прямое подключение...');
+  };
+
   // WebRTC Сигналинг (Запрос и передача видеопотока между владельцем и зрителями)
   useEffect(() => {
     if (!isSupabaseConfigured || !supabase) return;
@@ -220,14 +241,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             viewerPeerConnectionRef.current = null;
           }
           setRemoteStream(null);
+          pendingIceCandidatesRef.current = [];
         }
       })
       .on('broadcast', { event: 'webrtc-request-offer' }, async ({ payload }) => {
         if (isHost && screenStream) {
           const viewerId = payload.viewerId;
-          const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-          });
+          const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
 
           peerConnectionsRef.current.set(viewerId, pc);
 
@@ -261,10 +281,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             viewerPeerConnectionRef.current.close();
           }
 
-          const pc = new RTCPeerConnection({
-            iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-          });
+          const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
           viewerPeerConnectionRef.current = pc;
+          pendingIceCandidatesRef.current = [];
 
           pc.ontrack = (event) => {
             if (event.streams && event.streams[0]) {
@@ -284,6 +303,17 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           };
 
           await pc.setRemoteDescription(new RTCSessionDescription(payload.offer));
+
+          // Применяем накопленные ICE кандидаты после установки RemoteDescription
+          while (pendingIceCandidatesRef.current.length > 0) {
+            const candidate = pendingIceCandidatesRef.current.shift();
+            if (candidate) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(candidate));
+              } catch (e) {}
+            }
+          }
+
           const answer = await pc.createAnswer();
           await pc.setLocalDescription(answer);
 
@@ -311,10 +341,15 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                 await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
               } catch (e) {}
             }
-          } else if (viewerPeerConnectionRef.current && payload.candidate) {
-            try {
-              await viewerPeerConnectionRef.current.addIceCandidate(new RTCIceCandidate(payload.candidate));
-            } catch (e) {}
+          } else {
+            const pc = viewerPeerConnectionRef.current;
+            if (pc && pc.remoteDescription) {
+              try {
+                await pc.addIceCandidate(new RTCIceCandidate(payload.candidate));
+              } catch (e) {}
+            } else if (payload.candidate) {
+              pendingIceCandidatesRef.current.push(payload.candidate);
+            }
           }
         }
       })
@@ -345,7 +380,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           event: 'webrtc-request-offer',
           payload: { viewerId: myUserId },
         });
-      }, 2500);
+      }, 2000);
 
       return () => clearInterval(pollTimer);
     }
@@ -899,10 +934,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
 
           {!isHost && !remoteStream && (
-            <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-40">
-              <Loader2 className="h-8 w-8 text-pink-500 animate-spin mb-2" />
+            <div className="absolute inset-0 bg-slate-950/90 flex flex-col items-center justify-center p-4 text-center z-40 space-y-2">
+              <Loader2 className="h-8 w-8 text-pink-500 animate-spin mb-1" />
               <p className="text-xs font-bold text-white">Подключение к прямому эфиру ведущего ({room.host_name})...</p>
-              <p className="text-[10px] text-slate-400 mt-1">Ожидайте передачу кадров экрана</p>
+              <p className="text-[10px] text-slate-400">Устанавливается прямое WebRTC соединение</p>
+              <Button
+                onClick={handleRequestStreamAgain}
+                size="sm"
+                variant="outline"
+                className="mt-2 text-[10px] h-7 border-purple-700 text-purple-300 hover:bg-purple-900/60 rounded-xl gap-1"
+              >
+                <RefreshCw className="h-3 w-3" /> Переподключить эфир
+              </Button>
             </div>
           )}
         </div>
@@ -949,7 +992,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ (ПОКАЗЫВАЕТСЯ ТОЛЬКО ЕСЛИ НЕ ВКЛЮЧЕНА ТРАНСЛЯЦИЯ) */}
+        {/* ОВЕРЛЕЙ ОШИБКИ ВСТРАИВАНИЯ (СКРЫВАЕТСЯ ПРИ ТРАНСЛЯЦИИ ЭКРАНА) */}
         {isEmbedBlocked && !isScreenSharingActive && (
           <div className="absolute inset-0 z-40 bg-slate-950/95 backdrop-blur-md flex flex-col items-center justify-center p-4 text-center space-y-3">
             <AlertCircle className="h-10 w-10 text-amber-400 animate-pulse" />
@@ -970,7 +1013,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>
