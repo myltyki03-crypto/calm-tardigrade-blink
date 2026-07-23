@@ -64,7 +64,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
-  const isIframePlayer = mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe';
+  const isIframePlayer = mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe';
 
   const forceDisableCaptions = () => {
     if (ytPlayerRef.current) {
@@ -313,6 +313,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           v.pause();
           setIsPlaying(false);
         }
+      } else if (mediaInfo.type === 'vk') {
+        const newVkUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
+        setIframeSrc(newVkUrl);
+        setIsPlaying(room.is_playing);
       }
     }
   }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
@@ -443,8 +447,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) return;
 
-    if (duration > 0) {
-      const targetSeconds = (newProgressPercent / 100) * duration;
+    if (duration > 0 || mediaInfo.type === 'vk') {
+      const maxSec = duration > 0 ? duration : 3600;
+      const targetSeconds = (newProgressPercent / 100) * maxSec;
       setCurrentTime(targetSeconds);
 
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
@@ -473,7 +478,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         curSec = videoElementRef.current.currentTime || currentTime;
       }
       updateRoomProgress(room.id, curSec, isPlaying);
-      showSuccess(`⚡ Время эфира (${formatTime(curSec)}) отправлено зрителям!`);
+      showSuccess(`⚡ Время VK / эфира (${formatTime(curSec)}) отправлено зрителям!`);
     } else {
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
         ytPlayerRef.current.seekTo(syncTime, true);
@@ -501,7 +506,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', syncTime);
       }
 
-      showSuccess(`⚡ Синхронизировано с ведущим (${formatTime(syncTime)})`);
+      showSuccess(`⚡ Синхронизировано с VK / ведущим (${formatTime(syncTime)})`);
     }
   };
 
@@ -568,7 +573,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {/* 3. RUTUBE, VIMEO, OK И IFRAME */}
+        {/* 3. RUTUBE, VK, VIMEO, OK И IFRAME */}
         {isIframePlayer && (
           <iframe
             ref={iframeRef}

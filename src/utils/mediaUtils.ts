@@ -1,4 +1,4 @@
-export type MediaType = 'youtube' | 'twitch' | 'rutube' | 'vimeo' | 'ok' | 'direct' | 'iframe';
+export type MediaType = 'youtube' | 'vk' | 'twitch' | 'rutube' | 'vimeo' | 'ok' | 'direct' | 'iframe';
 
 export interface MediaInfo {
   type: MediaType;
@@ -16,6 +16,17 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
 
   const cleanSec = Math.max(0, Math.floor(startSec));
   const autoParam = shouldAutoplay ? '1' : '0';
+
+  if (mediaInfo.type === 'vk') {
+    let urlWithoutParams = baseUrl
+      .replace(/([?&])autoplay=[^&]*/gi, '')
+      .replace(/([?&])t=[^&]*/gi, '')
+      .replace(/&+/g, '&')
+      .replace(/\?&/g, '?');
+
+    const separator = urlWithoutParams.includes('?') ? '&' : '?';
+    return `${urlWithoutParams}${separator}autoplay=${autoParam}${cleanSec ? `&t=${cleanSec}s` : ''}`;
+  }
 
   if (mediaInfo.type === 'rutube') {
     let urlWithoutParams = baseUrl
@@ -57,7 +68,39 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     }
   }
 
-  // 2. RUTUBE
+  // 2. VK ВИДЕО
+  if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/')) {
+    let embedUrl = cleanUrl;
+    let videoId = '';
+
+    if (cleanUrl.includes('video_ext.php')) {
+      embedUrl = cleanUrl;
+      const oidMatch = cleanUrl.match(/oid=(-?\d+)/);
+      const idMatch = cleanUrl.match(/id=(\d+)/);
+      if (oidMatch && idMatch) {
+        videoId = `${oidMatch[1]}_${idMatch[1]}`;
+      }
+    } else {
+      const match = cleanUrl.match(/video(-?\d+)_(\d+)/);
+      if (match) {
+        const oid = match[1];
+        const id = match[2];
+        videoId = `${oid}_${id}`;
+        embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}`;
+      }
+    }
+
+    return {
+      type: 'vk',
+      url: cleanUrl,
+      id: videoId || cleanUrl,
+      title: `VK Видео (${videoId || 'эфир'})`,
+      thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=600&auto=format&fit=crop&q=80',
+      embedUrl: embedUrl,
+    };
+  }
+
+  // 3. RUTUBE
   if (cleanUrl.includes('rutube.ru/')) {
     let videoId = '';
     const match = cleanUrl.match(/(?:video|embed)\/([a-zA-Z0-9]+)/i);
@@ -78,7 +121,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 3. TWITCH
+  // 4. TWITCH
   if (cleanUrl.includes('twitch.tv/')) {
     if (cleanUrl.includes('twitch.tv/videos/')) {
       const parts = cleanUrl.split('twitch.tv/videos/');
@@ -105,7 +148,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     }
   }
 
-  // 4. VIMEO
+  // 5. VIMEO
   if (cleanUrl.includes('vimeo.com/')) {
     const match = cleanUrl.match(/vimeo\.com\/(?:video\/)?(\d+)/i);
     const videoId = match ? match[1] : '';
@@ -119,7 +162,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 5. OK.RU
+  // 6. OK.RU
   if (cleanUrl.includes('ok.ru/')) {
     const match = cleanUrl.match(/video(?:embed)?\/(\d+)/i);
     const videoId = match ? match[1] : '';
@@ -133,7 +176,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 6. ПРЯМОЙ ВИДЕОФАЙЛ (MP4 / WebM / OGG)
+  // 7. ПРЯМОЙ ВИДЕОФАЙЛ (MP4 / WebM / OGG)
   if (cleanUrl.match(/\.(mp4|webm|ogg|m3u8)(\?.*)?$/i)) {
     const filename = cleanUrl.split('/').pop()?.split('?')[0] || 'Прямой видеопоток';
     return {
@@ -145,7 +188,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 7. YOUTUBE
+  // 8. YOUTUBE
   if (
     cleanUrl.includes('youtube.com/') ||
     cleanUrl.includes('youtu.be/')
@@ -170,7 +213,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 8. FALLBACK IFRAME
+  // 9. FALLBACK IFRAME
   return {
     type: 'iframe',
     url: cleanUrl,
