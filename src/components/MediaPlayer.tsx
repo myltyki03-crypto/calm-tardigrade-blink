@@ -12,6 +12,7 @@ import {
   ExternalLink,
   AlertCircle,
   Video,
+  ShieldAlert,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
@@ -293,6 +294,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     showSuccess('Воспроизведение запущено!');
   };
 
+  const handleViewerShieldClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    showError('Управлять видео и переключать рекомендации может только ведущий (DJ) 👑');
+  };
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -479,7 +485,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             src={`https://player.twitch.tv/?${
               mediaInfo.twitchType === 'video' ? `video=${mediaInfo.id}` : `channel=${mediaInfo.id}`
             }&parent=${currentHostname}&autoplay=${room.is_playing ? 'true' : 'false'}&muted=false`}
-            className="absolute inset-0 w-full h-full border-0 z-10 pointer-events-auto"
+            className={`absolute inset-0 w-full h-full border-0 z-10 ${isHost ? 'pointer-events-auto' : 'pointer-events-none'}`}
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
@@ -494,7 +500,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           mediaInfo.type === 'iframe') && (
           <iframe
             src={mediaInfo.embedUrl || mediaInfo.url}
-            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto"
+            className={`absolute inset-0 w-full h-full border-0 bg-black z-10 ${isHost ? 'pointer-events-auto' : 'pointer-events-none'}`}
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
@@ -511,7 +517,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           />
         )}
 
-        {isInteractivePlayer && (
+        {/* ЗАЩИТНЫЙ ЩИТ ДЛЯ ЗРИТЕЛЕЙ (!isHost) */}
+        {!isHost && !needUserGesture && !isEmbedBlocked && (
+          <div
+            onClick={handleViewerShieldClick}
+            className="absolute inset-0 z-20 cursor-not-allowed bg-transparent pointer-events-auto"
+            title="Только ведущий может управлять видео"
+          />
+        )}
+
+        {isInteractivePlayer && isHost && (
           <div
             onClick={() => {
               if (needUserGesture) {
@@ -570,6 +585,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {/* Бейдж платформы и кнопка открытия оригинала для VK / Rutube / Twitch */}
         {mediaInfo.type !== 'youtube' && mediaInfo.type !== 'direct' && (
           <div className="absolute top-3 right-3 z-20 flex items-center gap-2 pointer-events-auto">
+            {!isHost && (
+              <div className="hidden sm:flex items-center gap-1 px-2.5 py-1 rounded-full bg-slate-950/90 border border-amber-500/40 text-amber-300 text-[10px] font-bold backdrop-blur-md shadow-lg">
+                <ShieldAlert className="h-3 w-3 text-amber-400" />
+                <span>Режим зрителя</span>
+              </div>
+            )}
             <a
               href={mediaInfo.url}
               target="_blank"
@@ -587,7 +608,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         )}
 
         {(needUserGesture || (!isPlaying && room.is_playing && !isHost && isInteractivePlayer)) && !isEmbedBlocked && (
-          <div className="absolute inset-0 z-20 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
+          <div className="absolute inset-0 z-30 bg-slate-950/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 text-center">
             <Button
               onClick={handleMobileUnlockClick}
               size="lg"
