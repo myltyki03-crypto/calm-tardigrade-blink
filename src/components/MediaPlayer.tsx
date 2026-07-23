@@ -55,9 +55,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Флаг защиты от нулевых стартовых сигналов плеера
   const iframeLoadedTimeRef = useRef<number>(Date.now());
-  const isUserSeekingRef = useRef<boolean>(false);
+  const currentTimeRef = useRef<number>(0);
 
   // WebRTC и Демонстрация экрана
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
@@ -92,6 +91,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
+
+  // Синхронизация ref текущего времени
+  useEffect(() => {
+    currentTimeRef.current = currentTime;
+  }, [currentTime]);
 
   // Автоматическое скрытие элементов управления
   useEffect(() => {
@@ -165,7 +169,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Перехват PostMessage сообщений от VK Видео и обработка времени с защитой от ложных статусов
+  // Перехват PostMessage сообщений от VK Видео / Iframe плееров
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       try {
@@ -182,7 +186,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           data.event || data.type || data.box_msg || data.action || (Array.isArray(data) ? data[0] : '')
         ).toLowerCase();
 
-        // 1. Фильтрация и обработка сообщений состояния (play/pause/volume/status/quality)
+        // 1. Игнорируем служебные системные статусы (громкость, качество, состояние)
         if (
           eventType.includes('state') ||
           eventType.includes('status') ||
@@ -193,12 +197,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         ) {
           if (eventType.includes('pause')) setIsPlaying(false);
           if (eventType.includes('play')) setIsPlaying(true);
-          return; // Не извлекаем timeVal из сообщений состояния!
+          return;
         }
 
         let timeVal: number | undefined = undefined;
 
-        // 2. Извлечение времени только из явных полей времени или при специфических событиях timeupdate/progress/seek
+        // 2. Извлечение метки времени
         if (typeof data.currentTime === 'number') {
           timeVal = data.currentTime;
         } else if (typeof data.time === 'number') {
@@ -218,23 +222,19 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           else if (Array.isArray(data) && typeof data[1] === 'number') timeVal = data[1];
         }
 
-        // 3. Валидация времени и защита от внезапного отматывания назад
+        // 3. Валидация и мгновенная обработка смены времени (перемотки)
         if (typeof timeVal === 'number' && !isNaN(timeVal) && timeVal >= 0) {
           const now = Date.now();
-          const isInitialBufferingPeriod = now - iframeLoadedTimeRef.current < 2500;
+          const oldTime = currentTimeRef.current;
+          const timeJump = Math.abs(timeVal - oldTime);
 
-          // Если видео уже шло (>2 сек), а пришло значение <2 сек и пользователь сам не перематывал,
-          // это аномальное сообщение сброса от iframe — отбрасываем!
-          const isSpuriousRewind = timeVal < 2 && currentTime > 2 && !isUserSeekingRef.current;
+          setCurrentTime(timeVal);
 
-          if (!isInitialBufferingPeriod && !isSpuriousRewind) {
-            setCurrentTime(timeVal);
-
-            if (isHost && isPlaying) {
-              if (now - lastHostSyncSaveRef.current > 3000) {
-                lastHostSyncSaveRef.current = now;
-                updateRoomProgress(room.id, timeVal, true);
-              }
+          if (isHost) {
+            // Если произошла перемотка (скачок > 2 секунд) или прошло более 3 секунд регулярного просмотра
+            if (timeJump > 2 || now - lastHostSyncSaveRef.current > 3000) {
+              lastHostSyncSaveRef.current = now;
+              updateRoomProgress(room.id, timeVal, isPlaying);
             }
           }
         }
@@ -259,7 +259,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
-  }, [isHost, isPlaying, currentTime, room.id]);
+  }, [isHost, isPlaying, room.id]);
 
   // Закрепление видеопотока трансляции на HTML-теге
   useEffect(() => {
@@ -994,11 +994,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) return;
 
-    isUserSeekingRef.current = true;
-    setTimeout(() => {
-      isUserSeekingRef.current = false;
-    }, 2000);
-
     if (duration > 0 || mediaInfo.type === 'vk') {
       const maxSec = duration > 0 ? duration : 3600;
       const targetSeconds = (newProgressPercent / 100) * maxSec;
@@ -1012,14 +1007,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', targetSeconds);
       }
 
+      lastHostSyncSaveRef.current = Date.now();
       updateRoomProgress(room.id, targetSeconds, isPlaying);
     }
   };
 
   const handleSyncClick = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-
-    const syncTime = getCalculatedHostTime();
 
     if (isHost) {
       let curSec = currentTime;
@@ -1028,9 +1022,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         curSec = videoElementRef.current.currentTime || currentTime;
       }
+      lastHostSyncSaveRef.current = Date.now();
       updateRoomProgress(room.id, curSec, isPlaying);
-      showSuccess('Время трансляции синхронизировано!');
+      showSuccess('Время трансляции отправлено всем зрителям!');
     } else {
+      const syncTime = getCalculatedHostTime();
+
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
         ytPlayerRef.current.seekTo(syncTime, true);
         if (room.is_playing) {
@@ -1054,12 +1051,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         setCurrentTime(syncTime);
         setIsPlaying(true);
 
-        // 1. Посылаем postMessage команды
         sendIframeCommand('seek', syncTime);
         sendIframeCommand('play');
         sendIframeCommand('unmute');
 
-        // 2. Для гарантированного сдвига VK плеера обновляем адрес кадра прямой ссылкой с t=...
         const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
         if (iframeRef.current) {
           iframeRef.current.src = newEmbedUrl;
