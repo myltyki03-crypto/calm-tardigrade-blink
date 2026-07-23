@@ -794,58 +794,94 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
-  // Синхронизация зрителей с создателем комнаты
+  // АВТОМАТИЧЕСКАЯ НЕПРЕРЫВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ (Пауза / Воспроизведение / Сдвиг времени)
   useEffect(() => {
-    if (!isHost && room.last_updated_at !== prevLastUpdatedRef.current) {
-      prevLastUpdatedRef.current = room.last_updated_at;
+    if (isHost || isScreenSharingActive) return;
+
+    const autoSyncViewer = () => {
       const targetHostTime = getCalculatedHostTime();
 
-      if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
-        let localTime = 0;
+      // 1. YouTube
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
         try {
-          localTime = ytPlayerRef.current.getCurrentTime?.() || 0;
-        } catch (err) {}
+          const playerState = ytPlayerRef.current.getPlayerState?.();
+          const ytTime = ytPlayerRef.current.getCurrentTime?.() || 0;
 
-        if (Math.abs(localTime - targetHostTime) > 3) {
-          ytPlayerRef.current.seekTo(targetHostTime, true);
-        }
+          // Синхронизация паузы и воспроизведения
+          if (room.is_playing && playerState !== 1 && playerState !== 3) {
+            ytPlayerRef.current.playVideo?.();
+            setIsPlaying(true);
+          } else if (!room.is_playing && playerState === 1) {
+            ytPlayerRef.current.pauseVideo?.();
+            setIsPlaying(false);
+          }
 
-        if (room.is_playing) {
-          ytPlayerRef.current.playVideo?.();
-          setIsPlaying(true);
-        } else {
-          ytPlayerRef.current.pauseVideo?.();
-          setIsPlaying(false);
-        }
-      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+          // Автосдвиг при рассинхроне более 2.5 секунд
+          if (Math.abs(ytTime - targetHostTime) > 2.5) {
+            ytPlayerRef.current.seekTo?.(targetHostTime, true);
+            setCurrentTime(targetHostTime);
+          }
+        } catch (e) {}
+      }
+      // 2. Прямые MP4 видеофайлы
+      else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         const v = videoElementRef.current;
-        if (Math.abs(v.currentTime - targetHostTime) > 3) {
-          v.currentTime = targetHostTime;
-        }
-        if (room.is_playing) {
+        if (room.is_playing && v.paused) {
           v.play().catch(() => setNeedUserGesture(true));
           setIsPlaying(true);
-        } else {
+        } else if (!room.is_playing && !v.paused) {
           v.pause();
           setIsPlaying(false);
         }
-      } else if (isIframePlayer) {
-        const timeDiff = Math.abs(currentTime - targetHostTime);
 
-        // Мягкий пост-месседж сдвиг времени
-        if (timeDiff > 3) {
-          sendIframeCommand('seek', targetHostTime);
-          sendIframeCommand('unmute');
+        if (Math.abs(v.currentTime - targetHostTime) > 2.5) {
+          v.currentTime = targetHostTime;
           setCurrentTime(targetHostTime);
         }
+      }
+      // 3. Iframe плееры (VK Video, Rutube, Vimeo, OK)
+      else if (isIframePlayer) {
+        const diff = Math.abs(currentTime - targetHostTime);
 
+        // Синхронизация паузы/воспроизведения
         if (room.is_playing !== isPlaying) {
           setIsPlaying(room.is_playing);
           sendIframeCommand(room.is_playing ? 'play' : 'pause');
+          sendIframeCommand('unmute');
+        }
+
+        // Автосдвиг времени при рассинхроне
+        if (diff > 2.5) {
+          sendIframeCommand('seek', targetHostTime);
+          if (room.is_playing) sendIframeCommand('play');
+          setCurrentTime(targetHostTime);
+
+          // Для VK Video: если разница более 5 секунд, обновляем кадр с точной временной меткой
+          if (diff > 5 && mediaInfo.type === 'vk') {
+            const newUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
+            if (iframeRef.current && iframeRef.current.src !== newUrl) {
+              iframeRef.current.src = newUrl;
+              setIframeSrc(newUrl);
+            }
+          }
         }
       }
-    }
-  }, [room.last_updated_at, room.playback_position_seconds, room.is_playing, isHost, mediaInfo.type]);
+    };
+
+    autoSyncViewer();
+    const interval = setInterval(autoSyncViewer, 1200);
+
+    return () => clearInterval(interval);
+  }, [
+    isHost,
+    isScreenSharingActive,
+    room.is_playing,
+    room.playback_position_seconds,
+    room.last_updated_at,
+    mediaInfo.type,
+    isPlaying,
+    currentTime,
+  ]);
 
   useEffect(() => {
     const handleFullscreenChange = () => {

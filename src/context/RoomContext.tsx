@@ -528,6 +528,21 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
         }
       })
+      .on('broadcast', { event: 'sync_room_state' }, (payload) => {
+        const data = payload.payload;
+        if (data && data.roomId) {
+          setRooms((prev) =>
+            prev.map((r) =>
+              r.id === data.roomId
+                ? {
+                    ...r,
+                    ...data,
+                  }
+                : r
+            )
+          );
+        }
+      })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
@@ -1032,6 +1047,14 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map((r) => (r.id === roomId ? { ...r, ...updatePayload } : r))
     );
 
+    if (globalChannelRef.current) {
+      globalChannelRef.current.send({
+        type: 'broadcast',
+        event: 'sync_room_state',
+        payload: { roomId, ...updatePayload },
+      });
+    }
+
     if (isSupabaseConfigured && supabase) {
       await supabase.from('rooms').update(updatePayload).eq('id', roomId);
     }
@@ -1051,6 +1074,14 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
       prev.map((r) => (r.id === roomId ? { ...r, ...updatePayload } : r))
     );
 
+    if (globalChannelRef.current) {
+      globalChannelRef.current.send({
+        type: 'broadcast',
+        event: 'sync_room_state',
+        payload: { roomId, ...updatePayload },
+      });
+    }
+
     if (isSupabaseConfigured && supabase) {
       await supabase.from('rooms').update(updatePayload).eq('id', roomId);
     }
@@ -1066,6 +1097,14 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRooms((prev) =>
       prev.map((r) => (r.id === roomId ? { ...r, ...updatePayload } : r))
     );
+
+    if (globalChannelRef.current) {
+      globalChannelRef.current.send({
+        type: 'broadcast',
+        event: 'sync_room_state',
+        payload: { roomId, ...updatePayload },
+      });
+    }
 
     if (isSupabaseConfigured && supabase) {
       await supabase.from('rooms').update(updatePayload).eq('id', roomId);
