@@ -49,7 +49,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // WebRTC и Демонстрация экрана состояния
+  // WebRTC и Демонстрация экрана
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
   const peerConnectionsRef = useRef<Map<string, RTCPeerConnection>>(new Map());
   const webrtcChannelRef = useRef<any>(null);
@@ -77,7 +77,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const isScreenSharingActive = Boolean(room.is_screen_sharing);
   const isIframePlayer = !isScreenSharingActive && (mediaInfo.type === 'vk' || mediaInfo.type === 'rutube' || mediaInfo.type === 'vimeo' || mediaInfo.type === 'ok' || mediaInfo.type === 'iframe');
 
-  // ФУНКЦИЯ ДЕМОНСТРАЦИИ ЭКРАНА ВЕДУЩЕГО
+  // Демонстрация экрана ведущего
   const handleToggleScreenShare = async () => {
     if (!isHost) {
       showError('Только ведущий комнаты может запускать трансляцию экрана');
@@ -103,7 +103,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
       setScreenStream(stream);
       setRoomScreenShareState(room.id, true);
-      showSuccess('💻 Демонстрация экрана запущенa!');
+      showSuccess('💻 Демонстрация экрана запущена!');
 
       if (screenShareVideoRef.current) {
         screenShareVideoRef.current.srcObject = stream;
@@ -677,7 +677,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }`}
     >
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКА КАТЕГОРИИ И СИНХРОНИЗАЦИИ */}
+        {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
         {!needUserGesture && !isEmbedBlocked && (
           <div className="absolute top-3 left-3 z-40 pointer-events-auto flex items-center gap-2">
             <Button
@@ -690,7 +690,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               <span>Синхронизировать</span>
             </Button>
 
-            {/* КНОПКА ЗАПУСКА ИЛИ ОСТАНОВКИ ДЕМОНСТРАЦИИ ЭКРАНА */}
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
@@ -718,7 +717,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           </div>
         )}
 
-        {/* ИНДИКАТОР АКТИВНОЙ ДЕМОНСТРАЦИИ ЭКРАНА */}
+        {/* ИНДИКАТОР ТРАНСЛЯЦИИ ЭКРАНА */}
         {isScreenSharingActive && (
           <div className="absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg">
             <Radio className="h-3 w-3 text-pink-400 animate-pulse" />
