@@ -124,6 +124,21 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
+  // Безопасный расчет времени ведущего
+  const getCalculatedHostTime = () => {
+    let startSec = room.playback_position_seconds || 0;
+    if (room.is_playing && room.last_updated_at) {
+      const updatedTime = new Date(room.last_updated_at).getTime();
+      if (!isNaN(updatedTime)) {
+        const elapsed = (Date.now() - updatedTime) / 1000;
+        if (elapsed > 0 && elapsed < 86400) {
+          startSec += elapsed;
+        }
+      }
+    }
+    return Math.max(0, Math.floor(startSec));
+  };
+
   // Отправка команд в iframe плеера (VK, Rutube)
   const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume' | 'unmute', value?: number) => {
     if (!iframeRef.current?.contentWindow) return;
@@ -255,6 +270,89 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
   }, [isHost, isPlaying, room.id]);
+
+  // МГНОВЕННАЯ РЕАКЦИЯ ЗРИТЕЛЯ НА ПЕРЕМОТКУ ВЕДУЩЕГО
+  const prevHostPositionRef = useRef<{ pos: number; updatedAt: string; isPlaying: boolean }>({
+    pos: room.playback_position_seconds || 0,
+    updatedAt: room.last_updated_at || '',
+    isPlaying: room.is_playing,
+  });
+
+  useEffect(() => {
+    if (isHost || isScreenSharingActive) return;
+
+    const prev = prevHostPositionRef.current;
+    const currentPos = room.playback_position_seconds || 0;
+    const currentUpdatedAt = room.last_updated_at || '';
+    const currentIsPlaying = room.is_playing;
+
+    const posChanged = Math.abs(currentPos - prev.pos) > 2;
+    const stateChanged = currentIsPlaying !== prev.isPlaying;
+    const updatedTimeChanged = currentUpdatedAt !== prev.updatedAt;
+
+    if (posChanged || stateChanged || updatedTimeChanged) {
+      prevHostPositionRef.current = {
+        pos: currentPos,
+        updatedAt: currentUpdatedAt,
+        isPlaying: currentIsPlaying,
+      };
+
+      const targetHostTime = getCalculatedHostTime();
+
+      if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
+        try {
+          if (currentIsPlaying) {
+            ytPlayerRef.current.playVideo?.();
+            setIsPlaying(true);
+          } else {
+            ytPlayerRef.current.pauseVideo?.();
+            setIsPlaying(false);
+          }
+          if (Math.abs((ytPlayerRef.current.getCurrentTime?.() || 0) - targetHostTime) > 3) {
+            ytPlayerRef.current.seekTo?.(targetHostTime, true);
+            setCurrentTime(targetHostTime);
+          }
+        } catch (e) {}
+      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+        const v = videoElementRef.current;
+        if (currentIsPlaying) {
+          v.play().catch(() => setNeedUserGesture(true));
+          setIsPlaying(true);
+        } else {
+          v.pause();
+          setIsPlaying(false);
+        }
+        if (Math.abs(v.currentTime - targetHostTime) > 3) {
+          v.currentTime = targetHostTime;
+          setCurrentTime(targetHostTime);
+        }
+      } else if (isIframePlayer) {
+        setIsPlaying(currentIsPlaying);
+        sendIframeCommand(currentIsPlaying ? 'play' : 'pause');
+
+        const currentViewerTime = currentTimeRef.current;
+        const diff = Math.abs(currentViewerTime - targetHostTime);
+
+        if (diff > 4) {
+          setCurrentTime(targetHostTime);
+          sendIframeCommand('seek', targetHostTime);
+
+          if (mediaInfo.type === 'vk' || mediaInfo.type === 'iframe' || mediaInfo.type === 'rutube') {
+            const newSrc = getEmbedUrlWithTime(mediaInfo, targetHostTime, currentIsPlaying);
+            setIframeSrc(newSrc);
+            setIframeKey(Date.now());
+          }
+        }
+      }
+    }
+  }, [
+    isHost,
+    isScreenSharingActive,
+    room.playback_position_seconds,
+    room.last_updated_at,
+    room.is_playing,
+    mediaInfo.type,
+  ]);
 
   // Закрепление видеопотока трансляции на HTML-теге
   useEffect(() => {
@@ -600,17 +698,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  const getCalculatedHostTime = () => {
-    let startSec = room.playback_position_seconds || 0;
-    if (room.is_playing && room.last_updated_at) {
-      const elapsed = (Date.now() - new Date(room.last_updated_at).getTime()) / 1000;
-      if (elapsed > 0 && elapsed < 86400) {
-        startSec += elapsed;
-      }
-    }
-    return Math.max(0, startSec);
-  };
-
   // Локальный таймер для отсчета времени
   useEffect(() => {
     if (isIframePlayer) {
@@ -789,7 +876,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
-  // ПЛАВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ (Без бесконечной перезагрузки iframe)
+  // ПЛАВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ (Фоновая компенсация рассинхрона)
   useEffect(() => {
     if (isHost || isScreenSharingActive) return;
 
@@ -811,7 +898,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             setIsPlaying(false);
           }
 
-          if (Math.abs(ytTime - targetHostTime) > 4 && now - lastAutoSeekRef.current > 6000) {
+          if (Math.abs(ytTime - targetHostTime) > 5 && now - lastAutoSeekRef.current > 8000) {
             lastAutoSeekRef.current = now;
             ytPlayerRef.current.seekTo?.(targetHostTime, true);
             setCurrentTime(targetHostTime);
@@ -829,7 +916,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
 
-        if (Math.abs(v.currentTime - targetHostTime) > 4 && now - lastAutoSeekRef.current > 6000) {
+        if (Math.abs(v.currentTime - targetHostTime) > 5 && now - lastAutoSeekRef.current > 8000) {
           lastAutoSeekRef.current = now;
           v.currentTime = targetHostTime;
           setCurrentTime(targetHostTime);
@@ -843,7 +930,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         }
 
         const diff = Math.abs(currentTime - targetHostTime);
-        if (diff > 5 && now - lastAutoSeekRef.current > 8000) {
+        if (diff > 8 && now - lastAutoSeekRef.current > 10000) {
           lastAutoSeekRef.current = now;
           sendIframeCommand('seek', targetHostTime);
           setCurrentTime(targetHostTime);
@@ -852,15 +939,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
 
     autoSyncViewer();
-    const interval = setInterval(autoSyncViewer, 2000);
+    const interval = setInterval(autoSyncViewer, 2500);
 
     return () => clearInterval(interval);
   }, [
     isHost,
     isScreenSharingActive,
     room.is_playing,
-    room.playback_position_seconds,
-    room.last_updated_at,
     mediaInfo.type,
     isPlaying,
   ]);
@@ -1072,6 +1157,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', syncTime);
         sendIframeCommand('play');
         sendIframeCommand('unmute');
+
+        if (mediaInfo.type === 'vk' || mediaInfo.type === 'iframe' || mediaInfo.type === 'rutube') {
+          const newSrc = getEmbedUrlWithTime(mediaInfo, syncTime, true);
+          setIframeSrc(newSrc);
+          setIframeKey(Date.now());
+        }
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
