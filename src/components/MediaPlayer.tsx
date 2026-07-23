@@ -577,10 +577,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {isIframePlayer && (
           <iframe
             ref={iframeRef}
+            key={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
             src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
             className="absolute inset-0 w-full h-full border-0 bg-black z-20 pointer-events-auto"
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write; microphone; camera"
-            referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
           />
         )}

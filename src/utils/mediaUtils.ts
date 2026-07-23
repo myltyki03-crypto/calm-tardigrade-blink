@@ -21,12 +21,9 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
       const urlObj = new URL(baseUrl);
       if (shouldAutoplay) {
         urlObj.searchParams.set('autoplay', '1');
-      } else {
-        urlObj.searchParams.delete('autoplay');
       }
-      if (cleanSec > 0) {
-        urlObj.searchParams.set('t', `${cleanSec}s`);
-      }
+      urlObj.searchParams.set('js_api', '1');
+      // Не добавляем параметр 't' со значением 's', так как это ломает плеер VK
       return urlObj.toString();
     } catch {
       return baseUrl;
@@ -66,7 +63,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
 export const parseMediaUrl = (url: string): MediaInfo => {
   let cleanUrl = url.trim();
 
-  // 1. Извлечение ссылки из <iframe> кодов
+  // 1. Извлечение ссылки из <iframe> кодов ВКонтакте или других сервисов
   if (cleanUrl.includes('<iframe')) {
     const srcMatch = cleanUrl.match(/src=["']([^"']+)["']/i);
     if (srcMatch && srcMatch[1]) {
@@ -78,31 +75,35 @@ export const parseMediaUrl = (url: string): MediaInfo => {
   if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/')) {
     let embedUrl = cleanUrl;
     let videoId = '';
-    let hash = '';
 
     // Если вставлен готовый embed плеера (video_ext.php)
     if (cleanUrl.includes('video_ext.php')) {
-      embedUrl = cleanUrl;
-      const oidMatch = cleanUrl.match(/oid=(-?\d+)/);
-      const idMatch = cleanUrl.match(/id=(\d+)/);
-      if (oidMatch && idMatch) {
-        videoId = `${oidMatch[1]}_${idMatch[1]}`;
+      try {
+        const u = new URL(cleanUrl);
+        u.searchParams.set('js_api', '1');
+        embedUrl = u.toString();
+        const oid = u.searchParams.get('oid');
+        const id = u.searchParams.get('id');
+        if (oid && id) videoId = `${oid}_${id}`;
+      } catch {
+        embedUrl = cleanUrl;
       }
     } else {
-      // Обычные ссылки вида vk.com/video-211517001_456239103 или vkvideo.ru/video-211517001_456239103
-      const match = cleanUrl.match(/video(-?\d+)_(\d+)/);
+      // Обычные ссылки вида vk.com/video-211517001_456239103, clip-211517001_456239103 и т.д.
+      const match = cleanUrl.match(/(?:video|clip)(-?\d+)_(\d+)/);
       if (match) {
         const oid = match[1];
         const id = match[2];
         videoId = `${oid}_${id}`;
 
+        let hash = '';
         try {
           const parsedUrl = new URL(cleanUrl);
           hash = parsedUrl.searchParams.get('hash') || '';
         } catch {}
 
-        const hashQuery = hash ? `&hash=${hash}` : '';
-        embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashQuery}&hd=2`;
+        const hashParam = hash ? `&hash=${hash}` : '';
+        embedUrl = `https://vk.com/video_ext.php?oid=${oid}&id=${id}${hashParam}&hd=2&js_api=1`;
       }
     }
 
