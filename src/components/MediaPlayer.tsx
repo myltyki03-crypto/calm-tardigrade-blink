@@ -87,6 +87,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
   });
 
+  // Автоматическое скрытие органов управления через 2.5 секунды при старте видео
+  useEffect(() => {
+    if (isPlaying) {
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+      controlsTimeoutRef.current = setTimeout(() => {
+        setShowControls(false);
+      }, 2500);
+    } else {
+      setShowControls(true);
+    }
+
+    return () => {
+      if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
+    };
+  }, [isPlaying]);
+
   // Мгновенный статус трансляции экрана
   const isScreenSharingActive =
     Boolean(room.is_screen_sharing) || Boolean(screenStream) || Boolean(remoteStream) || Boolean(fallbackFrame);
@@ -99,7 +115,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
 
-  // Закрепление видеопотока трансляции на HTML-теге с поддержкой принудительного воспроизведения
+  // Закрепление видеопотока трансляции на HTML-теге
   useEffect(() => {
     const video = screenShareVideoRef.current;
     if (!video) return;
@@ -754,7 +770,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
     controlsTimeoutRef.current = setTimeout(() => {
       if (isPlaying) setShowControls(false);
-    }, 3500);
+    }, 2500);
   };
 
   const handleTogglePlay = () => {
@@ -916,14 +932,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     ? 'w-screen h-screen justify-between z-50'
     : 'rounded-2xl border-2 border-pink-500/30 shadow-2xl shadow-purple-500/20 aspect-video';
 
+  // Класс полного скрытия органов управления (включая невидимость для тапов)
   const controlsVisibilityClass = showControls
-    ? 'opacity-100 pointer-events-auto'
-    : 'opacity-0 pointer-events-none';
+    ? 'opacity-100 pointer-events-auto transition-all duration-300'
+    : 'opacity-0 pointer-events-none invisible transition-all duration-300';
 
   return (
     <div
       ref={containerRef}
       onMouseMove={handleUserActivity}
+      onTouchStart={handleUserActivity}
       onClick={handleUserActivity}
       className={`relative flex flex-col bg-slate-950 overflow-hidden select-none transition-all group ${fullscreenClass}`}
     >
@@ -931,10 +949,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       <canvas ref={hiddenCanvasRef} className="hidden" />
 
       <div className="relative w-full h-full bg-black overflow-hidden flex-1 aspect-video">
-        {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА */}
+        {/* КНОПКИ СИНХРОНИЗАЦИИ И ПОКАЗА ЭКРАНА (Скрываются полностью при showControls = false) */}
         {(!needUserGesture || isScreenSharingActive) && !isEmbedBlocked && (
           <div
-            className={`absolute top-3 left-3 z-40 flex items-center gap-2 transition-all duration-300 ${controlsVisibilityClass}`}
+            className={`absolute top-3 left-3 z-40 flex items-center gap-2 ${controlsVisibilityClass}`}
           >
             <Button
               onClick={handleSyncClick}
@@ -976,7 +994,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {/* ИНДИКАТОР ТРАНСЛЯЦИИ ЭКРАНА */}
         {isScreenSharingActive && (
           <div
-            className={`absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg transition-all duration-300 ${controlsVisibilityClass}`}
+            className={`absolute top-3 right-3 z-40 bg-pink-950/90 border border-pink-500/50 text-pink-300 px-3 py-1 rounded-full text-[10px] font-bold flex items-center gap-1.5 backdrop-blur-md shadow-lg ${controlsVisibilityClass}`}
           >
             <Radio className="h-3 w-3 text-pink-400 animate-pulse" />
             <span>{isHost ? 'Вы транслируете экран' : 'Прямая трансляция экрана ведущего'}</span>
@@ -1029,7 +1047,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
           {/* Подсказка для включения звука трансляции */}
           {!isHost && needAudioClick && (
-            <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 z-50 transition-all duration-300 ${controlsVisibilityClass}`}>
+            <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto ${controlsVisibilityClass}`}>
               <Button
                 onClick={handleEnableAudioClick}
                 size="sm"
@@ -1104,7 +1122,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             {isHost && (
               <Button
                 onClick={handleToggleScreenShare}
-                className="bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 to-pink-500 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-lg shadow-pink-500/30"
               >
                 <Monitor className="h-4 w-4 mr-1.5" /> Включить показ экрана
               </Button>
