@@ -57,6 +57,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
   const iframeLoadedTimeRef = useRef<number>(Date.now());
   const currentTimeRef = useRef<number>(0);
+  const lastAutoSeekRef = useRef<number>(0);
 
   // WebRTC и Демонстрация экрана
   const [screenStream, setScreenStream] = useState<MediaStream | null>(null);
@@ -71,7 +72,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const canvasIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const lastHostSyncSaveRef = useRef<number>(0);
-  const prevLastUpdatedRef = useRef<string | undefined>(room.last_updated_at);
 
   const mediaInfo: MediaInfo = parseMediaUrl(room.current_media_url || '');
 
@@ -186,7 +186,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           data.event || data.type || data.box_msg || data.action || (Array.isArray(data) ? data[0] : '')
         ).toLowerCase();
 
-        // 1. Игнорируем служебные системные статусы (громкость, качество, состояние)
         if (
           eventType.includes('state') ||
           eventType.includes('status') ||
@@ -202,7 +201,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         let timeVal: number | undefined = undefined;
 
-        // 2. Извлечение метки времени
         if (typeof data.currentTime === 'number') {
           timeVal = data.currentTime;
         } else if (typeof data.time === 'number') {
@@ -222,7 +220,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           else if (Array.isArray(data) && typeof data[1] === 'number') timeVal = data[1];
         }
 
-        // 3. Валидация и мгновенная обработка смены времени (перемотки)
         if (typeof timeVal === 'number' && !isNaN(timeVal) && timeVal >= 0) {
           const now = Date.now();
           const oldTime = currentTimeRef.current;
@@ -231,15 +228,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setCurrentTime(timeVal);
 
           if (isHost) {
-            // Если произошла перемотка (скачок > 2 секунд) или прошло более 3 секунд регулярного просмотра
-            if (timeJump > 2 || now - lastHostSyncSaveRef.current > 3000) {
+            if (timeJump > 2 || now - lastHostSyncSaveRef.current > 4000) {
               lastHostSyncSaveRef.current = now;
               updateRoomProgress(room.id, timeVal, isPlaying);
             }
           }
         }
 
-        // 4. Детекция начала / паузы воспроизведения
         if (
           eventType === 'play' ||
           eventType === 'video_play' ||
@@ -616,7 +611,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, startSec);
   };
 
-  // Локальный таймер для сторонних iframe (VK, Rutube)
+  // Локальный таймер для отсчета времени
   useEffect(() => {
     if (isIframePlayer) {
       let interval: NodeJS.Timeout | null = null;
@@ -624,7 +619,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         interval = setInterval(() => {
           setCurrentTime((prev) => {
             const next = prev + 1;
-            if (isHost && Date.now() - iframeLoadedTimeRef.current > 3000 && Date.now() - lastHostSyncSaveRef.current > 3000) {
+            if (isHost && Date.now() - iframeLoadedTimeRef.current > 3000 && Date.now() - lastHostSyncSaveRef.current > 4000) {
               lastHostSyncSaveRef.current = Date.now();
               updateRoomProgress(room.id, next, true);
             }
@@ -770,7 +765,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         if (typeof cur === 'number') {
           setCurrentTime(cur);
-          if (isHost && now - lastHostSyncSaveRef.current > 3000) {
+          if (isHost && now - lastHostSyncSaveRef.current > 4000) {
             lastHostSyncSaveRef.current = now;
             if (ytPlayerRef.current.getPlayerState?.() === 1) {
               updateRoomProgress(room.id, cur, true);
@@ -794,12 +789,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
-  // АВТОМАТИЧЕСКАЯ НЕПРЕРЫВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ (Пауза / Воспроизведение / Сдвиг времени)
+  // ПЛАВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ (Без бесконечной перезагрузки iframe)
   useEffect(() => {
     if (isHost || isScreenSharingActive) return;
 
     const autoSyncViewer = () => {
       const targetHostTime = getCalculatedHostTime();
+      const now = Date.now();
 
       // 1. YouTube
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
@@ -807,7 +803,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           const playerState = ytPlayerRef.current.getPlayerState?.();
           const ytTime = ytPlayerRef.current.getCurrentTime?.() || 0;
 
-          // Синхронизация паузы и воспроизведения
           if (room.is_playing && playerState !== 1 && playerState !== 3) {
             ytPlayerRef.current.playVideo?.();
             setIsPlaying(true);
@@ -816,8 +811,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             setIsPlaying(false);
           }
 
-          // Автосдвиг при рассинхроне более 2.5 секунд
-          if (Math.abs(ytTime - targetHostTime) > 2.5) {
+          if (Math.abs(ytTime - targetHostTime) > 4 && now - lastAutoSeekRef.current > 6000) {
+            lastAutoSeekRef.current = now;
             ytPlayerRef.current.seekTo?.(targetHostTime, true);
             setCurrentTime(targetHostTime);
           }
@@ -834,42 +829,30 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setIsPlaying(false);
         }
 
-        if (Math.abs(v.currentTime - targetHostTime) > 2.5) {
+        if (Math.abs(v.currentTime - targetHostTime) > 4 && now - lastAutoSeekRef.current > 6000) {
+          lastAutoSeekRef.current = now;
           v.currentTime = targetHostTime;
           setCurrentTime(targetHostTime);
         }
       }
       // 3. Iframe плееры (VK Video, Rutube, Vimeo, OK)
       else if (isIframePlayer) {
-        const diff = Math.abs(currentTime - targetHostTime);
-
-        // Синхронизация паузы/воспроизведения
         if (room.is_playing !== isPlaying) {
           setIsPlaying(room.is_playing);
           sendIframeCommand(room.is_playing ? 'play' : 'pause');
-          sendIframeCommand('unmute');
         }
 
-        // Автосдвиг времени при рассинхроне
-        if (diff > 2.5) {
+        const diff = Math.abs(currentTime - targetHostTime);
+        if (diff > 5 && now - lastAutoSeekRef.current > 8000) {
+          lastAutoSeekRef.current = now;
           sendIframeCommand('seek', targetHostTime);
-          if (room.is_playing) sendIframeCommand('play');
           setCurrentTime(targetHostTime);
-
-          // Для VK Video: если разница более 5 секунд, обновляем кадр с точной временной меткой
-          if (diff > 5 && mediaInfo.type === 'vk') {
-            const newUrl = getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing);
-            if (iframeRef.current && iframeRef.current.src !== newUrl) {
-              iframeRef.current.src = newUrl;
-              setIframeSrc(newUrl);
-            }
-          }
         }
       }
     };
 
     autoSyncViewer();
-    const interval = setInterval(autoSyncViewer, 1200);
+    const interval = setInterval(autoSyncViewer, 2000);
 
     return () => clearInterval(interval);
   }, [
@@ -880,7 +863,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     room.last_updated_at,
     mediaInfo.type,
     isPlaying,
-    currentTime,
   ]);
 
   useEffect(() => {
@@ -1090,12 +1072,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', syncTime);
         sendIframeCommand('play');
         sendIframeCommand('unmute');
-
-        const newEmbedUrl = getEmbedUrlWithTime(mediaInfo, syncTime, true);
-        if (iframeRef.current) {
-          iframeRef.current.src = newEmbedUrl;
-        }
-        setIframeSrc(newEmbedUrl);
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
