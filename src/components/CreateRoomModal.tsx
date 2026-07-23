@@ -141,7 +141,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
             Создать комнату просмотра
           </DialogTitle>
           <DialogDescription className="text-slate-400 text-xs">
-            Поддерживаются ссылки и код <iframe> с YouTube, VK Видео, Rutube, Twitch, Vimeo, OK.ru и MP4 файлы.
+            Поддерживаются ссылки и код iframe с YouTube, VK Видео, Rutube, Twitch, Vimeo, OK.ru и MP4 файлы.
           </DialogDescription>
         </DialogHeader>
 
@@ -167,7 +167,7 @@ export const CreateRoomModal: React.FC<CreateRoomModalProps> = ({
 
           <div className="space-y-1.5">
             <Label htmlFor="room_media_url_field" className="text-xs font-semibold text-slate-300 flex items-center justify-between">
-              <span>Ссылка или код <iframe></span>
+              <span>Ссылка или код iframe</span>
               <span className="text-[10px] text-purple-400 font-normal flex items-center gap-1">
                 <Tv className="h-3 w-3" /> VK Видео, YouTube, Rutube, Twitch, MP4
               </span>
