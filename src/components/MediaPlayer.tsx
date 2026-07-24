@@ -77,36 +77,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  // Стабильный URL для iframe
-  const [ytIframeSrc, setYtIframeSrc] = useState<string>(() => {
-    return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
-  });
-
-  const [iframeSrc, setIframeSrc] = useState<string>(() => {
-    return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
-  });
-
-  // Обновление при смене видео (из очереди или клика)
+  // Сброс и синхронизация при смене роликов
   useEffect(() => {
-    const initialUrl = getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
-    setYtIframeSrc(initialUrl);
-    setIframeSrc(initialUrl);
-    setDuration(0);
     setCurrentTime(0);
-
-    // Если плеер YouTube уже инициализирован, подаем прямую команду на загрузку нового ID
-    if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
-      try {
-        if (typeof ytPlayerRef.current.loadVideoById === 'function') {
-          ytPlayerRef.current.loadVideoById({
-            videoId: mediaInfo.id,
-            startSeconds: room.playback_position_seconds || 0,
-          });
-        }
-      } catch (e) {
-        console.error('Error switching YouTube video via API:', e);
-      }
-    }
+    setDuration(0);
+    setIsPlaying(room.is_playing);
+    setIsEmbedBlocked(false);
   }, [mediaInfo.id, room.current_media_url]);
 
   // Подключение YouTube Iframe API для точной длительности и управления
@@ -167,24 +143,27 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       }
     };
 
-    if (!(window as any).YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      if (firstScriptTag && firstScriptTag.parentNode) {
-        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-      } else {
-        document.head.appendChild(tag);
-      }
+    const mountTimer = setTimeout(() => {
+      if (!(window as any).YT) {
+        const tag = document.createElement('script');
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        if (firstScriptTag && firstScriptTag.parentNode) {
+          firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+        } else {
+          document.head.appendChild(tag);
+        }
 
-      (window as any).onYouTubeIframeAPIReady = () => {
+        (window as any).onYouTubeIframeAPIReady = () => {
+          initYtApiPlayer();
+        };
+      } else {
         initYtApiPlayer();
-      };
-    } else {
-      initYtApiPlayer();
-    }
+      }
+    }, 150);
 
     return () => {
+      clearTimeout(mountTimer);
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [mediaInfo.id, mediaInfo.type]);
@@ -747,7 +726,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
 
   const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00';
+    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
@@ -995,6 +974,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     ? 'opacity-100 pointer-events-auto transition-all duration-300'
     : 'opacity-0 pointer-events-none invisible transition-all duration-300';
 
+  const ytEmbedUrl = `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${
+    room.is_playing ? 1 : 0
+  }&start=${Math.floor(room.playback_position_seconds || 0)}&rel=0&controls=0&modestbranding=1&iv_load_policy=3&fs=0&disablekb=1&playsinline=1`;
+
   return (
     <div
       ref={containerRef}
@@ -1112,12 +1095,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* 1. YOUTUBE (С постоянным ключевым инстансом) */}
+        {/* 1. YOUTUBE */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
           <iframe
             ref={iframeRef}
-            key="yt-iframe-persistent"
-            src={ytIframeSrc}
+            key={`yt-${mediaInfo.id}`}
+            src={ytEmbedUrl}
             className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-none"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
@@ -1142,7 +1125,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {!isScreenSharingActive && isIframePlayer && (
           <iframe
             ref={iframeRef}
-            src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
+            key={`iframe-${mediaInfo.id}`}
+            src={getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing)}
             className={`absolute inset-0 w-full h-full border-0 bg-black z-20 ${
               isHost ? 'pointer-events-auto' : 'pointer-events-none'
             }`}
