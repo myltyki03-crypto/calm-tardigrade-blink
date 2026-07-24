@@ -86,7 +86,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  const [iframeKey, setIframeKey] = useState<number>(Date.now());
+  const [iframeKey] = useState<number>(Date.now());
 
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, false);
@@ -149,37 +149,20 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
       if (command === 'play') {
         win.postMessage({ box_msg: 'play' }, '*');
-        win.postMessage({ type: 'play' }, '*');
-        win.postMessage({ event: 'play' }, '*');
-        win.postMessage({ method: 'play' }, '*');
-        win.postMessage({ box_msg: 'unmute' }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'play' }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'play' }), '*');
       } else if (command === 'pause') {
         win.postMessage({ box_msg: 'pause' }, '*');
-        win.postMessage({ type: 'pause' }, '*');
-        win.postMessage({ event: 'pause' }, '*');
-        win.postMessage({ method: 'pause' }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'pause' }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
       } else if (command === 'seek' && typeof value === 'number') {
         win.postMessage({ box_msg: 'seek', value: val }, '*');
         win.postMessage({ box_msg: 'seek', time: val }, '*');
-        win.postMessage({ type: 'seek', time: val, value: val }, '*');
-        win.postMessage({ event: 'seek', param: val }, '*');
-        win.postMessage({ method: 'seek', param: val }, '*');
-        win.postMessage(JSON.stringify({ type: 'seek', time: val, value: val }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'seek', value: val }), '*');
         win.postMessage(JSON.stringify({ box_msg: 'seek', time: val }), '*');
-        win.postMessage(JSON.stringify({ event: 'seek', param: val }), '*');
-        win.postMessage(JSON.stringify(['call', 'seek', [val]]), '*');
+        win.postMessage({ type: 'player:setCurrentTime', data: { time: val } }, '*');
+        win.postMessage(JSON.stringify({ type: 'player:setCurrentTime', data: { time: val } }), '*');
       } else if (command === 'unmute' || command === 'volume') {
         win.postMessage({ box_msg: 'unmute' }, '*');
-        win.postMessage({ type: 'unmute' }, '*');
-        win.postMessage({ event: 'unmute' }, '*');
         win.postMessage({ box_msg: 'set_volume', value: value ?? volume }, '*');
-        win.postMessage({ type: 'volume', value: value ?? volume }, '*');
-        win.postMessage(JSON.stringify({ type: 'action', action: 'unmute' }), '*');
       }
     } catch (e) {
       console.error('Failed to send iframe command:', e);
@@ -204,7 +187,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         ).toLowerCase();
 
         if (
-          eventType.includes('state') ||
           eventType.includes('status') ||
           eventType.includes('volume') ||
           eventType.includes('quality') ||
@@ -237,20 +219,26 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           else if (Array.isArray(data) && typeof data[1] === 'number') timeVal = data[1];
         }
 
+        const now = Date.now();
+
         // Игнорируем задержки или переходные 0.00 сообщения во время буферизации после перемотки
-        if (Date.now() - lastAutoSeekRef.current < 4000) {
+        if (now - lastAutoSeekRef.current < 5000) {
           return;
         }
 
         if (typeof timeVal === 'number' && !isNaN(timeVal) && timeVal >= 0) {
-          const now = Date.now();
           const oldTime = currentTimeRef.current;
-          const timeJump = Math.abs(timeVal - oldTime);
+
+          // Защита: Игнорируем аномальный случайный сброс в 0 если видео уже шло больше 5 секунд
+          if (timeVal < 2 && oldTime > 5) {
+            return;
+          }
 
           setCurrentTime(timeVal);
 
           if (isHost) {
-            if (timeJump > 2 || now - lastHostSyncSaveRef.current > 4000) {
+            const timeJump = Math.abs(timeVal - oldTime);
+            if ((timeJump > 2 && timeVal > 0) || now - lastHostSyncSaveRef.current > 5000) {
               lastHostSyncSaveRef.current = now;
               updateRoomProgress(room.id, timeVal, isPlaying);
             }
@@ -318,6 +306,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           if (Math.abs((ytPlayerRef.current.getCurrentTime?.() || 0) - targetHostTime) > 3) {
             ytPlayerRef.current.seekTo?.(targetHostTime, true);
             setCurrentTime(targetHostTime);
+            currentTimeRef.current = targetHostTime;
+            lastAutoSeekRef.current = Date.now();
           }
         } catch (e) {}
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
@@ -332,6 +322,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         if (Math.abs(v.currentTime - targetHostTime) > 3) {
           v.currentTime = targetHostTime;
           setCurrentTime(targetHostTime);
+          currentTimeRef.current = targetHostTime;
+          lastAutoSeekRef.current = Date.now();
         }
       } else if (isIframePlayer) {
         setIsPlaying(currentIsPlaying);
@@ -343,7 +335,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         if (diff > 3) {
           lastAutoSeekRef.current = Date.now();
           setCurrentTime(targetHostTime);
+          currentTimeRef.current = targetHostTime;
           sendIframeCommand('seek', targetHostTime);
+          setIframeSrc(getEmbedUrlWithTime(mediaInfo, targetHostTime, currentIsPlaying));
         }
       }
     }
@@ -729,7 +723,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     const initialSec = getCalculatedHostTime();
     setCurrentTime(initialSec);
     setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, room.is_playing));
-    setIframeKey(Date.now());
   }, [mediaInfo.id, mediaInfo.url]);
 
   useEffect(() => {
@@ -878,7 +871,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     };
   }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
 
-  // ПЛАВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ (Фоновая компенсация рассинхрона)
+  // ПЛАВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ
   useEffect(() => {
     if (isHost || isScreenSharingActive) return;
 
@@ -904,10 +897,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             lastAutoSeekRef.current = now;
             ytPlayerRef.current.seekTo?.(targetHostTime, true);
             setCurrentTime(targetHostTime);
+            currentTimeRef.current = targetHostTime;
           }
         } catch (e) {}
       }
-      // 2. Прямые MP4 видеофайлы
+      // 2. Direct MP4
       else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         const v = videoElementRef.current;
         if (room.is_playing && v.paused) {
@@ -922,20 +916,23 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           lastAutoSeekRef.current = now;
           v.currentTime = targetHostTime;
           setCurrentTime(targetHostTime);
+          currentTimeRef.current = targetHostTime;
         }
       }
-      // 3. Iframe плееры (VK Video, Rutube, Vimeo, OK)
+      // 3. Iframe players
       else if (isIframePlayer) {
         if (room.is_playing !== isPlaying) {
           setIsPlaying(room.is_playing);
           sendIframeCommand(room.is_playing ? 'play' : 'pause');
         }
 
-        const diff = Math.abs(currentTime - targetHostTime);
+        const diff = Math.abs(currentTimeRef.current - targetHostTime);
         if (diff > 8 && now - lastAutoSeekRef.current > 10000) {
           lastAutoSeekRef.current = now;
           sendIframeCommand('seek', targetHostTime);
+          setIframeSrc(getEmbedUrlWithTime(mediaInfo, targetHostTime, room.is_playing));
           setCurrentTime(targetHostTime);
+          currentTimeRef.current = targetHostTime;
         }
       }
     };
@@ -961,8 +958,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   }, []);
 
   const handleMobileUnlockClick = () => {
+    lastAutoSeekRef.current = Date.now();
+    const syncTime = getCalculatedHostTime();
+
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
-      const syncTime = getCalculatedHostTime();
       try {
         ytPlayerRef.current.unMute();
         ytPlayerRef.current.setVolume(volume || 80);
@@ -973,10 +972,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       videoElementRef.current.muted = false;
       videoElementRef.current.play();
     } else if (isIframePlayer) {
-      const syncTime = getCalculatedHostTime();
       sendIframeCommand('seek', syncTime);
       sendIframeCommand('play');
       sendIframeCommand('unmute');
+      setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
     }
 
     setIsMuted(false);
@@ -1101,8 +1100,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
     if (duration > 0 || mediaInfo.type === 'vk') {
       const maxSec = duration > 0 ? duration : 3600;
-      const targetSeconds = (newProgressPercent / 100) * maxSec;
+      const targetSeconds = Math.max(0, Math.floor((newProgressPercent / 100) * maxSec));
+
       setCurrentTime(targetSeconds);
+      currentTimeRef.current = targetSeconds;
+      lastAutoSeekRef.current = Date.now();
+      lastHostSyncSaveRef.current = Date.now();
 
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
         ytPlayerRef.current.seekTo(targetSeconds, true);
@@ -1110,15 +1113,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         videoElementRef.current.currentTime = targetSeconds;
       } else {
         sendIframeCommand('seek', targetSeconds);
+        setIframeSrc(getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying));
       }
 
-      lastHostSyncSaveRef.current = Date.now();
       updateRoomProgress(room.id, targetSeconds, isPlaying);
     }
   };
 
   const handleSyncClick = (e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+
+    const syncTime = getCalculatedHostTime();
+    lastAutoSeekRef.current = Date.now();
 
     if (isHost) {
       let curSec = currentTime;
@@ -1131,8 +1137,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       updateRoomProgress(room.id, curSec, isPlaying);
       showSuccess('Время трансляции отправлено всем зрителям!');
     } else {
-      const syncTime = getCalculatedHostTime();
-
       if (mediaInfo.type === 'youtube' && ytPlayerRef.current?.seekTo) {
         ytPlayerRef.current.seekTo(syncTime, true);
         if (room.is_playing) {
@@ -1154,11 +1158,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         }
       } else if (isIframePlayer) {
         setCurrentTime(syncTime);
-        setIsPlaying(true);
+        currentTimeRef.current = syncTime;
+        setIsPlaying(room.is_playing);
 
         sendIframeCommand('seek', syncTime);
-        sendIframeCommand('play');
+        sendIframeCommand(room.is_playing ? 'play' : 'pause');
         sendIframeCommand('unmute');
+        setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, room.is_playing));
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
