@@ -97,6 +97,136 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     currentTimeRef.current = currentTime;
   }, [currentTime]);
 
+  // ИНИЦИАЛИЗАЦИЯ И РЕНДЕРИНГ YOUTUBE IFRAME API
+  useEffect(() => {
+    if (isScreenSharingActive || mediaInfo.type !== 'youtube' || !playerContainerRef.current) {
+      return;
+    }
+
+    let isSubscribed = true;
+
+    const initYTPlayer = () => {
+      if (!window.YT || !window.YT.Player || !playerContainerRef.current) return;
+
+      if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+        try {
+          ytPlayerRef.current.destroy();
+        } catch (e) {}
+      }
+
+      const container = playerContainerRef.current;
+      container.innerHTML = '<div id="yt-player-element" class="w-full h-full"></div>';
+
+      try {
+        ytPlayerRef.current = new window.YT.Player('yt-player-element', {
+          videoId: mediaInfo.id,
+          playerVars: {
+            autoplay: room.is_playing ? 1 : 0,
+            controls: 1,
+            disablekb: 0,
+            fs: 1,
+            modestbranding: 1,
+            rel: 0,
+            start: Math.floor(room.playback_position_seconds || 0),
+            enablejsapi: 1,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (event: any) => {
+              if (!isSubscribed) return;
+              const p = event.target;
+              setIsEmbedBlocked(false);
+              setDuration(p.getDuration() || 0);
+              if (room.is_playing) {
+                p.playVideo();
+              }
+            },
+            onStateChange: (event: any) => {
+              if (!isSubscribed) return;
+              // 1 = PLAYING, 2 = PAUSED, 0 = ENDED
+              if (event.data === 1) {
+                setIsPlaying(true);
+                setNeedUserGesture(false);
+                if (ytPlayerRef.current?.getDuration) {
+                  setDuration(ytPlayerRef.current.getDuration() || 0);
+                }
+              } else if (event.data === 2) {
+                if (isHost) {
+                  setIsPlaying(false);
+                }
+              }
+            },
+            onError: (err: any) => {
+              if (!isSubscribed) return;
+              if (err.data === 101 || err.data === 150 || err.data === 100 || err.data === 2) {
+                setIsEmbedBlocked(true);
+              }
+            },
+          },
+        });
+      } catch (e) {
+        console.error('Failed to create YT.Player instance:', e);
+      }
+    };
+
+    if (!window.YT || !window.YT.Player) {
+      if (!document.getElementById('youtube-iframe-api')) {
+        const tag = document.createElement('script');
+        tag.id = 'youtube-iframe-api';
+        tag.src = 'https://www.youtube.com/iframe_api';
+        const firstScriptTag = document.getElementsByTagName('script')[0];
+        firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
+      }
+
+      const prevCallback = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = () => {
+        if (prevCallback) prevCallback();
+        if (isSubscribed) initYTPlayer();
+      };
+
+      const checkInterval = setInterval(() => {
+        if (window.YT && window.YT.Player) {
+          clearInterval(checkInterval);
+          if (isSubscribed) initYTPlayer();
+        }
+      }, 250);
+
+      return () => {
+        isSubscribed = false;
+        clearInterval(checkInterval);
+      };
+    } else {
+      initYTPlayer();
+    }
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [mediaInfo.id, mediaInfo.type, isScreenSharingActive]);
+
+  // Периодическое обновление текущего времени YouTube Плеера
+  useEffect(() => {
+    if (mediaInfo.type === 'youtube' && !isScreenSharingActive) {
+      const interval = setInterval(() => {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
+          try {
+            const cur = ytPlayerRef.current.getCurrentTime() || 0;
+            const dur = ytPlayerRef.current.getDuration() || 0;
+            if (cur > 0) {
+              setCurrentTime(cur);
+              currentTimeRef.current = cur;
+            }
+            if (dur > 0) {
+              setDuration(dur);
+            }
+          } catch (e) {}
+        }
+      }, 500);
+
+      return () => clearInterval(interval);
+    }
+  }, [mediaInfo.type, isScreenSharingActive]);
+
   // Автоматическое скрытие элементов управления
   useEffect(() => {
     if (isPlaying) {
@@ -702,7 +832,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Локальный таймер для отсчета времени
+  // Локальный таймер для отсчета времени iframe плееров
   useEffect(() => {
     if (isIframePlayer) {
       let interval: NodeJS.Timeout | null = null;
@@ -1217,7 +1347,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
           <div
             ref={playerContainerRef}
-            className="absolute inset-0 w-full h-full pointer-events-none [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0 [&>iframe]:pointer-events-none"
+            className="absolute inset-0 w-full h-full z-10 [&>iframe]:w-full [&>iframe]:h-full [&>iframe]:absolute [&>iframe]:inset-0"
           />
         )}
 
