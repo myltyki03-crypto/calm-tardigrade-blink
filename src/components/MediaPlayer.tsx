@@ -712,7 +712,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setCurrentTime((prev) => {
             const next = prev + 1;
             if (isHost && Date.now() - iframeLoadedTimeRef.current > 3000 && Date.now() - lastHostSyncSaveRef.current > 4000) {
-              lastHostSyncSaveRef.current > 4000) {
               lastHostSyncSaveRef.current = Date.now();
               updateRoomProgress(room.id, next, true);
             }
@@ -727,168 +726,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   }, [isPlaying, isHost, isIframePlayer, room.id]);
 
   useEffect(() => {
-    setIsEmbedBlocked(false);
-    iframeLoadedTimeRef.current = Date.now();
-
-    const initialSec = getCalculatedHostTime();
-    setCurrentTime(initialSec);
-    setIframeSrc(getEmbedUrlWithTime(mediaInfo, initialSec, room.is_playing));
-  }, [mediaInfo.id, mediaInfo.url]);
-
-  useEffect(() => {
-    if (mediaInfo.type === 'direct' && videoElementRef.current) {
-      const v = videoElementRef.current;
-      v.volume = volume / 100;
-      v.muted = isMuted;
-
-      const handleTimeUpdate = () => {
-        setCurrentTime(v.currentTime);
-        if (v.duration) setDuration(v.duration);
-      };
-
-      v.addEventListener('timeupdate', handleTimeUpdate);
-      return () => v.removeEventListener('timeupdate', handleTimeUpdate);
-    }
-  }, [mediaInfo.type]);
-
-  useEffect(() => {
-    if (mediaInfo.type !== 'youtube' || isScreenSharingActive) return;
-
-    if (!window.YT) {
-      const tag = document.createElement('script');
-      tag.src = 'https://www.youtube.com/iframe_api';
-      const firstScriptTag = document.getElementsByTagName('script')[0];
-      firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
-    }
-
-    let interval: NodeJS.Timeout | null = null;
-
-    const initPlayer = () => {
-      if (!playerContainerRef.current) return;
-
-      playerContainerRef.current.innerHTML = '';
-      const targetElement = document.createElement('div');
-      playerContainerRef.current.appendChild(targetElement);
-
-      const startSec = getCalculatedHostTime();
-
-      try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
-          ytPlayerRef.current.destroy();
-        }
-      } catch (e) {}
-
-      ytPlayerRef.current = new window.YT.Player(targetElement, {
-        host: 'https://www.youtube-nocookie.com',
-        videoId: mediaInfo.id,
-        playerVars: {
-          autoplay: room.is_playing ? 1 : 0,
-          controls: 0,
-          disablekb: 1,
-          fs: 0,
-          modestbranding: 1,
-          rel: 0,
-          iv_load_policy: 3,
-          cc_load_policy: 0,
-          autohide: 1,
-          playsinline: 1,
-          enablejsapi: 1,
-          start: Math.floor(startSec),
-        },
-        events: {
-          onReady: (event: any) => {
-            event.target.setVolume(volume);
-            forceDisableCaptions();
-
-            if (startSec > 0) {
-              event.target.seekTo(startSec, true);
-            }
-            if (room.is_playing) {
-              try {
-                const playPromise = event.target.playVideo();
-                if (playPromise && typeof playPromise.catch === 'function') {
-                  playPromise.catch(() => setNeedUserGesture(true));
-                }
-              } catch {
-                setNeedUserGesture(true);
-              }
-            } else {
-              event.target.pauseVideo();
-            }
-            const dur = event.target.getDuration();
-            if (dur && dur > 0) setDuration(dur);
-          },
-          onStateChange: (event: any) => {
-            forceDisableCaptions();
-            if (event.data === 1) {
-              setIsPlaying(true);
-              setNeedUserGesture(false);
-              setIsEmbedBlocked(false);
-            } else if (event.data === 2) {
-              if (isHost) {
-                setIsPlaying(false);
-              } else if (room.is_playing) {
-                event.target.playVideo?.();
-                setIsPlaying(true);
-              }
-            } else if (event.data === 0) {
-              setIsPlaying(false);
-            }
-          },
-          onError: (event: any) => {
-            if (event.data === 101 || event.data === 150 || event.data === 2) {
-              setIsEmbedBlocked(true);
-            } else {
-              setNeedUserGesture(true);
-            }
-          },
-        },
-      });
-    };
-
-    if (window.YT && window.YT.Player) {
-      initPlayer();
-    } else {
-      window.onYouTubeIframeAPIReady = () => initPlayer();
-    }
-
-    interval = setInterval(() => {
-      if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
-        const cur = ytPlayerRef.current.getCurrentTime();
-        const dur = ytPlayerRef.current.getDuration();
-        const now = Date.now();
-
-        forceDisableCaptions();
-
-        if (typeof cur === 'number') {
-          setCurrentTime(cur);
-          if (isHost && now - lastHostSyncSaveRef.current > 4000) {
-            lastHostSyncSaveRef.current = now;
-            if (ytPlayerRef.current.getPlayerState?.() === 1) {
-              updateRoomProgress(room.id, cur, true);
-            }
-          }
-        }
-        if (typeof dur === 'number' && dur > 0) setDuration(dur);
-      }
-    }, 1000);
-
-    return () => {
-      if (interval) clearInterval(interval);
-      if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
-        try {
-          ytPlayerRef.current.destroy();
-        } catch (e) {}
-      }
-      if (playerContainerRef.current) {
-        playerContainerRef.current.innerHTML = '';
-      }
-    };
-  }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive, isHost, room.is_playing]);
-
-  // ПЛАВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ
-  useEffect(() => {
-    if (isHost || isScreenSharingActive) return;
+    if (!isHost || isScreenSharingActive) return;
 
     const autoSyncViewer = () => {
       const targetHostTime = getCalculatedHostTime();
@@ -981,22 +819,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           
           if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
             if (data.is_playing) {
-              ytPlayerRef.current.playVideo?.();
+              ytPlayerRef.current.playVideo();
             } else {
-              ytPlayerRef.current.pauseVideo?.();
+              ytPlayerRef.current.pauseVideo();
             }
           } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
             if (data.is_playing) {
-              videoElementRef.current.play().catch(() => setNeedUserGesture(true));
+              videoElementRef.current.play();
             } else {
               videoElementRef.current.pause();
             }
           } else if (isIframePlayer) {
             sendIframeCommand(data.is_playing ? 'play' : 'pause');
+            sendIframeCommand('unmute');
           }
         }
-      })
-      .subscribe();
+      }) .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
