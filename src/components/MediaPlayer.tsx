@@ -1019,18 +1019,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* 1. YOUTUBE (С безопасным кадрированием для скрытия родной плашки и логотипов) */}
+        {/* 1. YOUTUBE (без какого-либо кадрирования, масштабирования или обрезки кадра) */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
-          <div className="absolute inset-0 w-full h-full overflow-hidden bg-black z-10 pointer-events-none">
-            <iframe
-              ref={iframeRef}
-              key={`yt-${mediaInfo.id}`}
-              src={ytIframeSrc}
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[116%] h-[116%] border-0 bg-black pointer-events-none scale-100"
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-              allowFullScreen
-            />
-          </div>
+          <iframe
+            ref={iframeRef}
+            key={`yt-${mediaInfo.id}`}
+            src={ytIframeSrc}
+            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-none"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+            allowFullScreen
+          />
         )}
 
         {/* 2. TWITCH */}
