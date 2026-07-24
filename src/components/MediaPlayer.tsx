@@ -1024,7 +1024,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             ref={iframeRef}
             key={`yt-${mediaInfo.id}`}
             src={youtubeEmbedUrl}
-            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-auto"
+            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-none scale-[1.01]"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
           />

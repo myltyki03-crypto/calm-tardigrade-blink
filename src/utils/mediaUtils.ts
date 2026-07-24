@@ -19,7 +19,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
   if (mediaInfo.type === 'youtube') {
     const autoplayParam = shouldAutoplay ? 1 : 0;
     const startParam = cleanSec > 0 ? `&start=${cleanSec}` : '';
-    return `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${autoplayParam}${startParam}&rel=0&controls=1`;
+    return `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${autoplayParam}${startParam}&rel=0&controls=0&modestbranding=1&iv_load_policy=3&fs=0&disablekb=1&playsinline=1`;
   }
 
   if (mediaInfo.type === 'vk') {
@@ -131,7 +131,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
       id: videoId,
       title: `YouTube (${videoId})`,
       thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0&controls=1`,
+      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0&controls=0&modestbranding=1&iv_load_policy=3&fs=0&disablekb=1&playsinline=1`,
     };
   }
 
