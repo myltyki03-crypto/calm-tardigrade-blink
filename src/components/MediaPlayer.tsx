@@ -44,6 +44,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const screenShareVideoRef = useRef<HTMLVideoElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const currentTimeRef = useRef<number>(0);
@@ -72,11 +73,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [showControls, setShowControls] = useState(true);
 
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(240); // По умолчанию 4 минуты до считывания точно с API
+  const [duration, setDuration] = useState(0); // Инициализация 0 для считывания точной длины из API
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  // Стабильный URL для YouTube iframe
+  // Стабильный URL для iframe
   const [ytIframeSrc, setYtIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
   });
@@ -85,13 +86,93 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
   });
 
-  // Обновление iframeSrc строго при смене видео ID
+  // Обновление при смене видео
   useEffect(() => {
     const initialUrl = getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
     setYtIframeSrc(initialUrl);
     setIframeSrc(initialUrl);
-    setDuration(240); // Сброс при смене трека
+    setDuration(0); // Сброс длительности при смене медиа
   }, [mediaInfo.id, room.current_media_url]);
+
+  // Подключение YouTube Iframe API для точной длительности и позиции
+  useEffect(() => {
+    if (mediaInfo.type !== 'youtube' || !mediaInfo.id) return;
+
+    let pollInterval: NodeJS.Timeout | null = null;
+
+    const initYtApiPlayer = () => {
+      if (!iframeRef.current || !(window as any).YT || !(window as any).YT.Player) return;
+
+      try {
+        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
+          ytPlayerRef.current.destroy();
+        }
+
+        ytPlayerRef.current = new (window as any).YT.Player(iframeRef.current, {
+          events: {
+            onReady: (event: any) => {
+              const dur = event.target.getDuration();
+              if (dur && dur > 0) {
+                setDuration(Math.floor(dur));
+              }
+            },
+            onStateChange: (event: any) => {
+              const dur = event.target.getDuration();
+              if (dur && dur > 0) {
+                setDuration(Math.floor(dur));
+              }
+            },
+          },
+        });
+
+        pollInterval = setInterval(() => {
+          if (ytPlayerRef.current) {
+            try {
+              if (typeof ytPlayerRef.current.getDuration === 'function') {
+                const dur = ytPlayerRef.current.getDuration();
+                if (dur && dur > 0) {
+                  setDuration(Math.floor(dur));
+                }
+              }
+
+              if (typeof ytPlayerRef.current.getCurrentTime === 'function') {
+                const cur = ytPlayerRef.current.getCurrentTime();
+                if (typeof cur === 'number' && !isNaN(cur) && cur >= 0) {
+                  const now = Date.now();
+                  if (now - lastAutoSeekRef.current >= 3000) {
+                    setCurrentTime(Math.floor(cur));
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+        }, 1000);
+      } catch (e) {
+        console.error('Failed to init YT player API:', e);
+      }
+    };
+
+    if (!(window as any).YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      if (firstScriptTag && firstScriptTag.parentNode) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
+      } else {
+        document.head.appendChild(tag);
+      }
+
+      (window as any).onYouTubeIframeAPIReady = () => {
+        initYtApiPlayer();
+      };
+    } else {
+      initYtApiPlayer();
+    }
+
+    return () => {
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [mediaInfo.id, mediaInfo.type]);
 
   // Синхронизация ref текущего времени
   useEffect(() => {
@@ -183,7 +264,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Перехват PostMessage событий плееров (YouTube / HTML5)
+  // Перехват PostMessage событий плееров
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       try {
@@ -194,7 +275,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         if (!data || typeof data !== 'object') return;
 
-        // Считывание длительности из YouTube infoDelivery объекта
+        // Считывание длительности из YouTube infoDelivery объектов
         if (data.info && typeof data.info.duration === 'number' && data.info.duration > 0) {
           setDuration(Math.floor(data.info.duration));
         } else if (typeof data.duration === 'number' && data.duration > 0) {
@@ -254,7 +335,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return () => window.removeEventListener('message', handleWindowMessage);
   }, [isHost, isPlaying, room.id, room.is_playing]);
 
-  // Синхронизация зрителя при изменении данных ведущего без перезагрузки iframe
+  // Синхронизация зрителя при изменении данных ведущего
   const prevHostPositionRef = useRef<{ pos: number; updatedAt: string; isPlaying: boolean }>({
     pos: room.playback_position_seconds || 0,
     updatedAt: room.last_updated_at || '',
@@ -651,10 +732,16 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
 
+  // Форматирование времени с поддержкой часов (ЧЧ:ММ:СС)
   const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
-    const mins = Math.floor(seconds / 60);
+    if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00';
+    const hrs = Math.floor(seconds / 3600);
+    const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
+
+    if (hrs > 0) {
+      return `${hrs}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -819,7 +906,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) return;
 
-    const maxSec = duration > 0 ? duration : 240;
+    const maxSec = duration > 0 ? duration : 3600;
     const targetSeconds = Math.max(0, Math.floor((newProgressPercent / 100) * maxSec));
 
     setCurrentTime(targetSeconds);
