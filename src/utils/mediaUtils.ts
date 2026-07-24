@@ -16,6 +16,20 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
 
   const cleanSec = Math.max(0, Math.floor(startSec));
 
+  if (mediaInfo.type === 'youtube') {
+    try {
+      const urlObj = new URL(`https://www.youtube.com/embed/${mediaInfo.id}`);
+      urlObj.searchParams.set('enablejsapi', '1');
+      urlObj.searchParams.set('autoplay', shouldAutoplay ? '1' : '0');
+      urlObj.searchParams.set('start', cleanSec.toString());
+      urlObj.searchParams.set('rel', '0');
+      urlObj.searchParams.set('controls', '1');
+      return urlObj.toString();
+    } catch {
+      return `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${shouldAutoplay ? 1 : 0}&start=${cleanSec}&rel=0&controls=1`;
+    }
+  }
+
   if (mediaInfo.type === 'vk') {
     try {
       const urlObj = new URL(baseUrl);
@@ -85,7 +99,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
 export const parseMediaUrl = (url: string): MediaInfo => {
   let cleanUrl = url.trim();
 
-  // 1. Извлечение ссылки из <iframe> кодов ВКонтакте или других сервисов
+  // 1. Извлечение ссылки из <iframe> кодов
   if (cleanUrl.includes('<iframe')) {
     const srcMatch = cleanUrl.match(/src=["']([^"']+)["']/i);
     if (srcMatch && srcMatch[1]) {
@@ -99,7 +113,6 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     let videoId = '';
     const isVkVideoDomain = cleanUrl.includes('vkvideo.ru');
 
-    // Если вставлен готовый embed плеера (video_ext.php)
     if (cleanUrl.includes('video_ext.php')) {
       try {
         const u = new URL(cleanUrl);
@@ -113,7 +126,6 @@ export const parseMediaUrl = (url: string): MediaInfo => {
         embedUrl = cleanUrl;
       }
     } else {
-      // Прямые ссылки вида vkvideo.ru/video-228893636_456239357 или vk.com/video-228893636_456239357
       const match = cleanUrl.match(/(?:video|clip|wall)(-?\d+)_(\d+)/i);
       if (match) {
         const oid = match[1];
@@ -230,20 +242,33 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     };
   }
 
-  // 8. YOUTUBE
+  // 8. YOUTUBE (поддержка любых ссылок, включая watch, shorts, embed, youtu.be и чистые ID)
   if (
     cleanUrl.includes('youtube.com/') ||
-    cleanUrl.includes('youtu.be/')
+    cleanUrl.includes('youtu.be/') ||
+    cleanUrl.match(/^[a-zA-Z0-9_-]{11}$/)
   ) {
     let videoId = 'jfKfPfyJRdk';
-    if (cleanUrl.includes('youtube.com/watch?v=')) {
-      videoId = cleanUrl.split('v=')[1]?.split('&')[0] || videoId;
+
+    if (cleanUrl.match(/^[a-zA-Z0-9_-]{11}$/)) {
+      videoId = cleanUrl;
+    } else if (cleanUrl.includes('youtube.com/watch')) {
+      try {
+        const u = new URL(cleanUrl);
+        videoId = u.searchParams.get('v') || videoId;
+      } catch {
+        const match = cleanUrl.match(/v=([a-zA-Z0-9_-]{11})/);
+        if (match) videoId = match[1];
+      }
     } else if (cleanUrl.includes('youtu.be/')) {
-      videoId = cleanUrl.split('youtu.be/')[1]?.split('?')[0] || videoId;
+      const parts = cleanUrl.split('youtu.be/')[1];
+      videoId = parts?.split('?')[0]?.split('&')[0] || videoId;
     } else if (cleanUrl.includes('youtube.com/embed/')) {
-      videoId = cleanUrl.split('embed/')[1]?.split('?')[0] || videoId;
+      const parts = cleanUrl.split('embed/')[1];
+      videoId = parts?.split('?')[0]?.split('&')[0] || videoId;
     } else if (cleanUrl.includes('youtube.com/shorts/')) {
-      videoId = cleanUrl.split('shorts/')[1]?.split('?')[0] || videoId;
+      const parts = cleanUrl.split('shorts/')[1];
+      videoId = parts?.split('?')[0]?.split('&')[0] || videoId;
     }
 
     return {
@@ -252,6 +277,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
       id: videoId,
       title: `YouTube (${videoId})`,
       thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0&controls=1`,
     };
   }
 

@@ -22,15 +22,10 @@ type MobileTab = 'chat' | 'queue' | 'members' | 'info';
 const RAVE_REACTIONS = ['❤️', '🔥', '😂', '🎉', '💩', '😮'];
 
 const extractYouTubeDetails = (url: string) => {
-  let videoId = '4xDzrJKXOOY';
-  if (url.includes('youtube.com/watch?v=')) {
-    videoId = url.split('v=')[1]?.split('&')[0] || videoId;
-  } else if (url.includes('youtu.be/')) {
-    videoId = url.split('youtu.be/')[1]?.split('?')[0] || videoId;
-  }
+  const mediaInfo = parseMediaUrl(url);
   return {
-    videoId,
-    thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
+    videoId: mediaInfo.id || '4xDzrJKXOOY',
+    thumbnail: mediaInfo.thumbnail || `https://img.youtube.com/vi/${mediaInfo.id}/hqdefault.jpg`,
   };
 };
 
@@ -121,7 +116,6 @@ export const RoomPage = () => {
 
   const roomMessages = room ? (messagesByRoom[room.id] || []) : [];
 
-  // Фильтруем только текстовые сообщения (без реакций) для точного счетчика в кнопке чата
   const chatMessagesCount = roomMessages.filter((m) => {
     if (!m || !m.message || m.message.trim().length === 0) return false;
     if (m.type === 'reaction') return false;
@@ -129,14 +123,12 @@ export const RoomPage = () => {
     return true;
   }).length;
 
-  // Помечаем старые реакции при первичном входе в комнату
   useEffect(() => {
     if (!room) return;
     const existingReactions = roomMessages.filter((m) => m.type === 'reaction' || RAVE_REACTIONS.includes(m.message.trim()));
     existingReactions.forEach((m) => processedReactionIdsRef.current.add(m.id));
   }, [room?.id]);
 
-  // Слушаем новые входящие реакции для анимации у ВСЕХ участников
   useEffect(() => {
     if (!room) return;
     const reactionMsgs = roomMessages.filter((m) => m.type === 'reaction' || RAVE_REACTIONS.includes(m.message.trim()));
@@ -384,7 +376,6 @@ export const RoomPage = () => {
       />
 
       <main className="w-full flex-1 p-2 md:p-4 grid grid-cols-1 lg:grid-cols-12 gap-3 md:gap-4 max-w-7xl mx-auto">
-        {/* Левая колонка - Видео и Инфо о комнате */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-2 md:gap-3 w-full">
           <div className="flex items-center justify-between px-1 w-full">
             <Button
@@ -431,7 +422,6 @@ export const RoomPage = () => {
             />
           </div>
 
-          {/* Компактная карточка заголовка комнаты на смартфонах */}
           <div className="lg:hidden flex items-center justify-between p-2.5 rounded-2xl bg-slate-900/90 border border-purple-900/40">
             <div className="min-w-0 flex-1">
               <h2 className="text-xs sm:text-sm font-bold text-slate-100 truncate">{room.title}</h2>
@@ -444,7 +434,6 @@ export const RoomPage = () => {
             </div>
           </div>
 
-          {/* ПАНЕЛЬ ЭМОДЗИ РЕАКЦИЙ */}
           <div className="flex items-center justify-center gap-2 p-2 rounded-2xl bg-slate-900/80 backdrop-blur-xl border border-purple-900/40 shadow-lg w-full my-0.5">
             <span className="text-[10px] text-purple-300/80 font-semibold uppercase tracking-wider hidden sm:inline mr-1">
               Реакции:
@@ -467,7 +456,6 @@ export const RoomPage = () => {
             </div>
           </div>
 
-          {/* Панель информации о комнате для ПК */}
           <div className="hidden lg:flex p-3 md:p-4 rounded-3xl border border-purple-900/40 bg-slate-900/80 items-center justify-between gap-3 w-full">
             <div>
               <div className="flex items-center gap-2">
@@ -491,7 +479,6 @@ export const RoomPage = () => {
           </div>
         </div>
 
-        {/* 📱 МОБИЛЬНЫЙ ИНТЕРФЕЙС (Красивый переключатель вкладок) */}
         <div className="lg:hidden flex border border-purple-900/40 bg-slate-950/90 backdrop-blur-md rounded-2xl p-1 gap-1 my-1 w-full shadow-inner">
           <button
             onClick={() => setActiveMobileTab('chat')}
@@ -545,7 +532,6 @@ export const RoomPage = () => {
           </button>
         </div>
 
-        {/* 📱 МОБИЛЬНЫЙ КОНТЕНТ ВКЛАДОК */}
         <div className="lg:hidden flex flex-col h-[520px] w-full pb-2">
           {activeMobileTab === 'chat' && (
             <RoomChat
@@ -586,7 +572,6 @@ export const RoomPage = () => {
           )}
         </div>
 
-        {/* 💻 ИНТЕРФЕЙС ТОЛЬКО ДЛЯ ПК (Правая боковая панель) */}
         <div className="hidden lg:flex lg:col-span-5 xl:col-span-4 flex-col h-[600px] w-full rounded-3xl border border-purple-900/40 bg-slate-900/95 overflow-hidden shadow-2xl">
           <Tabs value={sidebarTab} onValueChange={(val: any) => setSidebarTab(val)} className="flex flex-col h-full w-full min-h-0">
             <TabsList className="grid grid-cols-3 bg-slate-950 p-1 border-b border-purple-900/40 rounded-none shrink-0 h-11">
