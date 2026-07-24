@@ -19,13 +19,6 @@ import { showSuccess, showError } from '@/utils/toast';
 import { VideoReactionsOverlay } from '@/components/media/VideoReactionsOverlay';
 import { MediaControlsOverlay } from '@/components/media/MediaControlsOverlay';
 
-declare global {
-  interface Window {
-    YT: any;
-    onYouTubeIframeAPIReady: any;
-  }
-}
-
 interface MediaPlayerProps {
   room: Room;
   isHost: boolean;
@@ -51,10 +44,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const screenShareVideoRef = useRef<HTMLVideoElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  const iframeLoadedTimeRef = useRef<number>(Date.now());
   const currentTimeRef = useRef<number>(0);
   const lastAutoSeekRef = useRef<number>(0);
 
@@ -85,8 +76,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  const [iframeKey] = useState<number>(Date.now());
-
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
   });
@@ -111,110 +100,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       mediaInfo.type === 'vimeo' ||
       mediaInfo.type === 'ok' ||
       mediaInfo.type === 'iframe');
-
-  // Привязка YT.Player к существующему <iframe> при наличии
-  useEffect(() => {
-    if (isScreenSharingActive || mediaInfo.type !== 'youtube' || !iframeRef.current) {
-      return;
-    }
-
-    let isSubscribed = true;
-
-    const initYTPlayer = () => {
-      if (!window.YT || !window.YT.Player || !iframeRef.current) return;
-
-      try {
-        if (ytPlayerRef.current) {
-          try { ytPlayerRef.current.destroy(); } catch (e) {}
-        }
-
-        ytPlayerRef.current = new window.YT.Player(iframeRef.current, {
-          events: {
-            onReady: (event: any) => {
-              if (!isSubscribed) return;
-              setIsEmbedBlocked(false);
-              const p = event.target;
-              try {
-                setDuration(p.getDuration() || 0);
-                if (room.is_playing) p.playVideo();
-              } catch (e) {}
-            },
-            onStateChange: (event: any) => {
-              if (!isSubscribed) return;
-              if (event.data === 1) {
-                setIsPlaying(true);
-                setNeedUserGesture(false);
-                if (ytPlayerRef.current?.getDuration) {
-                  setDuration(ytPlayerRef.current.getDuration() || 0);
-                }
-              } else if (event.data === 2 && isHost) {
-                setIsPlaying(false);
-              }
-            },
-            onError: (err: any) => {
-              if (!isSubscribed) return;
-              if (err.data === 101 || err.data === 150 || err.data === 100 || err.data === 2) {
-                setIsEmbedBlocked(true);
-              }
-            },
-          },
-        });
-      } catch (e) {
-        console.warn('Failed to bind YT.Player to iframe:', e);
-      }
-    };
-
-    if (!window.YT || !window.YT.Player) {
-      if (!document.getElementById('youtube-iframe-api')) {
-        const tag = document.createElement('script');
-        tag.id = 'youtube-iframe-api';
-        tag.src = 'https://www.youtube.com/iframe_api';
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        firstScriptTag?.parentNode?.insertBefore(tag, firstScriptTag);
-      }
-
-      const checkInterval = setInterval(() => {
-        if (window.YT && window.YT.Player) {
-          clearInterval(checkInterval);
-          if (isSubscribed) initYTPlayer();
-        }
-      }, 300);
-
-      return () => {
-        isSubscribed = false;
-        clearInterval(checkInterval);
-      };
-    } else {
-      initYTPlayer();
-    }
-
-    return () => {
-      isSubscribed = false;
-    };
-  }, [mediaInfo.id, mediaInfo.type, isScreenSharingActive]);
-
-  // Периодический опрос времени YouTube Плеера
-  useEffect(() => {
-    if (mediaInfo.type === 'youtube' && !isScreenSharingActive) {
-      const interval = setInterval(() => {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.getCurrentTime === 'function') {
-          try {
-            const cur = ytPlayerRef.current.getCurrentTime() || 0;
-            const dur = ytPlayerRef.current.getDuration() || 0;
-            if (cur > 0) {
-              setCurrentTime(cur);
-              currentTimeRef.current = cur;
-            }
-            if (dur > 0) {
-              setDuration(dur);
-            }
-          } catch (e) {}
-        }
-      }, 500);
-
-      return () => clearInterval(interval);
-    }
-  }, [mediaInfo.type, isScreenSharingActive]);
 
   // Автоскрытие контролов
   useEffect(() => {
@@ -247,7 +132,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, Math.floor(startSec));
   };
 
-  // Отправка postMessage команд в iframes (VK, Rutube, YouTube fallback)
+  // Отправка postMessage команд в iframes
   const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume' | 'unmute', value?: number) => {
     if (!iframeRef.current?.contentWindow) return;
     const win = iframeRef.current.contentWindow;
@@ -765,16 +650,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
 
-  const forceDisableCaptions = () => {
-    if (ytPlayerRef.current) {
-      try {
-        ytPlayerRef.current.unloadModule?.('captions');
-        ytPlayerRef.current.setOption?.('captions', 'track', {});
-        ytPlayerRef.current.setOption?.('cc', 'track', {});
-      } catch (e) {}
-    }
-  };
-
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
     const mins = Math.floor(seconds / 60);
@@ -792,7 +667,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             const next = prev + 1;
             if (
               isHost &&
-              Date.now() - iframeLoadedTimeRef.current > 3000 &&
               Date.now() - lastHostSyncSaveRef.current > 4000
             ) {
               lastHostSyncSaveRef.current = Date.now();
@@ -838,7 +712,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setIsMuted(false);
     setIsPlaying(true);
     setNeedUserGesture(false);
-    forceDisableCaptions();
   };
 
   const handleEnableAudioClick = () => {
@@ -894,18 +767,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     } else if (isIframePlayer) {
       sendIframeCommand(nextPlaying ? 'play' : 'pause');
       sendIframeCommand('unmute');
-    }
-
-    if (globalChannelRef.current) {
-      globalChannelRef.current.send({
-        type: 'broadcast',
-        event: 'play_pause_command',
-        payload: {
-          roomId: room.id,
-          is_playing: nextPlaying,
-          last_updated_at: new Date().toISOString(),
-        },
-      });
     }
 
     updateRoomProgress(room.id, currentTime, nextPlaying);
@@ -999,7 +860,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', syncTime);
         sendIframeCommand(room.is_playing ? 'play' : 'pause');
         sendIframeCommand('unmute');
-        forceDisableCaptions();
       } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
         videoElementRef.current.currentTime = syncTime;
         if (room.is_playing) {
@@ -1031,7 +891,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const twitchAutoplay = room.is_playing ? 'true' : 'false';
   const twitchSrc = `https://player.twitch.tv/?${twitchParamKey}${mediaInfo.id}&parent=${currentHostname}&autoplay=${twitchAutoplay}&muted=false`;
 
-  const youtubeEmbedUrl = `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${room.is_playing ? 1 : 0}&start=${Math.floor(room.playback_position_seconds || 0)}&rel=0&controls=1`;
+  const youtubeEmbedUrl = getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
 
   const fullscreenClass = isFullscreen
     ? 'w-screen h-screen justify-between z-50'
@@ -1188,7 +1048,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {!isScreenSharingActive && isIframePlayer && (
           <iframe
             ref={iframeRef}
-            key={iframeKey}
             src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
             className={`absolute inset-0 w-full h-full border-0 bg-black z-20 ${
               isHost ? 'pointer-events-auto' : 'pointer-events-none'
