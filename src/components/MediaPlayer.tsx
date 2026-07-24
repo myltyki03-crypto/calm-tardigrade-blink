@@ -261,7 +261,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           if (isHost) {
             setIsPlaying(false);
           } else if (room.is_playing) {
-            // Если зритель пытается встать на паузу, когда эфир активен, сразу возобновляем
             sendIframeCommand('play');
             setIsPlaying(true);
           } else {
@@ -711,7 +710,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         interval = setInterval(() => {
           setCurrentTime((prev) => {
             const next = prev + 1;
-            if (isHost && Date.now() - iframeLoadedTimeRef.current > 3000 && Date.now() - lastHostSyncSaveRef.current > 4000) {
+            if (
+              isHost &&
+              Date.now() - iframeLoadedTimeRef.current > 3000 &&
+              Date.now() - lastHostSyncSaveRef.current > 4000
+            ) {
               lastHostSyncSaveRef.current = Date.now();
               updateRoomProgress(room.id, next, true);
             }
@@ -816,7 +819,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         const data = payload;
         if (data && data.roomId === room.id && typeof data.is_playing === 'boolean') {
           setIsPlaying(data.is_playing);
-          
+
           if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
             if (data.is_playing) {
               ytPlayerRef.current.playVideo();
@@ -834,7 +837,8 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             sendIframeCommand('unmute');
           }
         }
-      }) .subscribe();
+      })
+      .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
@@ -1281,7 +1285,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                   </>
                 ) : (
                   <>
-                    Ожидайте, пока владелец пока владелец комнаты (<strong>{room.host_name}</strong>) запустит трансляцию своего экрана или выберите другое видео.
+                    Ожидайте, пока владелец комнаты (<strong>{room.host_name}</strong>) запустит трансляцию своего экрана или выберите другое видео.
                   </>
                 )}
               </p>
