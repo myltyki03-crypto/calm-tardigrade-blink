@@ -73,7 +73,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [showControls, setShowControls] = useState(true);
 
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0); // Инициализация 0 для считывания точной длины из API
+  const [duration, setDuration] = useState(0);
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
@@ -86,15 +86,30 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
   });
 
-  // Обновление при смене видео
+  // Обновление при смене видео (из очереди или клика)
   useEffect(() => {
     const initialUrl = getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
     setYtIframeSrc(initialUrl);
     setIframeSrc(initialUrl);
-    setDuration(0); // Сброс длительности при смене медиа
+    setDuration(0);
+    setCurrentTime(0);
+
+    // Если плеер YouTube уже инициализирован, подаем прямую команду на загрузку нового ID
+    if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
+      try {
+        if (typeof ytPlayerRef.current.loadVideoById === 'function') {
+          ytPlayerRef.current.loadVideoById({
+            videoId: mediaInfo.id,
+            startSeconds: room.playback_position_seconds || 0,
+          });
+        }
+      } catch (e) {
+        console.error('Error switching YouTube video via API:', e);
+      }
+    }
   }, [mediaInfo.id, room.current_media_url]);
 
-  // Подключение YouTube Iframe API для точной длительности и позиции
+  // Подключение YouTube Iframe API для точной длительности и управления
   useEffect(() => {
     if (mediaInfo.type !== 'youtube' || !mediaInfo.id) return;
 
@@ -275,7 +290,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         if (!data || typeof data !== 'object') return;
 
-        // Считывание длительности из YouTube infoDelivery объектов
         if (data.info && typeof data.info.duration === 'number' && data.info.duration > 0) {
           setDuration(Math.floor(data.info.duration));
         } else if (typeof data.duration === 'number' && data.duration > 0) {
@@ -732,7 +746,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
 
-  // Форматирование времени с поддержкой часов (ЧЧ:ММ:СС)
   const formatTime = (seconds: number) => {
     if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00';
     const hrs = Math.floor(seconds / 3600);
@@ -1099,11 +1112,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* 1. YOUTUBE */}
+        {/* 1. YOUTUBE (С постоянным ключевым инстансом) */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
           <iframe
             ref={iframeRef}
-            key={`yt-${mediaInfo.id}`}
+            key="yt-iframe-persistent"
             src={ytIframeSrc}
             className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-none"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
