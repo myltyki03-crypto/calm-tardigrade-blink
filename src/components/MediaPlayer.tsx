@@ -1338,7 +1338,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           <iframe
             ref={iframeRef}
             src={twitchSrc}
-            className="absolute inset-0 w-full h-full border-0 z-10 pointer-events-auto"
+            className={`absolute inset-0 w-full h-full border-0 z-10 ${
+              isHost ? 'pointer-events-auto' : 'pointer-events-none'
+            }`}
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock"
             referrerPolicy="no-referrer-when-downgrade"
             allowFullScreen
@@ -1351,7 +1353,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             ref={iframeRef}
             key={iframeKey}
             src={iframeSrc || mediaInfo.embedUrl || mediaInfo.url}
-            className="absolute inset-0 w-full h-full border-0 bg-black z-20 pointer-events-auto"
+            className={`absolute inset-0 w-full h-full border-0 bg-black z-20 ${
+              isHost ? 'pointer-events-auto' : 'pointer-events-none'
+            }`}
             allow="autoplay; encrypted-media; fullscreen; picture-in-picture; screen-wake-lock; clipboard-write; microphone; camera"
             allowFullScreen
           />
@@ -1362,7 +1366,9 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           <video
             ref={videoElementRef}
             src={mediaInfo.url}
-            className="absolute inset-0 w-full h-full object-contain bg-black"
+            className={`absolute inset-0 w-full h-full object-contain bg-black ${
+              isHost ? 'pointer-events-auto' : 'pointer-events-none'
+            }`}
             playsInline
           />
         )}
@@ -1370,7 +1376,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         {/* ПРОЗРАЧНЫЙ КЛИКЕР-ЗАЩИТА ДЛЯ ЗРИТЕЛЕЙ (Запрещает паузу кликом по видео) */}
         {!isHost && !isScreenSharingActive && (
           <div
-            className="absolute inset-0 z-25 bg-transparent pointer-events-auto"
+            className="absolute inset-0 z-25 bg-transparent pointer-events-auto cursor-default"
             onClick={(e) => {
               e.stopPropagation();
               handleUserActivity();
