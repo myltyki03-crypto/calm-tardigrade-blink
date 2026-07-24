@@ -44,6 +44,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const screenShareVideoRef = useRef<HTMLVideoElement>(null);
   const hiddenCanvasRef = useRef<HTMLCanvasElement>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
+  const ytContainerRef = useRef<HTMLDivElement>(null);
   const ytPlayerRef = useRef<any>(null);
   const controlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -85,32 +86,76 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     setIsEmbedBlocked(false);
   }, [mediaInfo.id, room.current_media_url]);
 
-  // Подключение YouTube Iframe API для точной длительности и управления
+  // Управление YouTube Iframe API
   useEffect(() => {
     if (mediaInfo.type !== 'youtube' || !mediaInfo.id) return;
 
     let pollInterval: NodeJS.Timeout | null = null;
 
-    const initYtApiPlayer = () => {
-      if (!iframeRef.current || !(window as any).YT || !(window as any).YT.Player) return;
+    const setupYtPlayer = () => {
+      if (!ytContainerRef.current || !(window as any).YT || !(window as any).YT.Player) return;
+
+      if (ytPlayerRef.current) {
+        try {
+          if (typeof ytPlayerRef.current.loadVideoById === 'function') {
+            ytPlayerRef.current.loadVideoById({
+              videoId: mediaInfo.id,
+              startSeconds: room.playback_position_seconds || 0,
+            });
+            if (room.is_playing) {
+              ytPlayerRef.current.playVideo();
+            }
+            return;
+          }
+        } catch (e) {
+          console.error('Error reusing YT Player:', e);
+        }
+      }
 
       try {
-        if (ytPlayerRef.current && typeof ytPlayerRef.current.destroy === 'function') {
-          ytPlayerRef.current.destroy();
-        }
-
-        ytPlayerRef.current = new (window as any).YT.Player(iframeRef.current, {
+        ytPlayerRef.current = new (window as any).YT.Player(ytContainerRef.current, {
+          height: '100%',
+          width: '100%',
+          videoId: mediaInfo.id,
+          playerVars: {
+            autoplay: room.is_playing ? 1 : 0,
+            start: Math.floor(room.playback_position_seconds || 0),
+            controls: 0,
+            rel: 0,
+            modestbranding: 1,
+            iv_load_policy: 3,
+            fs: 0,
+            disablekb: 1,
+            playsinline: 1,
+            enablejsapi: 1,
+          },
           events: {
             onReady: (event: any) => {
-              const dur = event.target.getDuration();
-              if (dur && dur > 0) {
-                setDuration(Math.floor(dur));
-              }
+              try {
+                const dur = event.target.getDuration();
+                if (dur && dur > 0) setDuration(Math.floor(dur));
+                event.target.setVolume(volume);
+                if (isMuted) event.target.mute();
+                if (room.is_playing) event.target.playVideo();
+              } catch (e) {}
             },
             onStateChange: (event: any) => {
-              const dur = event.target.getDuration();
-              if (dur && dur > 0) {
-                setDuration(Math.floor(dur));
+              try {
+                const dur = event.target.getDuration();
+                if (dur && dur > 0) setDuration(Math.floor(dur));
+                const state = event.data;
+                if (state === (window as any).YT.PlayerState.PLAYING) {
+                  setIsPlaying(true);
+                  setNeedUserGesture(false);
+                } else if (state === (window as any).YT.PlayerState.PAUSED) {
+                  setIsPlaying(false);
+                }
+              } catch (e) {}
+            },
+            onError: (event: any) => {
+              const code = event.data;
+              if (code === 101 || code === 150 || code === 100 || code === 2) {
+                setIsEmbedBlocked(true);
               }
             },
           },
@@ -121,9 +166,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             try {
               if (typeof ytPlayerRef.current.getDuration === 'function') {
                 const dur = ytPlayerRef.current.getDuration();
-                if (dur && dur > 0) {
-                  setDuration(Math.floor(dur));
-                }
+                if (dur && dur > 0) setDuration(Math.floor(dur));
               }
 
               if (typeof ytPlayerRef.current.getCurrentTime === 'function') {
@@ -139,31 +182,28 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           }
         }, 1000);
       } catch (e) {
-        console.error('Failed to init YT player API:', e);
+        console.error('Failed to create YT Player instance:', e);
       }
     };
 
-    const mountTimer = setTimeout(() => {
-      if (!(window as any).YT) {
-        const tag = document.createElement('script');
-        tag.src = 'https://www.youtube.com/iframe_api';
-        const firstScriptTag = document.getElementsByTagName('script')[0];
-        if (firstScriptTag && firstScriptTag.parentNode) {
-          firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
-        } else {
-          document.head.appendChild(tag);
-        }
-
-        (window as any).onYouTubeIframeAPIReady = () => {
-          initYtApiPlayer();
-        };
+    if (!(window as any).YT) {
+      const tag = document.createElement('script');
+      tag.src = 'https://www.youtube.com/iframe_api';
+      const firstScriptTag = document.getElementsByTagName('script')[0];
+      if (firstScriptTag && firstScriptTag.parentNode) {
+        firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
       } else {
-        initYtApiPlayer();
+        document.head.appendChild(tag);
       }
-    }, 150);
+
+      (window as any).onYouTubeIframeAPIReady = () => {
+        setupYtPlayer();
+      };
+    } else {
+      setupYtPlayer();
+    }
 
     return () => {
-      clearTimeout(mountTimer);
       if (pollInterval) clearInterval(pollInterval);
     };
   }, [mediaInfo.id, mediaInfo.type]);
@@ -215,50 +255,55 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return Math.max(0, Math.floor(startSec));
   };
 
-  // Отправка postMessage команд в iframes
+  // Отправка команд в плееры
   const sendIframeCommand = (command: 'play' | 'pause' | 'seek' | 'volume' | 'unmute', value?: number) => {
+    if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
+      try {
+        const val = typeof value === 'number' ? Math.floor(value) : 0;
+        if (command === 'play' && typeof ytPlayerRef.current.playVideo === 'function') {
+          ytPlayerRef.current.playVideo();
+        } else if (command === 'pause' && typeof ytPlayerRef.current.pauseVideo === 'function') {
+          ytPlayerRef.current.pauseVideo();
+        } else if (command === 'seek' && typeof ytPlayerRef.current.seekTo === 'function') {
+          ytPlayerRef.current.seekTo(val, true);
+        } else if (command === 'volume' && typeof ytPlayerRef.current.setVolume === 'function') {
+          ytPlayerRef.current.setVolume(val);
+        } else if (command === 'unmute' && typeof ytPlayerRef.current.unMute === 'function') {
+          ytPlayerRef.current.unMute();
+        }
+        return;
+      } catch (e) {
+        console.error('YT API command error:', e);
+      }
+    }
+
     if (!iframeRef.current?.contentWindow) return;
     const win = iframeRef.current.contentWindow;
 
     try {
       const val = typeof value === 'number' ? Math.floor(value) : 0;
-
-      if (mediaInfo.type === 'youtube') {
-        if (command === 'play') {
-          win.postMessage('{"event":"command","func":"playVideo","args":""}', '*');
-        } else if (command === 'pause') {
-          win.postMessage('{"event":"command","func":"pauseVideo","args":""}', '*');
-        } else if (command === 'seek' && typeof value === 'number') {
-          win.postMessage(`{"event":"command","func":"seekTo","args":[${val},true]}`, '*');
-        } else if (command === 'volume' && typeof value === 'number') {
-          win.postMessage(`{"event":"command","func":"setVolume","args":[${val}]}`, '*');
-        } else if (command === 'unmute') {
-          win.postMessage('{"event":"command","func":"unMute","args":""}', '*');
-        }
-      } else {
-        if (command === 'play') {
-          win.postMessage({ box_msg: 'play' }, '*');
-          win.postMessage(JSON.stringify({ box_msg: 'play' }), '*');
-        } else if (command === 'pause') {
-          win.postMessage({ box_msg: 'pause' }, '*');
-          win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
-        } else if (command === 'seek' && typeof value === 'number') {
-          win.postMessage({ box_msg: 'seek', value: val }, '*');
-          win.postMessage({ box_msg: 'seek', time: val }, '*');
-          win.postMessage(JSON.stringify({ box_msg: 'seek', value: val }), '*');
-          win.postMessage(JSON.stringify({ box_msg: 'seek', time: val }), '*');
-          win.postMessage({ type: 'player:setCurrentTime', data: { time: val } }, '*');
-        } else if (command === 'unmute' || command === 'volume') {
-          win.postMessage({ box_msg: 'unmute' }, '*');
-          win.postMessage({ box_msg: 'set_volume', value: value ?? volume }, '*');
-        }
+      if (command === 'play') {
+        win.postMessage({ box_msg: 'play' }, '*');
+        win.postMessage(JSON.stringify({ box_msg: 'play' }), '*');
+      } else if (command === 'pause') {
+        win.postMessage({ box_msg: 'pause' }, '*');
+        win.postMessage(JSON.stringify({ box_msg: 'pause' }), '*');
+      } else if (command === 'seek' && typeof value === 'number') {
+        win.postMessage({ box_msg: 'seek', value: val }, '*');
+        win.postMessage({ box_msg: 'seek', time: val }, '*');
+        win.postMessage(JSON.stringify({ box_msg: 'seek', value: val }), '*');
+        win.postMessage(JSON.stringify({ box_msg: 'seek', time: val }), '*');
+        win.postMessage({ type: 'player:setCurrentTime', data: { time: val } }, '*');
+      } else if (command === 'unmute' || command === 'volume') {
+        win.postMessage({ box_msg: 'unmute' }, '*');
+        win.postMessage({ box_msg: 'set_volume', value: value ?? volume }, '*');
       }
     } catch (e) {
       console.error('Failed to send iframe command:', e);
     }
   };
 
-  // Перехват PostMessage событий плееров
+  // Перехват PostMessage событий других плееров
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       try {
@@ -287,8 +332,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           timeVal = data.currentTime;
         } else if (typeof data.time === 'number') {
           timeVal = data.time;
-        } else if (data.param && typeof data.param === 'object' && typeof data.param.time === 'number') {
-          timeVal = data.param.time;
         }
 
         const now = Date.now();
@@ -726,7 +769,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   }, [isHost, isScreenSharingActive, remoteStream, currentUser.id]);
 
   const formatTime = (seconds: number) => {
-    if (!seconds || isNaN(seconds) || seconds < 0) return '00:00';
+    if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00';
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
@@ -974,10 +1017,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     ? 'opacity-100 pointer-events-auto transition-all duration-300'
     : 'opacity-0 pointer-events-none invisible transition-all duration-300';
 
-  const ytEmbedUrl = `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${
-    room.is_playing ? 1 : 0
-  }&start=${Math.floor(room.playback_position_seconds || 0)}&rel=0&controls=0&modestbranding=1&iv_load_policy=3&fs=0&disablekb=1&playsinline=1`;
-
   return (
     <div
       ref={containerRef}
@@ -1095,15 +1134,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* 1. YOUTUBE */}
+        {/* 1. YOUTUBE (Стабильный контейнер без разрушения) */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
-          <iframe
-            ref={iframeRef}
-            key={`yt-${mediaInfo.id}`}
-            src={ytEmbedUrl}
-            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-none"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
+          <div
+            ref={ytContainerRef}
+            className="absolute inset-0 w-full h-full bg-black z-10 pointer-events-none"
           />
         )}
 
