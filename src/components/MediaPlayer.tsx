@@ -712,6 +712,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setCurrentTime((prev) => {
             const next = prev + 1;
             if (isHost && Date.now() - iframeLoadedTimeRef.current > 3000 && Date.now() - lastHostSyncSaveRef.current > 4000) {
+              lastHostSyncSaveRef.current > 4000) {
               lastHostSyncSaveRef.current = Date.now();
               updateRoomProgress(room.id, next, true);
             }
@@ -963,6 +964,45 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     isPlaying,
   ]);
 
+  // Слушатель мгновенной команды play/pause от ведущего
+  useEffect(() => {
+    if (!isSupabaseConfigured || !supabase || isHost) return;
+
+    const channelName = 'pulserave-global-channel';
+    const channel = supabase.channel(channelName + '-playpause-' + room.id, {
+      config: { broadcast: { self: false } },
+    });
+
+    channel
+      .on('broadcast', { event: 'play_pause_command' }, ({ payload }) => {
+        const data = payload;
+        if (data && data.roomId === room.id && typeof data.is_playing === 'boolean') {
+          setIsPlaying(data.is_playing);
+          
+          if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
+            if (data.is_playing) {
+              ytPlayerRef.current.playVideo?.();
+            } else {
+              ytPlayerRef.current.pauseVideo?.();
+            }
+          } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+            if (data.is_playing) {
+              videoElementRef.current.play().catch(() => setNeedUserGesture(true));
+            } else {
+              videoElementRef.current.pause();
+            }
+          } else if (isIframePlayer) {
+            sendIframeCommand(data.is_playing ? 'play' : 'pause');
+          }
+        }
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [room.id, isHost, isSupabaseConfigured, mediaInfo.type, isIframePlayer]);
+
   useEffect(() => {
     const handleFullscreenChange = () => {
       setIsFullscreen(Boolean(document.fullscreenElement));
@@ -1036,34 +1076,40 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       return;
     }
 
+    const nextPlaying = !isPlaying;
+    setIsPlaying(nextPlaying);
+
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
-      if (isPlaying) {
-        ytPlayerRef.current.pauseVideo();
-        setIsPlaying(false);
-        updateRoomProgress(room.id, currentTime, false);
-      } else {
+      if (nextPlaying) {
         ytPlayerRef.current.playVideo();
-        setIsPlaying(true);
-        updateRoomProgress(room.id, currentTime, true);
-        forceDisableCaptions();
+      } else {
+        ytPlayerRef.current.pauseVideo();
       }
     } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-      if (isPlaying) {
-        videoElementRef.current.pause();
-        setIsPlaying(false);
-        updateRoomProgress(room.id, videoElementRef.current.currentTime, false);
-      } else {
+      if (nextPlaying) {
         videoElementRef.current.play();
-        setIsPlaying(true);
-        updateRoomProgress(room.id, videoElementRef.current.currentTime, true);
+      } else {
+        videoElementRef.current.pause();
       }
-    } else {
-      const nextPlaying = !isPlaying;
-      setIsPlaying(nextPlaying);
+    } else if (isIframePlayer) {
       sendIframeCommand(nextPlaying ? 'play' : 'pause');
       sendIframeCommand('unmute');
-      updateRoomProgress(room.id, currentTime, nextPlaying);
     }
+
+    // Отправляем мгновенную команду всем зрителям
+    if (globalChannelRef.current) {
+      globalChannelRef.current.send({
+        type: 'broadcast',
+        event: 'play_pause_command',
+        payload: {
+          roomId: room.id,
+          is_playing: nextPlaying,
+          last_updated_at: new Date().toISOString(),
+        },
+      });
+    }
+
+    updateRoomProgress(room.id, currentTime, nextPlaying);
   };
 
   const handleVolumeChange = (newVolume: number) => {
@@ -1397,7 +1443,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
                   </>
                 ) : (
                   <>
-                    Ожидайте, пока владелец комнаты (<strong>{room.host_name}</strong>) запустит трансляцию своего экрана или выберите другое видео.
+                    Ожидайте, пока владелец пока владелец комнаты (<strong>{room.host_name}</strong>) запустит трансляцию своего экрана или выберите другое видео.
                   </>
                 )}
               </p>

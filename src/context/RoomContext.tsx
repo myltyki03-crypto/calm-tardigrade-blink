@@ -543,6 +543,22 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
           );
         }
       })
+      .on('broadcast', { event: 'play_pause_command' }, (payload) => {
+        const data = payload.payload;
+        if (data && data.roomId) {
+          setRooms((prev) =>
+            prev.map((r) =>
+              r.id === data.roomId
+                ? {
+                    ...r,
+                    is_playing: data.is_playing,
+                    last_updated_at: data.last_updated_at || new Date().toISOString(),
+                  }
+                : r
+            )
+          );
+        }
+      })
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'direct_messages' },
@@ -815,7 +831,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const senderIsMe = (myId && sId === myId) || (myName && sName === myName);
         const senderIsTarget = (tId && sId === tId) || (tName && sName === tName);
 
-        const receiverIsMe = (myId && rId === myId) || (myName && rId === myName);
+        const receiverIsMe = (myId && rId === myId) || (myName && rName === myName);
         const receiverIsTarget = (tId && rId === tId) || (tName && rName === tName);
 
         return (senderIsMe && receiverIsTarget) || (senderIsTarget && receiverIsMe);
@@ -921,7 +937,7 @@ export const RoomProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setRooms((prev) => [roomWithTimestamp, ...prev]);
     markRoomUnlocked(newRoom.id);
 
-    // Автоматическое сохранение первичного видео в очереди комнаты
+    // Автоматическое сохранение первичного видео в очередь комнаты
     const initialQueueItem: QueueItem = {
       id: `q-${Date.now()}`,
       room_id: newRoom.id,
