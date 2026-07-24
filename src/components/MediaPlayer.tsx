@@ -72,7 +72,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [showControls, setShowControls] = useState(true);
 
   const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(240); // По умолчанию 4 минуты до считывания точно с API
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
@@ -90,6 +90,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     const initialUrl = getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
     setYtIframeSrc(initialUrl);
     setIframeSrc(initialUrl);
+    setDuration(240); // Сброс при смене трека
   }, [mediaInfo.id, room.current_media_url]);
 
   // Синхронизация ref текущего времени
@@ -182,7 +183,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  // Перехват PostMessage событий плееров
+  // Перехват PostMessage событий плееров (YouTube / HTML5)
   useEffect(() => {
     const handleWindowMessage = (event: MessageEvent) => {
       try {
@@ -193,28 +194,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         if (!data || typeof data !== 'object') return;
 
+        // Считывание длительности из YouTube infoDelivery объекта
+        if (data.info && typeof data.info.duration === 'number' && data.info.duration > 0) {
+          setDuration(Math.floor(data.info.duration));
+        } else if (typeof data.duration === 'number' && data.duration > 0) {
+          setDuration(Math.floor(data.duration));
+        }
+
         const eventType = String(
           data.event || data.type || data.box_msg || data.action || (Array.isArray(data) ? data[0] : '')
         ).toLowerCase();
 
-        if (
-          eventType.includes('status') ||
-          eventType.includes('volume') ||
-          eventType.includes('quality') ||
-          eventType.includes('resize') ||
-          eventType.includes('init')
-        ) {
-          if (eventType.includes('pause')) {
-            if (isHost) setIsPlaying(false);
-            else if (room.is_playing) sendIframeCommand('play');
-          }
-          if (eventType.includes('play')) setIsPlaying(true);
-          return;
-        }
-
         let timeVal: number | undefined = undefined;
 
-        if (typeof data.currentTime === 'number') {
+        if (data.info && typeof data.info.currentTime === 'number') {
+          timeVal = data.info.currentTime;
+        } else if (typeof data.currentTime === 'number') {
           timeVal = data.currentTime;
         } else if (typeof data.time === 'number') {
           timeVal = data.time;
@@ -229,13 +224,13 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           const oldTime = currentTimeRef.current;
           if (timeVal < 2 && oldTime > 5) return;
 
-          setCurrentTime(timeVal);
+          setCurrentTime(Math.floor(timeVal));
 
           if (isHost) {
             const timeJump = Math.abs(timeVal - oldTime);
             if ((timeJump > 2 && timeVal > 0) || now - lastHostSyncSaveRef.current > 5000) {
               lastHostSyncSaveRef.current = now;
-              updateRoomProgress(room.id, timeVal, isPlaying);
+              updateRoomProgress(room.id, Math.floor(timeVal), isPlaying);
             }
           }
         }
@@ -824,25 +819,23 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const handleSeek = (newProgressPercent: number) => {
     if (!isHost) return;
 
-    if (duration > 0 || mediaInfo.type === 'vk' || mediaInfo.type === 'youtube') {
-      const maxSec = duration > 0 ? duration : 3600;
-      const targetSeconds = Math.max(0, Math.floor((newProgressPercent / 100) * maxSec));
+    const maxSec = duration > 0 ? duration : 240;
+    const targetSeconds = Math.max(0, Math.floor((newProgressPercent / 100) * maxSec));
 
-      setCurrentTime(targetSeconds);
-      currentTimeRef.current = targetSeconds;
-      lastAutoSeekRef.current = Date.now();
-      lastHostSyncSaveRef.current = Date.now();
+    setCurrentTime(targetSeconds);
+    currentTimeRef.current = targetSeconds;
+    lastAutoSeekRef.current = Date.now();
+    lastHostSyncSaveRef.current = Date.now();
 
-      if (mediaInfo.type === 'youtube') {
-        sendIframeCommand('seek', targetSeconds);
-      } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
-        videoElementRef.current.currentTime = targetSeconds;
-      } else {
-        sendIframeCommand('seek', targetSeconds);
-      }
-
-      updateRoomProgress(room.id, targetSeconds, isPlaying);
+    if (mediaInfo.type === 'youtube') {
+      sendIframeCommand('seek', targetSeconds);
+    } else if (mediaInfo.type === 'direct' && videoElementRef.current) {
+      videoElementRef.current.currentTime = targetSeconds;
+    } else {
+      sendIframeCommand('seek', targetSeconds);
     }
+
+    updateRoomProgress(room.id, targetSeconds, isPlaying);
   };
 
   const handleSyncClick = (e?: React.MouseEvent) => {
@@ -887,7 +880,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     }
   };
 
-  const progressPercent = duration > 0 ? (currentTime / duration) * 100 : (currentTime % 3600) / 36;
+  const progressPercent = duration > 0 ? Math.min(100, Math.max(0, (currentTime / duration) * 100)) : 0;
   const currentHostname = window.location.hostname || 'localhost';
 
   const twitchParamKey = mediaInfo.twitchType === 'video' ? 'video=' : 'channel=';
@@ -1019,7 +1012,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* 1. YOUTUBE (без какого-либо кадрирования, масштабирования или обрезки кадра) */}
+        {/* 1. YOUTUBE */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
           <iframe
             ref={iframeRef}
@@ -1063,6 +1056,11 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           <video
             ref={videoElementRef}
             src={mediaInfo.url}
+            onLoadedMetadata={() => {
+              if (videoElementRef.current?.duration) {
+                setDuration(Math.floor(videoElementRef.current.duration));
+              }
+            }}
             className={`absolute inset-0 w-full h-full object-contain bg-black ${
               isHost ? 'pointer-events-auto' : 'pointer-events-none'
             }`}
