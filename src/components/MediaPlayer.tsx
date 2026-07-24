@@ -76,14 +76,21 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
+  // Стабильный URL для YouTube iframe (обновляется только при смене видео)
+  const [ytIframeSrc, setYtIframeSrc] = useState<string>(() => {
+    return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
+  });
+
   const [iframeSrc, setIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
   });
 
-  // Обновление iframeSrc при смене видео
+  // Обновление iframeSrc строго при смене видео ID
   useEffect(() => {
-    setIframeSrc(getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing));
-  }, [room.current_media_url, mediaInfo.id]);
+    const initialUrl = getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
+    setYtIframeSrc(initialUrl);
+    setIframeSrc(initialUrl);
+  }, [mediaInfo.id, room.current_media_url]);
 
   // Синхронизация ref текущего времени
   useEffect(() => {
@@ -252,7 +259,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
     return () => window.removeEventListener('message', handleWindowMessage);
   }, [isHost, isPlaying, room.id, room.is_playing]);
 
-  // Синхронизация зрителя при изменении данных ведущего
+  // Синхронизация зрителя при изменении данных ведущего без перезагрузки iframe
   const prevHostPositionRef = useRef<{ pos: number; updatedAt: string; isPlaying: boolean }>({
     pos: room.playback_position_seconds || 0,
     updatedAt: room.last_updated_at || '',
@@ -315,7 +322,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           setCurrentTime(targetHostTime);
           currentTimeRef.current = targetHostTime;
           sendIframeCommand('seek', targetHostTime);
-          setIframeSrc(getEmbedUrlWithTime(mediaInfo, targetHostTime, currentIsPlaying));
         }
       }
     }
@@ -706,7 +712,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       sendIframeCommand('seek', syncTime);
       sendIframeCommand('play');
       sendIframeCommand('unmute');
-      setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, true));
     }
 
     setIsMuted(false);
@@ -834,7 +839,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         videoElementRef.current.currentTime = targetSeconds;
       } else {
         sendIframeCommand('seek', targetSeconds);
-        setIframeSrc(getEmbedUrlWithTime(mediaInfo, targetSeconds, isPlaying));
       }
 
       updateRoomProgress(room.id, targetSeconds, isPlaying);
@@ -877,7 +881,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         sendIframeCommand('seek', syncTime);
         sendIframeCommand(room.is_playing ? 'play' : 'pause');
         sendIframeCommand('unmute');
-        setIframeSrc(getEmbedUrlWithTime(mediaInfo, syncTime, room.is_playing));
       }
 
       showSuccess(`Синхронизировано на ${formatTime(syncTime)}`);
@@ -890,8 +893,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const twitchParamKey = mediaInfo.twitchType === 'video' ? 'video=' : 'channel=';
   const twitchAutoplay = room.is_playing ? 'true' : 'false';
   const twitchSrc = `https://player.twitch.tv/?${twitchParamKey}${mediaInfo.id}&parent=${currentHostname}&autoplay=${twitchAutoplay}&muted=false`;
-
-  const youtubeEmbedUrl = getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
 
   const fullscreenClass = isFullscreen
     ? 'w-screen h-screen justify-between z-50'
@@ -1018,12 +1019,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* 1. YOUTUBE */}
+        {/* 1. YOUTUBE (С зафиксированным iframeSrc без постоянных перезагрузок) */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
           <iframe
             ref={iframeRef}
             key={`yt-${mediaInfo.id}`}
-            src={youtubeEmbedUrl}
+            src={ytIframeSrc}
             className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-none scale-[1.01]"
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
             allowFullScreen
