@@ -193,7 +193,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           eventType.includes('resize') ||
           eventType.includes('init')
         ) {
-          if (eventType.includes('pause')) setIsPlaying(false);
+          if (eventType.includes('pause')) {
+            if (isHost) setIsPlaying(false);
+            else if (room.is_playing) sendIframeCommand('play');
+          }
           if (eventType.includes('play')) setIsPlaying(true);
           return;
         }
@@ -221,7 +224,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
 
         const now = Date.now();
 
-        // Игнорируем задержки или переходные 0.00 сообщения во время буферизации после перемотки
         if (now - lastAutoSeekRef.current < 5000) {
           return;
         }
@@ -229,7 +231,6 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         if (typeof timeVal === 'number' && !isNaN(timeVal) && timeVal >= 0) {
           const oldTime = currentTimeRef.current;
 
-          // Защита: Игнорируем аномальный случайный сброс в 0 если видео уже шло больше 5 секунд
           if (timeVal < 2 && oldTime > 5) {
             return;
           }
@@ -257,14 +258,22 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           eventType === 'video_pause' ||
           eventType === 'paused'
         ) {
-          setIsPlaying(false);
+          if (isHost) {
+            setIsPlaying(false);
+          } else if (room.is_playing) {
+            // Если зритель пытается встать на паузу, когда эфир активен, сразу возобновляем
+            sendIframeCommand('play');
+            setIsPlaying(true);
+          } else {
+            setIsPlaying(false);
+          }
         }
       } catch (e) {}
     };
 
     window.addEventListener('message', handleWindowMessage);
     return () => window.removeEventListener('message', handleWindowMessage);
-  }, [isHost, isPlaying, room.id]);
+  }, [isHost, isPlaying, room.id, room.is_playing]);
 
   // МГНОВЕННАЯ РЕАКЦИЯ ЗРИТЕЛЯ НА ПЕРЕМОТКУ ВЕДУЩЕГО
   const prevHostPositionRef = useRef<{ pos: number; updatedAt: string; isPlaying: boolean }>({
@@ -815,7 +824,12 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
               setNeedUserGesture(false);
               setIsEmbedBlocked(false);
             } else if (event.data === 2) {
-              setIsPlaying(false);
+              if (isHost) {
+                setIsPlaying(false);
+              } else if (room.is_playing) {
+                event.target.playVideo?.();
+                setIsPlaying(true);
+              }
             } else if (event.data === 0) {
               setIsPlaying(false);
             }
@@ -869,7 +883,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
         playerContainerRef.current.innerHTML = '';
       }
     };
-  }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive]);
+  }, [mediaInfo.type, mediaInfo.id, isScreenSharingActive, isHost, room.is_playing]);
 
   // ПЛАВНАЯ СИНХРОНИЗАЦИЯ ДЛЯ ЗРИТЕЛЕЙ
   useEffect(() => {
@@ -1017,7 +1031,10 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
       return;
     }
 
-    if (!isHost) return;
+    if (!isHost) {
+      showError('Только ведущий может ставить на паузу');
+      return;
+    }
 
     if (mediaInfo.type === 'youtube' && ytPlayerRef.current) {
       if (isPlaying) {
@@ -1347,6 +1364,17 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
             src={mediaInfo.url}
             className="absolute inset-0 w-full h-full object-contain bg-black"
             playsInline
+          />
+        )}
+
+        {/* ПРОЗРАЧНЫЙ КЛИКЕР-ЗАЩИТА ДЛЯ ЗРИТЕЛЕЙ (Запрещает паузу кликом по видео) */}
+        {!isHost && !isScreenSharingActive && (
+          <div
+            className="absolute inset-0 z-25 bg-transparent pointer-events-auto"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleUserActivity();
+            }}
           />
         )}
 

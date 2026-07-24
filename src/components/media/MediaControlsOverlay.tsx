@@ -46,11 +46,11 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
 
   const hostPlayClass = isHost
     ? 'bg-pink-600 hover:bg-pink-500 shadow-pink-500/30'
-    : 'bg-slate-800/80 hover:bg-slate-700/80 text-slate-400';
+    : 'bg-slate-800/80 text-slate-500 cursor-not-allowed opacity-80';
 
   const playButtonTitle = isHost
     ? (isPlaying ? 'Пауза' : 'Запустить')
-    : 'Только ведущий может запускать видео';
+    : 'Только ведущий может ставить на паузу';
 
   const fullscreenButtonTitle = isFullscreen ? 'Свернуть' : 'На весь экран';
   const displayDuration = duration > 0 ? formatTime(duration) : '00:00';
@@ -85,12 +85,13 @@ export const MediaControlsOverlay: React.FC<MediaControlsOverlayProps> = ({
           {!isScreenSharingActive && (
             <Button
               onClick={onTogglePlay}
+              disabled={!isHost}
               size="icon"
               title={playButtonTitle}
               className={`h-9 w-9 rounded-full text-white shadow-md shrink-0 transition-all ${hostPlayClass}`}
             >
               {isPlaying ? (
-                <Pause className="h-4 w-4" />
+                isHost ? <Pause className="h-4 w-4" /> : <Lock className="h-3.5 w-3.5 text-amber-400" />
               ) : isHost ? (
                 <Play className="h-4 w-4 ml-0.5 fill-white" />
               ) : (
