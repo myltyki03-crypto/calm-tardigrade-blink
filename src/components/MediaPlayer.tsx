@@ -76,7 +76,7 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
   const [needUserGesture, setNeedUserGesture] = useState(false);
   const [isEmbedBlocked, setIsEmbedBlocked] = useState(false);
 
-  // Стабильный URL для YouTube iframe (обновляется только при смене видео)
+  // Стабильный URL для YouTube iframe
   const [ytIframeSrc, setYtIframeSrc] = useState<string>(() => {
     return getEmbedUrlWithTime(mediaInfo, room.playback_position_seconds || 0, room.is_playing);
   });
@@ -1019,16 +1019,18 @@ export const MediaPlayer: React.FC<MediaPlayerProps> = ({
           )}
         </div>
 
-        {/* 1. YOUTUBE (С зафиксированным iframeSrc без постоянных перезагрузок) */}
+        {/* 1. YOUTUBE (С безопасным кадрированием для скрытия родной плашки и логотипов) */}
         {!isScreenSharingActive && mediaInfo.type === 'youtube' && (
-          <iframe
-            ref={iframeRef}
-            key={`yt-${mediaInfo.id}`}
-            src={ytIframeSrc}
-            className="absolute inset-0 w-full h-full border-0 bg-black z-10 pointer-events-none scale-[1.01]"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            allowFullScreen
-          />
+          <div className="absolute inset-0 w-full h-full overflow-hidden bg-black z-10 pointer-events-none">
+            <iframe
+              ref={iframeRef}
+              key={`yt-${mediaInfo.id}`}
+              src={ytIframeSrc}
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[116%] h-[116%] border-0 bg-black pointer-events-none scale-100"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
+            />
+          </div>
         )}
 
         {/* 2. TWITCH */}

@@ -19,7 +19,7 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
   if (mediaInfo.type === 'youtube') {
     const autoplayParam = shouldAutoplay ? 1 : 0;
     const startParam = cleanSec > 0 ? `&start=${cleanSec}` : '';
-    return `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${autoplayParam}${startParam}&rel=0&controls=0&modestbranding=1&iv_load_policy=3&fs=0&disablekb=1&playsinline=1`;
+    return `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${autoplayParam}${startParam}&rel=0&controls=0&modestbranding=1&iv_load_policy=3&fs=0&disablekb=1&playsinline=1&widget_referrer=${encodeURIComponent(window.location.href)}`;
   }
 
   if (mediaInfo.type === 'vk') {
