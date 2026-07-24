@@ -15,10 +15,11 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
   if (!baseUrl) return '';
 
   const cleanSec = Math.max(0, Math.floor(startSec));
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
 
   if (mediaInfo.type === 'youtube') {
-    return `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&origin=${encodeURIComponent(origin)}&autoplay=${shouldAutoplay ? 1 : 0}&start=${cleanSec}&rel=0&controls=1`;
+    const autoplayParam = shouldAutoplay ? 1 : 0;
+    const startParam = cleanSec > 0 ? `&start=${cleanSec}` : '';
+    return `https://www.youtube.com/embed/${mediaInfo.id}?enablejsapi=1&autoplay=${autoplayParam}${startParam}&rel=0&controls=1`;
   }
 
   if (mediaInfo.type === 'vk') {
@@ -46,8 +47,6 @@ export const getEmbedUrlWithTime = (mediaInfo: MediaInfo, startSec: number, shou
         }
 
         urlObj.searchParams.set('t', tStr);
-      } else {
-        urlObj.searchParams.delete('t');
       }
 
       return urlObj.toString();
@@ -97,7 +96,7 @@ export const parseMediaUrl = (url: string): MediaInfo => {
     }
   }
 
-  // 2. YOUTUBE (проверка youtube.com, youtu.be, shorts или прямой 11-значный ID)
+  // 2. YOUTUBE
   if (
     cleanUrl.includes('youtube.com/') ||
     cleanUrl.includes('youtu.be/') ||
@@ -126,19 +125,17 @@ export const parseMediaUrl = (url: string): MediaInfo => {
       videoId = parts?.split('?')[0]?.split('&')[0]?.split('/')[0] || videoId;
     }
 
-    const origin = typeof window !== 'undefined' ? window.location.origin : '';
-
     return {
       type: 'youtube',
       url: cleanUrl,
       id: videoId,
       title: `YouTube (${videoId})`,
       thumbnail: `https://img.youtube.com/vi/${videoId}/hqdefault.jpg`,
-      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&origin=${encodeURIComponent(origin)}&rel=0&controls=1`,
+      embedUrl: `https://www.youtube.com/embed/${videoId}?enablejsapi=1&rel=0&controls=1`,
     };
   }
 
-  // 3. VK ВИДЕО (vk.com или vkvideo.ru)
+  // 3. VK Видео
   if (cleanUrl.includes('vk.com/') || cleanUrl.includes('vkvideo.ru/')) {
     let embedUrl = cleanUrl;
     let videoId = '';
